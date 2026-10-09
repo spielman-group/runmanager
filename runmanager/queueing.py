@@ -155,22 +155,10 @@ class RunmanagerQueueWidget(ShotQueueWidget):
         ShotQueueWidget.__init__(
             self,
             parent=parent,
-            accepted_extensions=('.h5', '.hdf5'),
-            file_dialog_filter='Shot files (*.h5 *.hdf5)',
-            allow_duplicates=True,
             column_titles=['Mode', 'Shot file'],
             path_column=1,
-            connect_add_button=False,
-            connect_delete_requested=False,
-            connect_files_dropped=False,
         )
-        self.queue_view.setAcceptDrops(False)
-        self.queue_view.setDragEnabled(False)
-        self.queue_view.setDropIndicatorShown(False)
-        self.queue_view.setDragDropMode(QtWidgets.QAbstractItemView.NoDragDrop)
-        self.add_button.hide()
         self.queue_view.deleteRequested.connect(self._emit_delete)
-        # This menu replaces the view's own, which offers Delete alone.
         self.queue_view.setContextMenuPolicy(
             QtCore.Qt.ContextMenuPolicy.CustomContextMenu
         )
@@ -246,10 +234,7 @@ class RunmanagerQueueWidget(ShotQueueWidget):
         waiting = paths[1:] if sent is not None else paths
         row_infos = [self._sent_to_blacs_row(sent)]
         for path_info in waiting:
-            if isinstance(path_info, dict):
-                row_infos.append(self._row_info(path_info))
-            else:
-                row_infos.append(path_info)
+            row_infos.append(self._row_info(path_info))
         self.set_row_infos(row_infos)
         self.select_ids(selected_ids)
 
