@@ -33,13 +33,14 @@ import h5py
 import numpy as np
 
 from labscript_utils.dict_diff import dict_diff
+from labscript_utils.versions import package_version
 from labscript_utils.ls_zprocess import ProcessTree, zmq_push_multipart
 from labscript_utils.labconfig import LabConfig
 from labscript_utils.lookup_format import format_lookup_string
 import labscript_utils.shot_utils
 process_tree = ProcessTree.instance()
 
-from .__version__ import __version__
+__version__ = package_version(__package__)
 from . import globals_file
 
 
