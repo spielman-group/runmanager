@@ -25,9 +25,8 @@ import os
 import labscript_utils.h5_lock
 import h5py
 
-import tomllib
-
 import tomli_w
+from labscript_profile.toml_config import load_toml_file
 
 
 CANONICAL_FORMAT = "runmanager_globals"
@@ -134,8 +133,7 @@ def load_document(filename):
 
 
 def load_toml_document(filename):
-    with open(filename, "rb") as f:
-        data = tomllib.load(f)
+    data = load_toml_file(filename)
     document = _normalise_document(data)
     if document["format"] != CANONICAL_FORMAT:
         raise GlobalsFileError(
