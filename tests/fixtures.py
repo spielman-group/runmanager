@@ -26,9 +26,6 @@ nothing here shows a widget.
 
 The tests that hand shots to lyse share the few functions at the end, which
 serve a real lyse and submit to it through a real ``AnalysisSubmission``.
-
-``blacs/tests/test_plugins_compat.py`` is the worked example of this technique
-applied to a leaf module, loading it by path with its dependencies stubbed.
 """
 import os
 import sys
