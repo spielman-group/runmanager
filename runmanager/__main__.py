@@ -73,7 +73,6 @@ from labscript_utils.file_utils import next_available_indexed_filepath
 from labscript_utils.lookup_format import format_lookup_string, unescape_braces
 from labscript_utils.setup_logging import setup_logging
 import labscript_utils.shared_drive as shared_drive
-from labscript_utils import dedent
 from labscript_utils.qtwidgets.leftclick import LeftClickMixin
 from labscript_utils.qtwidgets.link_indicator import LinkIndicator
 from labscript_utils.qtwidgets.themed_window import (
