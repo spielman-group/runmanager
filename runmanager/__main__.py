@@ -57,6 +57,7 @@ import matplotlib
 matplotlib.use('Agg')
 
 from qtutils.qt import QtCore, QtGui, QtWidgets, QT_ENV
+from qtutils.qt.QtCore import Qt
 
 splash.update_text('importing labscript suite modules')
 from labscript_utils.ls_zprocess import ProcessTree, ZMQServer
@@ -73,7 +74,6 @@ from labscript_utils.lookup_format import format_lookup_string, unescape_braces
 from labscript_utils.setup_logging import setup_logging
 import labscript_utils.shared_drive as shared_drive
 from labscript_utils import dedent
-from labscript_utils.qtwidgets.fingertab import FingerTabWidget, TabToolButton
 from labscript_utils.qtwidgets.leftclick import LeftClickMixin
 from labscript_utils.qtwidgets.link_indicator import LinkIndicator
 from labscript_utils.qtwidgets.themed_window import (
@@ -265,6 +265,223 @@ def scroll_view_to_row_if_current(view, item):
     if index.row() == current_index.row() and index.parent() == current_index.parent():
         view.scrollTo(index)
         horizontal_scrollbar.setValue(existing_horizontal_position)
+
+
+_RIGHT_SIDE = QtWidgets.QTabBar.ButtonPosition.RightSide
+
+
+class FingerTabBarWidget(QtWidgets.QTabBar):
+
+    """A TabBar with the tabs on the left and the text horizontal. Credit to
+    @LegoStormtroopr, https://gist.github.com/LegoStormtroopr/5075267.
+    FingerTabWidget installs one as its tab bar."""
+
+    def __init__(self, parent=None, minwidth=180, minheight=30, **kwargs):
+        QtWidgets.QTabBar.__init__(self, parent, **kwargs)
+        self.minwidth = minwidth
+        self.minheight = minheight
+        self._movable = None
+        self.tab_movable = {}
+        self.paint_clip = None
+
+    def setMovable(self, movable, index=None):
+        """Set tabs movable on an individual basis, or set for all tabs if no
+        index specified"""
+        if index is None:
+            self._movable = movable
+            self.tab_movable = {}
+            QtWidgets.QTabBar.setMovable(self, movable)
+        else:
+            self.tab_movable[int(index)] = bool(movable)
+
+    def isMovable(self, index=None):
+        if index is None:
+            if self._movable is None:
+                self._movable = QtWidgets.QTabBar.isMovable(self)
+            return self._movable
+        return self.tab_movable.get(index, self._movable)
+
+    def indexAtPos(self, point):
+        for index in range(self.count()):
+            if self.tabRect(index).contains(point):
+                return index
+
+    def mousePressEvent(self, event):
+        index = self.indexAtPos(event.position().toPoint())
+        if not self.tab_movable.get(index, self.isMovable()):
+            # Disable dragging until they release the mouse:
+            QtWidgets.QTabBar.setMovable(self, False)
+        return QtWidgets.QTabBar.mousePressEvent(self, event)
+
+    def mouseReleaseEvent(self, event):
+        if self.isMovable():
+            # Restore this in case it was temporarily disabled by mousePressEvent
+            QtWidgets.QTabBar.setMovable(self, True)
+        return QtWidgets.QTabBar.mouseReleaseEvent(self, event)
+
+    def tabLayoutChange(self):
+        total_height = 0
+        for index in range(self.count()):
+            tabRect = self.tabRect(index)
+            total_height += tabRect.height()
+        if total_height > self.parent().height():
+            # Don't paint over the top of the scroll buttons:
+            scroll_buttons_area_height = 2*self.style().pixelMetric(
+                QtWidgets.QStyle.PixelMetric.PM_TabBarScrollButtonWidth)
+            self.paint_clip = (
+                self.width(), self.parent().height() - scroll_buttons_area_height
+            )
+        else:
+            self.paint_clip = None
+
+    def paintEvent(self, event):
+        painter = QtWidgets.QStylePainter(self)
+        if self.paint_clip is not None:
+            painter.setClipRect(0, 0, *self.paint_clip)
+
+        option = QtWidgets.QStyleOptionTab()
+        for index in range(self.count()):
+            tabRect = self.tabRect(index)
+            self.initStyleOption(option, index)
+            painter.drawControl(
+                QtWidgets.QStyle.ControlElement.CE_TabBarTabShape, option
+            )
+            if not self.tabIcon(index).isNull():
+                icon = self.tabIcon(index).pixmap(self.iconSize())
+                alignment = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+                tabRect.moveLeft(10)
+                painter.drawItemPixmap(tabRect, alignment, icon)
+                tabRect.moveLeft(self.iconSize().width() + 15)
+            else:
+                tabRect.moveLeft(10)
+            painter.drawText(
+                tabRect, Qt.AlignmentFlag.AlignVCenter, self.tabText(index)
+            )
+        if self.paint_clip is not None:
+            x_clip, y_clip = self.paint_clip
+            painter.setClipping(False)
+            palette = self.palette()
+            mid_color = palette.color(QtGui.QPalette.ColorRole.Mid)
+            painter.setPen(mid_color)
+            painter.drawLine(0, y_clip, x_clip, y_clip)
+        painter.end()
+
+    def tabSizeHint(self, index):
+        fontmetrics = QtGui.QFontMetrics(self.font())
+        text_width = fontmetrics.horizontalAdvance(self.tabText(index))
+        text_height = fontmetrics.height()
+        height = text_height + 15
+        height = max(self.minheight, height)
+        width = text_width + 15
+
+        button = self.tabButton(index, _RIGHT_SIDE)
+        if button is not None:
+            height = max(height, button.height() + 7)
+            # Same amount of space around the button horizontally as it has vertically:
+            width += button.width() + height - button.height()
+        width = max(self.minwidth, width)
+        return QtCore.QSize(width, height)
+
+    def setTabButton(self, index, geometry, button):
+        if not isinstance(button, TabToolButton):
+            raise TypeError(
+                "Not a TabToolButton, won't paint correctly. Use a TabToolButton"
+            )
+        result = QtWidgets.QTabBar.setTabButton(self, index, geometry, button)
+        button.move(*button.get_correct_position())
+        return result
+
+
+class TabToolButton(QtWidgets.QToolButton):
+    def __init__(self, *args, **kwargs):
+        QtWidgets.QToolButton.__init__(self, *args, **kwargs)
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+
+    def paintEvent(self, event):
+        painter = QtWidgets.QStylePainter(self)
+        paint_clip = self.parent().paint_clip
+        if paint_clip is not None:
+            point = QtCore.QPoint(*paint_clip)
+            global_point = self.parent().mapToGlobal(point)
+            local_point = self.mapFromGlobal(global_point)
+            painter.setClipRect(0, 0, local_point.x(), local_point.y())
+        option = QtWidgets.QStyleOptionToolButton()
+        self.initStyleOption(option)
+        painter.drawComplexControl(
+            QtWidgets.QStyle.ComplexControl.CC_ToolButton, option
+        )
+
+    def get_correct_position(self):
+        parent = self.parent()
+        for index in range(parent.count()):
+            if parent.tabButton(index, _RIGHT_SIDE) is self:
+                break
+        else:
+            raise LookupError('Tab not found')
+        tabRect = parent.tabRect(index)
+        tab_x, tab_y = tabRect.x(), tabRect.y()
+        tab_width, tab_height = tabRect.width(), tabRect.height()
+        size = self.sizeHint()
+        width = size.width()
+        height = size.height()
+        padding = int((tab_height - height) / 2)
+        correct_x = tab_x + tab_width - width - padding
+        correct_y = tab_y + padding
+        return correct_x, correct_y
+
+    def moveEvent(self, event):
+        try:
+            correct_x, correct_y = self.get_correct_position()
+        except LookupError:
+            return # Things aren't initialised yet
+        if self.x() != correct_x or self.y() != correct_y:
+            # Move back! I shall not be moved!
+            self.move(correct_x, correct_y)
+        return QtWidgets.QToolButton.moveEvent(self, event)
+
+
+# Shamelessly stolen from this thread:
+#   http://www.riverbankcomputing.com/pipermail/pyqt/2005-December/011724.html
+class FingerTabWidget(QtWidgets.QTabWidget):
+    """A QTabWidget equivalent which uses our FingerTabBarWidget.
+
+    `addTab` takes `closable=True` for a close button on the tab, which emits
+    `tabCloseRequested`.
+    """
+
+    def __init__(self, parent, *args):
+        QtWidgets.QTabWidget.__init__(self, parent, *args)
+        self.setTabBar(FingerTabBarWidget(self))
+
+    def addTab(self, *args, **kwargs):
+        closeable = kwargs.pop('closable', False)
+        index = QtWidgets.QTabWidget.addTab(self, *args, **kwargs)
+        self.setTabClosable(index, closeable)
+        return index
+
+    def setTabClosable(self, index, closable):
+        right_button = self.tabBar().tabButton(index, _RIGHT_SIDE)
+        if closable:
+            if not right_button:
+                # Make one:
+                close_button = TabToolButton(self.parent())
+                close_button.setIcon(QtGui.QIcon(':/qtutils/fugue/cross'))
+                self.tabBar().setTabButton(
+                    index, _RIGHT_SIDE, close_button
+                )
+                close_button.clicked.connect(
+                    lambda: self._on_close_button_clicked(close_button)
+                )
+        else:
+            if right_button:
+                # Get rid of it:
+                self.tabBar().setTabButton(index, _RIGHT_SIDE, None)
+
+    def _on_close_button_clicked(self, button):
+        for index in range(self.tabBar().count()):
+            if self.tabBar().tabButton(index, _RIGHT_SIDE) is button:
+                self.tabCloseRequested.emit(index)
+                break
 
 
 def set_selection_highlight(widget):
