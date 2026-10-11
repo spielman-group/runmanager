@@ -2198,9 +2198,6 @@ class RunManager(LabscriptGuiApplication):
 
     def setup_config(self):
         required_config_params = {"default": ["apparatus_name"],
-                                  "programs": ["text_editor",
-                                               "text_editor_arguments",
-                                               ],
                                   "ports": ['runviewer', 'lyse'],
                                   "paths": ["shared_drive",
                                             "experiment_shot_storage",
