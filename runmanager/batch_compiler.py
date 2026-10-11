@@ -11,21 +11,13 @@
 #                                                                   #
 #####################################################################
 
-from labscript_utils.ls_zprocess import ProcessTree
-process_tree = ProcessTree.connect_to_parent()
-to_parent = process_tree.to_parent
-from_parent = process_tree.from_parent
-kill_lock = process_tree.kill_lock
-
-# Set a meaningful name for zprocess.locking's client id:
-process_tree.zlock_client.set_process_name('runmanager.batch_compiler')
-
 import os
 import sys
 import traceback
 from types import ModuleType
 
 import labscript
+from labscript_utils.ls_zprocess import ProcessTree
 from labscript_utils.modulewatcher import ModuleWatcher
 
 class BatchProcessor(object):
@@ -63,7 +55,7 @@ class BatchProcessor(object):
 
         try:
             # Do not let the modulewatcher unload any modules whilst we're working:
-            with kill_lock, module_watcher.lock:
+            with self.kill_lock, module_watcher.lock:
                 labscript.labscript_init(run_file, labscript_file=labscript_file)
                 with open(labscript_file) as f:
                     code = compile(
@@ -85,9 +77,14 @@ class BatchProcessor(object):
             self.script_module.__dict__.update(self.script_module_clean_dict)
                    
 if __name__ == '__main__':
+    process_tree = ProcessTree.connect_to_parent()
+    # Set a meaningful name for zprocess.locking's client id:
+    process_tree.zlock_client.set_process_name('runmanager.batch_compiler')
     module_watcher = ModuleWatcher() # Make sure modified modules are reloaded
     # Rename this module to '_runmanager_batch_compiler' and put it in sys.modules under
     # that name. The user's script will become the __main__ module:
     __name__ = '_runmanager_batch_compiler'
     sys.modules[__name__] = sys.modules['__main__']
-    batch_processor = BatchProcessor(to_parent,from_parent,kill_lock)
+    batch_processor = BatchProcessor(
+        process_tree.to_parent, process_tree.from_parent, process_tree.kill_lock
+    )

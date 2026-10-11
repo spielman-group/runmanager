@@ -71,36 +71,6 @@ del __name
 del __rval
 del __fn
 
-# mock zprocess calls in batch_compiler
-from labscript_utils.ls_zprocess import ProcessTree
-mock_processtree_methods = {
-    # Format:
-    # method name: return value
-    'connect_to_parent': ProcessTree,
-}
-
-class __zlock_client(object):
-    def set_process_name(self,*args,**kwargs):
-        pass
-
-mock_processtree_attr = {
-    'to_parent': None,
-    'from_parent': None,
-    'kill_lock': None,
-    'zlock_client': __zlock_client,
-}
-
-__fn = None
-for __name, __rval in mock_processtree_methods.items():
-    __fn = lambda *args, __rval=copy.deepcopy(__rval), **kwargs: __rval
-    setattr(ProcessTree, __name, __fn)
-for __name, __val in mock_processtree_attr.items():
-    setattr(ProcessTree, __name, copy.deepcopy(__val))
-del __name
-del __rval
-del __val
-del __fn
-
 # Prefix each autosectionlabel with the name of the document it is in and a colon
 autosectionlabel_prefix_document = True
 myst_heading_anchors = 2
