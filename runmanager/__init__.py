@@ -637,6 +637,7 @@ def new_sequence_details(
         globals={} if format_globals is None else format_globals,
     )
 
+    # Dated at the sequence's start, for all its shots; each shot fills in only globals.
     # Compute the output directory based on labconfig settings:
     subdir_format = get_output_folder_format(config, default=default)
 
