@@ -42,7 +42,6 @@ import subprocess
 import threading
 import ast
 import pprint
-import signal
 import tempfile
 import unicodedata
 import importlib.metadata
@@ -58,22 +57,30 @@ import matplotlib
 matplotlib.use('Agg')
 
 from qtutils.qt import QtCore, QtGui, QtWidgets, QT_ENV
-from qtutils.qt.QtCore import pyqtSignal as Signal
 
 splash.update_text('importing labscript suite modules')
 from labscript_utils.ls_zprocess import ProcessTree, ZMQServer
 from labscript_utils.labconfig import (
     LabConfig,
-    LabscriptApplication,
-    save_appconfig,
     load_appconfig,
+)
+from labscript_utils.qtwidgets.application import (
+    LabscriptGuiApplication,
+    exec_qapplication,
 )
 from labscript_utils.file_utils import next_available_indexed_filepath
 from labscript_utils.lookup_format import format_lookup_string, unescape_braces
 from labscript_utils.setup_logging import setup_logging
 import labscript_utils.shared_drive as shared_drive
 from labscript_utils import dedent
+from labscript_utils.qtwidgets.fingertab import FingerTabWidget, TabToolButton
+from labscript_utils.qtwidgets.leftclick import LeftClickMixin
 from labscript_utils.qtwidgets.link_indicator import LinkIndicator
+from labscript_utils.qtwidgets.themed_window import (
+    FirstPaintWindow,
+    ThemedWindow,
+    best_contrast,
+)
 from labscript_utils.text_editor import open_in_editor
 from blacs.client import BlacsClient
 from runviewer.client import RunviewerClient
@@ -118,6 +125,7 @@ from qtutils import (
     qtlock,
 )
 from labscript_utils.qtwidgets.outputbox import OutputBox
+import labscript_utils.qtwidgets.file_dialogs as file_dialogs
 import qtutils.icons
 
 GLOBAL_MONOSPACE_FONT = "Consolas" if os.name == 'nt' else "Ubuntu Mono"
@@ -195,28 +203,6 @@ def composite_colors(r0, g0, b0, a0, r1, g1, b1, a1):
     return [int(round(x)) for x in (r, g, b, 255 * a)]
 
 
-def _relative_luminance(color):
-    def channel(value):
-        value /= 255.0
-        if value <= 0.03928:
-            return value / 12.92
-        return ((value + 0.055) / 1.055) ** 2.4
-
-    return (
-        0.2126 * channel(color.red())
-        + 0.7152 * channel(color.green())
-        + 0.0722 * channel(color.blue())
-    )
-
-
-def _contrast_ratio(color_a, color_b):
-    luminance_a = _relative_luminance(color_a)
-    luminance_b = _relative_luminance(color_b)
-    lighter = max(luminance_a, luminance_b)
-    darker = min(luminance_a, luminance_b)
-    return (lighter + 0.05) / (darker + 0.05)
-
-
 def expression_cell_colors(palette=None):
     if palette is None:
         qapplication = QtWidgets.QApplication.instance()
@@ -226,10 +212,10 @@ def expression_cell_colors(palette=None):
     error_candidates = [QtGui.QColor('#F79494'), QtGui.QColor('#8A2E2E')]
     bool_on_candidates = [QtGui.QColor('#63F731'), QtGui.QColor('#29A300')]
     bool_off_candidates = [QtGui.QColor('#608060'), QtGui.QColor('#003900')]
-    active = max(active_candidates, key=lambda color: _contrast_ratio(text_color, color))
-    error = max(error_candidates, key=lambda color: _contrast_ratio(text_color, color))
-    bool_on = max(bool_on_candidates, key=lambda color: _contrast_ratio(text_color, color))
-    bool_off = max(bool_off_candidates, key=lambda color: _contrast_ratio(text_color, color))
+    active = best_contrast(text_color, active_candidates)
+    error = best_contrast(text_color, error_candidates)
+    bool_on = best_contrast(text_color, bool_on_candidates)
+    bool_off = best_contrast(text_color, bool_off_candidates)
     return error.name(), active.name(), bool_on.name(), bool_off.name()
 
 
@@ -257,18 +243,6 @@ def tooltip_with_hidden_unicode_warning(base_tooltip, text):
     return warning
 
 
-@inmain_decorator()
-def error_dialog(message):
-    QtWidgets.QMessageBox.warning(app.ui, 'runmanager', message)
-
-
-@inmain_decorator()
-def question_dialog(message):
-    reply = QtWidgets.QMessageBox.question(app.ui, 'runmanager', message,
-                                       QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
-    return (reply == QtWidgets.QMessageBox.Yes)
-
-
 @contextlib.contextmanager
 def nested(*contextmanagers):
     if contextmanagers:
@@ -293,209 +267,6 @@ def scroll_view_to_row_if_current(view, item):
         horizontal_scrollbar.setValue(existing_horizontal_position)
 
 
-class FingerTabBarWidget(QtWidgets.QTabBar):
-
-    """A TabBar with the tabs on the left and the text horizontal. Credit to
-    @LegoStormtroopr, https://gist.github.com/LegoStormtroopr/5075267. We will
-    promote the TabBar from the ui file to one of these."""
-
-    def __init__(self, parent=None, minwidth=180, minheight=30, **kwargs):
-        QtWidgets.QTabBar.__init__(self, parent, **kwargs)
-        self.minwidth = minwidth
-        self.minheight = minheight
-        self.iconPosition = kwargs.pop('iconPosition', QtWidgets.QTabWidget.West)
-        self._movable = None
-        self.tab_movable = {}
-        self.paint_clip = None
-
-    def setMovable(self, movable, index=None):
-        """Set tabs movable on an individual basis, or set for all tabs if no
-        index specified"""
-        if index is None:
-            self._movable = movable
-            self.tab_movable = {}
-            QtWidgets.QTabBar.setMovable(self, movable)
-        else:
-            self.tab_movable[int(index)] = bool(movable)
-
-    def isMovable(self, index=None):
-        if index is None:
-            if self._movable is None:
-                self._movable = QtWidgets.QTabBar.isMovable(self)
-            return self._movable
-        return self.tab_movable.get(index, self._movable)
-
-    def indexAtPos(self, point):
-        for index in range(self.count()):
-            if self.tabRect(index).contains(point):
-                return index
-
-    def mousePressEvent(self, event):
-        index = self.indexAtPos(event.position().toPoint())
-        if not self.tab_movable.get(index, self.isMovable()):
-            QtWidgets.QTabBar.setMovable(self, False)  # disable dragging until they release the mouse
-        return QtWidgets.QTabBar.mousePressEvent(self, event)
-
-    def mouseReleaseEvent(self, event):
-        if self.isMovable():
-            # Restore this in case it was temporarily disabled by mousePressEvent
-            QtWidgets.QTabBar.setMovable(self, True)
-        return QtWidgets.QTabBar.mouseReleaseEvent(self, event)
-
-    def tabLayoutChange(self):
-        total_height = 0
-        for index in range(self.count()):
-            tabRect = self.tabRect(index)
-            total_height += tabRect.height()
-        if total_height > self.parent().height():
-            # Don't paint over the top of the scroll buttons:
-            scroll_buttons_area_height = 2*self.style().pixelMetric(
-                QtWidgets.QStyle.PM_TabBarScrollButtonWidth)
-            self.paint_clip = self.width(), self.parent().height() - scroll_buttons_area_height
-        else:
-            self.paint_clip = None
-
-    def paintEvent(self, event):
-        painter = QtWidgets.QStylePainter(self)
-        if self.paint_clip is not None:
-            painter.setClipRect(0, 0, *self.paint_clip)
-
-        option = QtWidgets.QStyleOptionTab()
-        for index in range(self.count()):
-            tabRect = self.tabRect(index)
-            self.initStyleOption(option, index)
-            painter.drawControl(QtWidgets.QStyle.CE_TabBarTabShape, option)
-            if not self.tabIcon(index).isNull():
-                icon = self.tabIcon(index).pixmap(self.iconSize())
-                alignment = QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter
-                tabRect.moveLeft(10)
-                painter.drawItemPixmap(tabRect, alignment, icon)
-                tabRect.moveLeft(self.iconSize().width() + 15)
-            else:
-                tabRect.moveLeft(10)
-            painter.drawText(tabRect, QtCore.Qt.AlignVCenter, self.tabText(index))
-        if self.paint_clip is not None:
-            x_clip, y_clip = self.paint_clip
-            painter.setClipping(False)
-            palette = self.palette()
-            mid_color = palette.color(QtGui.QPalette.Mid)
-            painter.setPen(mid_color)
-            painter.drawLine(0, y_clip, x_clip, y_clip)
-        painter.end()
-
-
-    def tabSizeHint(self, index):
-        fontmetrics = QtGui.QFontMetrics(self.font())
-        text_width = fontmetrics.horizontalAdvance(self.tabText(index))
-        text_height = fontmetrics.height()
-        height = text_height + 15
-        height = max(self.minheight, height)
-        width = text_width + 15
-
-        button = self.tabButton(index, QtWidgets.QTabBar.RightSide)
-        if button is not None:
-            height = max(height, button.height() + 7)
-            # Same amount of space around the button horizontally as it has vertically:
-            width += button.width() + height - button.height()
-        width = max(self.minwidth, width)
-        return QtCore.QSize(width, height)
-
-    def setTabButton(self, index, geometry, button):
-        if not isinstance(button, TabToolButton):
-            raise TypeError('Not a TabToolButton, won\'t paint correctly. Use a TabToolButton')
-        result = QtWidgets.QTabBar.setTabButton(self, index, geometry, button)
-        button.move(*button.get_correct_position())
-        return result
-
-
-class TabToolButton(QtWidgets.QToolButton):
-    def __init__(self, *args, **kwargs):
-        QtWidgets.QToolButton.__init__(self, *args, **kwargs)
-        self.setFocusPolicy(QtCore.Qt.NoFocus)
-
-    def paintEvent(self, event):
-        painter = QtWidgets.QStylePainter(self)
-        paint_clip = self.parent().paint_clip
-        if paint_clip is not None:
-            point = QtCore.QPoint(*paint_clip)
-            global_point = self.parent().mapToGlobal(point)
-            local_point = self.mapFromGlobal(global_point)
-            painter.setClipRect(0, 0, local_point.x(), local_point.y())
-        option = QtWidgets.QStyleOptionToolButton()
-        self.initStyleOption(option)
-        painter.drawComplexControl(QtWidgets.QStyle.CC_ToolButton, option)
-
-    def get_correct_position(self):
-        parent = self.parent()
-        for index in range(parent.count()):
-            if parent.tabButton(index, QtWidgets.QTabBar.RightSide) is self:
-                break
-        else:
-            raise LookupError('Tab not found')
-        tabRect = parent.tabRect(index)
-        tab_x, tab_y, tab_width, tab_height = tabRect.x(), tabRect.y(), tabRect.width(), tabRect.height()
-        size = self.sizeHint()
-        width = size.width()
-        height = size.height()
-        padding = int((tab_height - height) / 2)
-        correct_x = tab_x + tab_width - width - padding
-        correct_y = tab_y + padding
-        return correct_x, correct_y
-
-    def moveEvent(self, event):
-        try:
-            correct_x, correct_y = self.get_correct_position()
-        except LookupError:
-            return # Things aren't initialised yet
-        if self.x() != correct_x or self.y() != correct_y:
-            # Move back! I shall not be moved!
-            self.move(correct_x, correct_y)
-        return QtWidgets.QToolButton.moveEvent(self, event)
-
-
-class FingerTabWidget(QtWidgets.QTabWidget):
-
-    """A QTabWidget equivalent which uses our FingerTabBarWidget.
-
-    Not labscript_utils.qtwidgets.fingertab.FingerTabWidget, which shares the
-    name and the gist both are credited to, and nothing else: that one is the
-    gist as written, and this one has grown closable tabs, per-tab movability
-    and a tab bar to match. labscript_utils' is what the settings dialog every
-    app opens uses; this one is only ever promoted from runmanager's main.ui.
-    Import the wrong one and the interface still loads, so say which.
-    """
-
-    def __init__(self, parent, *args):
-        QtWidgets.QTabWidget.__init__(self, parent, *args)
-        self.setTabBar(FingerTabBarWidget(self))
-
-    def addTab(self, *args, **kwargs):
-        closeable = kwargs.pop('closable', False)
-        index = QtWidgets.QTabWidget.addTab(self, *args, **kwargs)
-        self.setTabClosable(index, closeable)
-        return index
-
-    def setTabClosable(self, index, closable):
-        right_button = self.tabBar().tabButton(index, QtWidgets.QTabBar.RightSide)
-        if closable:
-            if not right_button:
-                # Make one:
-                close_button = TabToolButton(self.parent())
-                close_button.setIcon(QtGui.QIcon(':/qtutils/fugue/cross'))
-                self.tabBar().setTabButton(index, QtWidgets.QTabBar.RightSide, close_button)
-                close_button.clicked.connect(lambda: self._on_close_button_clicked(close_button))
-        else:
-            if right_button:
-                # Get rid of it:
-                self.tabBar().setTabButton(index, QtWidgets.QTabBar.RightSide, None)
-
-    def _on_close_button_clicked(self, button):
-        for index in range(self.tabBar().count()):
-            if self.tabBar().tabButton(index, QtWidgets.QTabBar.RightSide) is button:
-                self.tabCloseRequested.emit(index)
-                break
-
-
 def set_selection_highlight(widget):
     palette = widget.palette()
     for group in [QtGui.QPalette.Active, QtGui.QPalette.Inactive]:
@@ -511,57 +282,16 @@ def set_selection_highlight(widget):
     widget.setPalette(palette)
 
 
-class ItemView(object):
-    """Mixin for QTableView and QTreeView that emits a custom signal leftClicked(index)
-    after a left click on a valid index, and doubleLeftClicked(index) (in addition) on
-    double click. Also has modified tab and arrow key behaviour and custom selection
-    highlighting."""
-    leftClicked = Signal(QtCore.QModelIndex)
-    doubleLeftClicked = Signal(QtCore.QModelIndex)
+class ItemView(LeftClickMixin):
+    """Mixin for QTableView and QTreeView that adds modified tab and arrow key
+    behaviour and custom selection highlighting to LeftClickMixin."""
 
     COLOR_HIGHLIGHT = "#40308CC6" # Semitransparent blue
 
     def __init__(self, *args):
         super(ItemView, self).__init__(*args)
-        self._pressed_index = None
-        self._double_click = False
         self.setAutoScroll(False)
         set_selection_highlight(self)
-
-    def mousePressEvent(self, event):
-        # Taken first, as a press can resize its row:
-        index = self.indexAt(event.position().toPoint())
-        result = super(ItemView, self).mousePressEvent(event)
-        if event.button() == QtCore.Qt.LeftButton and index.isValid():
-            self._pressed_index = index
-        return result
-
-    def leaveEvent(self, event):
-        result = super(ItemView, self).leaveEvent(event)
-        self._pressed_index = None
-        self._double_click = False
-        return result
-
-    def mouseDoubleClickEvent(self, event):
-        # Ensure our left click event occurs regardless of whether it is the
-        # second click in a double click or not
-        result = super(ItemView, self).mouseDoubleClickEvent(event)
-        index = self.indexAt(event.position().toPoint())
-        if event.button() == QtCore.Qt.LeftButton and index.isValid():
-            self._pressed_index = self.indexAt(event.position().toPoint())
-            self._double_click = True
-        return result
-
-    def mouseReleaseEvent(self, event):
-        result = super(ItemView, self).mouseReleaseEvent(event)
-        index = self.indexAt(event.position().toPoint())
-        if event.button() == QtCore.Qt.LeftButton and index.isValid() and index == self._pressed_index:
-            self.leftClicked.emit(index)
-            if self._double_click:
-                self.doubleLeftClicked.emit(index)
-        self._pressed_index = None
-        self._double_click = False
-        return result
 
     def keyPressEvent(self, event):
         if event.key() in [QtCore.Qt.Key_Space, QtCore.Qt.Key_Enter, QtCore.Qt.Key_Return]:
@@ -1413,7 +1143,8 @@ class GroupTab(object):
     def on_globals_delete_selected_triggered(self):
         names = self.selected_global_names()
         confirm_multiple = len(names) > 1
-        if confirm_multiple and not question_dialog("Delete %d globals?" % len(names)):
+        if confirm_multiple and not app.question_dialog(
+                "Delete %d globals?" % len(names)):
             return
         for name in names:
             self.delete_global(name, confirm=not confirm_multiple)
@@ -1639,7 +1370,7 @@ class GroupTab(object):
             self.ensure_editable_globals_file()
             runmanager.new_global(self.globals_file, self.group_name, global_name)
         except Exception as e:
-            error_dialog(str(e))
+            app.error_dialog(str(e))
         else:
             global_row = self.make_global_row(global_name)
             self.globals_model.insertRow(self.globals_model.rowCount() - 1, global_row)
@@ -1672,7 +1403,7 @@ class GroupTab(object):
                 self.globals_file, self.group_name, previous_global_name, new_global_name
             )
         except Exception as e:
-            error_dialog(str(e))
+            app.error_dialog(str(e))
             item.setText(previous_global_name)
         else:
             item.setData(new_global_name, self.GLOBALS_ROLE_PREVIOUS_TEXT)
@@ -1732,7 +1463,7 @@ class GroupTab(object):
             )
         except Exception as e:
             if interactive:
-                error_dialog(str(e))
+                app.error_dialog(str(e))
             with self.globals_model_item_changed_disconnected:
                 item.setText(previous_default)
                 item.setData(previous_default, self.GLOBALS_ROLE_PREVIOUS_TEXT)
@@ -1774,7 +1505,7 @@ class GroupTab(object):
                 self.globals_file, self.group_name, global_name, 'units', new_units
             )
         except Exception as e:
-            error_dialog(str(e))
+            app.error_dialog(str(e))
             item.setText(previous_units)
         else:
             item.setData(new_units, self.GLOBALS_ROLE_PREVIOUS_TEXT)
@@ -1800,7 +1531,7 @@ class GroupTab(object):
             )
         except Exception as e:
             if interactive:
-                error_dialog(str(e))
+                app.error_dialog(str(e))
             with self.globals_model_item_changed_disconnected:
                 item.setCheckState(QtCore.Qt.Checked if previous_state else QtCore.Qt.Unchecked)
                 item.setData(previous_state, self.GLOBALS_ROLE_PREVIOUS_CHECKSTATE)
@@ -1864,7 +1595,7 @@ class GroupTab(object):
             )
         except Exception as e:
             if interactive:
-                error_dialog(str(e))
+                app.error_dialog(str(e))
             with self.globals_model_item_changed_disconnected:
                 item.setCheckState(QtCore.Qt.Checked if previous_state else QtCore.Qt.Unchecked)
                 item.setData(previous_state, self.GLOBALS_ROLE_PREVIOUS_CHECKSTATE)
@@ -1908,7 +1639,7 @@ class GroupTab(object):
             )
         except Exception as e:
             if interactive:
-                error_dialog(str(e))
+                app.error_dialog(str(e))
             item.setText(previous_scan)
             if not interactive:
                 raise
@@ -1940,7 +1671,7 @@ class GroupTab(object):
                 self.globals_file, self.group_name, global_name, 'expansion', new_expansion
             )
         except Exception as e:
-            error_dialog(str(e))
+            app.error_dialog(str(e))
             item.setText(previous_expansion)
         else:
             item.setData(new_expansion, self.GLOBALS_ROLE_PREVIOUS_TEXT)
@@ -1951,7 +1682,7 @@ class GroupTab(object):
 
     def delete_global(self, global_name, confirm=True):
         logger.info('%s:%s - delete global: %s', self.globals_file, self.group_name, global_name)
-        if confirm and not question_dialog("Delete the global '%s'?" % global_name):
+        if confirm and not app.question_dialog("Delete the global '%s'?" % global_name):
             return
         self.ensure_editable_globals_file()
         runmanager.globals_file.delete_global(self.globals_file, self.group_name, global_name)
@@ -2021,38 +1752,13 @@ class GroupTab(object):
                 )
 
 
-class RunmanagerMainWindow(QtWidgets.QMainWindow):
-    # A signal to show that the window is shown and painted.
-    firstPaint = Signal()
-    # A signal to show that the palette or style changed, as when the OS
-    # switches between light and dark.
-    themeChanged = Signal()
-
-    def __init__(self, *args, **kwargs):
-        QtWidgets.QMainWindow.__init__(self, *args, **kwargs)
-        self._previously_painted = False
-
-    def changeEvent(self, event):
-        # A palette change reaches here as PaletteChange, not as
-        # ApplicationPaletteChange, and PyQt6 has no ThemeChange.
-        if event.type() in (
-            QtCore.QEvent.Type.PaletteChange, QtCore.QEvent.Type.StyleChange
-        ):
-            self.themeChanged.emit()
-        return QtWidgets.QMainWindow.changeEvent(self, event)
+class RunmanagerMainWindow(ThemedWindow, FirstPaintWindow, QtWidgets.QMainWindow):
 
     def closeEvent(self, event):
         if app.on_close_event():
             return QtWidgets.QMainWindow.closeEvent(self, event)
         else:
             event.ignore()
-
-    def paintEvent(self, event):
-        result = QtWidgets.QMainWindow.paintEvent(self, event)
-        if not self._previously_painted:
-            self._previously_painted = True
-            self.firstPaint.emit()
-        return result
 
 
 class PoppedOutOutputBoxWindow(QtWidgets.QDialog):
@@ -2061,10 +1767,11 @@ class PoppedOutOutputBoxWindow(QtWidgets.QDialog):
         app.on_output_popout_button_clicked()
 
 
-class RunManager(LabscriptApplication):
+class RunManager(LabscriptGuiApplication):
 
     app_name = 'runmanager'
     default_config_filename = 'runmanager.toml'
+    config_description = 'which groups are active/open and other GUI state'
 
     # Constants for the model in the axes tab:
     AXES_COL_NAME = 0
@@ -2498,11 +2205,6 @@ class RunManager(LabscriptApplication):
         logger.info('Signals connected')
 
     def on_theme_changed(self):
-        for widget in self.ui.findChildren(QtWidgets.QWidget):
-            # Views need their palette and style sheet applied again to follow
-            # the new theme:
-            widget.setPalette(widget.palette())
-            widget.setStyleSheet(widget.styleSheet())
         for tab in self.currently_open_groups.values():
             tab.redraw_colors()
         # Parsing recolours the expression cells. Not globals_changed(), which
@@ -2579,17 +2281,13 @@ class RunManager(LabscriptApplication):
         self.output_box_is_popped_out = not self.output_box_is_popped_out
 
     def select_labscript_file(self, title):
-        labscript_file = QtWidgets.QFileDialog.getOpenFileName(
+        labscript_file = file_dialogs.open_file(
             self.ui, title, self.last_opened_labscript_folder, "Python files (*.py)"
         )
-        if type(labscript_file) is tuple:
-            labscript_file, _ = labscript_file
-
         if not labscript_file:
             return None
-        labscript_file = os.path.abspath(labscript_file)
         if not os.path.isfile(labscript_file):
-            error_dialog("No such file %s." % labscript_file)
+            self.error_dialog("No such file %s." % labscript_file)
             return None
         self.last_opened_labscript_folder = os.path.dirname(labscript_file)
         return labscript_file
@@ -2613,17 +2311,12 @@ class RunManager(LabscriptApplication):
         open_in_editor(self.ui.lineEdit_default_labscript_file.text(), parent=self.ui)
 
     def on_select_shot_output_folder_clicked(self, checked):
-        shot_output_folder = QtWidgets.QFileDialog.getExistingDirectory(self.ui,
-                                                                    'Select shot output folder',
-                                                                    self.last_selected_shot_output_folder)
-        if type(shot_output_folder) is tuple:
-            shot_output_folder, _ = shot_output_folder
-
+        shot_output_folder = file_dialogs.choose_folder(
+            self.ui, 'Select shot output folder', self.last_selected_shot_output_folder
+        )
         if not shot_output_folder:
             # User cancelled selection
             return
-        # Convert to standard platform specific path, otherwise Qt likes forward slashes:
-        shot_output_folder = os.path.abspath(shot_output_folder)
         # Save the containing folder for use next time we open the dialog box:
         self.last_selected_shot_output_folder = os.path.dirname(shot_output_folder)
         # Write the file to the lineEdit:
@@ -3301,7 +2994,7 @@ class RunManager(LabscriptApplication):
         # message.
         confirm_multiple = (len(name_items) > 1)
         if confirm_multiple:
-            if not question_dialog("Delete %d groups?" % len(name_items)):
+            if not self.question_dialog("Delete %d groups?" % len(name_items)):
                 return
         for item in name_items:
             globals_file = item.parent().text()
@@ -3354,28 +3047,26 @@ class RunManager(LabscriptApplication):
         child_is_open = [child_item.data(self.GROUPS_ROLE_GROUP_IS_OPEN)
                          for child_item in child_openclose_items]
         if any(child_is_open):
-            if not question_dialog('Close %d file(s)? This will close %d currently open group(s).' %
-                                   (len(name_items), child_is_open.count(True))):
+            if not self.question_dialog(
+                    'Close %d file(s)? This will close %d currently open group(s).' %
+                    (len(name_items), child_is_open.count(True))):
                 return
         for item in name_items:
             globals_file = item.text()
             self.close_globals_file(globals_file, confirm=False)
 
     def on_open_globals_file_clicked(self):
-        globals_file = QtWidgets.QFileDialog.getOpenFileName(self.ui,
-                                                         'Select globals file',
-                                                         self.last_opened_globals_folder,
-                                                         "Globals files (*.toml *.h5 *.hdf5)")
-        if type(globals_file) is tuple:
-            globals_file, _ = globals_file
-
+        globals_file = file_dialogs.open_file(
+            self.ui,
+            'Select globals file',
+            self.last_opened_globals_folder,
+            "Globals files (*.toml *.h5 *.hdf5)",
+        )
         if not globals_file:
             # User cancelled selection
             return
-        # Convert to standard platform specific path, otherwise Qt likes forward slashes:
-        globals_file = os.path.abspath(globals_file)
         if not os.path.isfile(globals_file):
-            error_dialog("No such file %s." % globals_file)
+            self.error_dialog("No such file %s." % globals_file)
             return
         # Save the containing folder for use next time we open the dialog box:
         self.last_opened_globals_folder = os.path.dirname(globals_file)
@@ -3390,21 +3081,14 @@ class RunManager(LabscriptApplication):
         # keeps that extension and typing replaces only the stem, so 'untitled'
         # is what the operator types over and '.toml' is what survives.
         suggested_file = os.path.join(self.last_opened_globals_folder, 'untitled.toml')
-        globals_file = QtWidgets.QFileDialog.getSaveFileName(self.ui,
-                                                         'Create new globals file',
-                                                         suggested_file,
-                                                         "TOML files (*.toml)")
-        if type(globals_file) is tuple:
-            globals_file, _ = globals_file
-
+        globals_file = file_dialogs.save_file(
+            self.ui, 'Create new globals file', suggested_file, "TOML files (*.toml)"
+        )
         if not globals_file:
             # User cancelled
             return
         if not globals_file.lower().endswith('.toml'):
             globals_file += '.toml'
-        # Convert to standard platform specific path, otherwise Qt likes
-        # forward slashes:
-        globals_file = os.path.abspath(globals_file)
         # Save the containing folder for use next time we open the dialog box:
         self.last_opened_globals_folder = os.path.dirname(globals_file)
         # Create the new file and open it:
@@ -3412,19 +3096,15 @@ class RunManager(LabscriptApplication):
         self.open_globals_file(globals_file)
 
     def on_diff_globals_file_clicked(self):
-        globals_file = QtWidgets.QFileDialog.getOpenFileName(self.ui,
-                                                         'Select globals file to compare',
-                                                         self.last_opened_globals_folder,
-                                                         "Globals files (*.toml *.h5 *.hdf5)")
-        if type(globals_file) is tuple:
-            globals_file, _ = globals_file
-
+        globals_file = file_dialogs.open_file(
+            self.ui,
+            'Select globals file to compare',
+            self.last_opened_globals_folder,
+            "Globals files (*.toml *.h5 *.hdf5)",
+        )
         if not globals_file:
             # User cancelled
             return
-
-        # Convert to standard platform specific path, otherwise Qt likes forward slashes:
-        globals_file = os.path.abspath(globals_file)
 
         # Get runmanager's globals
         active_groups = self.get_active_groups()
@@ -3944,7 +3624,7 @@ class RunManager(LabscriptApplication):
                             + 'Active groups must have unique names.'
                         )
                         if interactive:
-                            error_dialog(msg)
+                            self.error_dialog(msg)
                             return
                         raise RuntimeError(msg)
                     active_groups[group_name] = globals_file
@@ -3978,19 +3658,16 @@ class RunManager(LabscriptApplication):
         if not runmanager.globals_file.is_legacy_hdf5(globals_file):
             return globals_file
         suggested_path = runmanager.globals_file.default_toml_path(globals_file)
-        destination = QtWidgets.QFileDialog.getSaveFileName(
+        destination = file_dialogs.save_file(
             parent or self.ui,
             'Convert globals file to TOML for editing',
             suggested_path,
             "TOML files (*.toml)",
         )
-        if type(destination) is tuple:
-            destination, _ = destination
         if not destination:
             raise RuntimeError('Conversion to TOML cancelled.')
         if not destination.lower().endswith('.toml'):
             destination += '.toml'
-        destination = os.path.abspath(destination)
         if destination != globals_file and self.groups_model.findItems(destination, column=self.GROUPS_COL_NAME):
             raise RuntimeError("A globals file named %s is already open." % destination)
         runmanager.globals_file.convert_to_toml(globals_file, destination)
@@ -4119,8 +3796,9 @@ class RunManager(LabscriptApplication):
         child_is_open = [child_item.data(self.GROUPS_ROLE_GROUP_IS_OPEN)
                          for child_item in child_openclose_items]
         if confirm and any(child_is_open):
-            if not question_dialog('Close %s? This will close %d currently open group(s).' %
-                                   (globals_file, child_is_open.count(True))):
+            if not self.question_dialog(
+                    'Close %s? This will close %d currently open group(s).' %
+                    (globals_file, child_is_open.count(True))):
                 return
         to_close = [name_item for name_item, is_open in zip(child_name_items, child_is_open) if is_open]
         for name_item in to_close:
@@ -4149,7 +3827,7 @@ class RunManager(LabscriptApplication):
                 source_globals_file, source_group_name, dest_globals_file, delete_source_group
             )
         except Exception as e:
-            error_dialog(str(e))
+            self.error_dialog(str(e))
         else:
             # Insert the newly created globals group into the model, as a
             # child row of the new globals file.
@@ -4185,7 +3863,7 @@ class RunManager(LabscriptApplication):
             globals_file = self.ensure_editable_globals_file(globals_file)
             runmanager.new_group(globals_file, group_name)
         except Exception as e:
-            error_dialog(str(e))
+            self.error_dialog(str(e))
         else:
             # Insert the newly created globals group into the model, as a
             # child row of the globals file it belong to.
@@ -4231,7 +3909,7 @@ class RunManager(LabscriptApplication):
             globals_file = self.ensure_editable_globals_file(globals_file)
             runmanager.rename_group(globals_file, previous_group_name, new_group_name)
         except Exception as e:
-            error_dialog(str(e))
+            self.error_dialog(str(e))
             # Set the item text back to the old name, since the rename failed:
             item.setText(previous_group_name)
         else:
@@ -4256,7 +3934,7 @@ class RunManager(LabscriptApplication):
 
     def delete_group(self, globals_file, group_name, confirm=True):
         if confirm:
-            if not question_dialog("Delete the group '%s'?" % group_name):
+            if not self.question_dialog("Delete the group '%s'?" % group_name):
                 return
         # If the group is open, close it:
         group_tab = self.currently_open_groups.get((globals_file, group_name))
@@ -4268,50 +3946,6 @@ class RunManager(LabscriptApplication):
         name_item = self.get_group_item_by_name(globals_file, group_name, self.GROUPS_COL_NAME)
         name_item.parent().removeRow(name_item.row())
         self.globals_changed()
-
-    def on_save_configuration_triggered(self):
-        if self.last_save_config_file is None:
-            self.on_save_configuration_as_triggered()
-            self.ui.actionSave_configuration_as.setEnabled(True)
-            self.ui.actionRevert_configuration.setEnabled(True)
-        else:
-            self.save_configuration(self.last_save_config_file)
-
-    def on_revert_configuration_triggered(self):
-        save_data = self.get_save_data()
-        if self.last_save_data is not None and save_data != self.last_save_data:
-            message = 'Revert configuration to the last saved state in \'%s\'?' % self.last_save_config_file
-            reply = QtWidgets.QMessageBox.question(self.ui, 'Load configuration', message,
-                                               QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.Cancel)
-            if reply == QtWidgets.QMessageBox.Cancel:
-                return
-            elif reply == QtWidgets.QMessageBox.Yes:
-                self.load_configuration(self.last_save_config_file)
-        else:
-            error_dialog('no changes to revert')
-
-    def on_save_configuration_as_triggered(self):
-        if self.last_save_config_file is not None:
-            default = self.last_save_config_file
-        else:
-            default = self.get_default_config_file(ensure_directory=True)
-        save_file = QtWidgets.QFileDialog.getSaveFileName(self.ui,
-                                                      'Select  file to save current runmanager configuration',
-                                                      default,
-                                                      "Config files (*.toml)")
-        if type(save_file) is tuple:
-            save_file, _ = save_file
-
-        if not save_file:
-            # User cancelled
-            return
-        # Convert to standard platform specific path, otherwise Qt likes
-        # forward slashes:
-        save_file = os.path.abspath(save_file)
-        self.save_configuration(save_file)
-        self.ui.actionSave_configuration.setText(
-            'Save configuration {}'.format(self.last_save_config_file)
-        )
 
     def get_save_data(self):
         # Get the currently open files and active groups:
@@ -4372,45 +4006,6 @@ class RunManager(LabscriptApplication):
                      'queue_state': self.queue_controller.export_state(),
                      'analysis_submission': self.analysis_submission.get_configuration_data()}
         return save_data
-
-    def save_configuration(self, save_file):
-        save_data = self.get_save_data()
-        save_file = save_appconfig(save_file, {'runmanager_state': save_data})
-        self.last_save_config_file = save_file
-        self.last_save_data = save_data
-        self.set_config_window_title(save_file)
-
-    def on_load_configuration_triggered(self):
-        save_data = self.get_save_data()
-        if self.last_save_data is not None and save_data != self.last_save_data:
-            message = ('Current configuration (which groups are active/open and other GUI state) '
-                       'has changed: save config file \'%s\'?' % self.last_save_config_file)
-            reply = QtWidgets.QMessageBox.question(self.ui, 'Load configuration', message,
-                                               QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No | QtWidgets.QMessageBox.Cancel)
-            if reply == QtWidgets.QMessageBox.Cancel:
-                return
-            if reply == QtWidgets.QMessageBox.Yes:
-                self.save_configuration(self.last_save_config_file)
-
-        if self.last_save_config_file is not None:
-            default = self.last_save_config_file
-        else:
-            default = self.get_default_config_file()
-
-        file = QtWidgets.QFileDialog.getOpenFileName(self.ui,
-                                                 'Select runmanager configuration file to load',
-                                                 default,
-                                                 "Config files (*.toml *.ini)")
-        if type(file) is tuple:
-            file, _ = file
-
-        if not file:
-            # User cancelled
-            return
-        # Convert to standard platform specific path, otherwise Qt likes
-        # forward slashes:
-        file = os.path.abspath(file)
-        self.load_configuration(file)
 
     def load_configuration(self, filename, at_startup=False):
         # Close all files:
@@ -5613,21 +5208,11 @@ if __name__ == "__main__":
     logger = setup_logging(APPLICATION_NAME)
     labscript_utils.excepthook.set_logger(logger)
     logger.info('\n\n===============starting===============\n')
-    qapplication = QtWidgets.QApplication.instance()
-    if qapplication is None:
-        qapplication = QtWidgets.QApplication(sys.argv)
-    qapplication.setAttribute(QtCore.Qt.AA_DontShowIconsInMenus, False)
+    qapplication = splash.qapplication
     app = RunManager()
     splash.update_text('Starting remote server')
     runmanager_server = RunmanagerServer()
     splash.hide()
 
-    # Let the interpreter run every 500ms so it sees Ctrl-C interrupts:
-    timer = QtCore.QTimer()
-    timer.start(500)
-    timer.timeout.connect(lambda: None)
-    # Upon seeing a ctrl-c interrupt, quit the event loop
-    signal.signal(signal.SIGINT, lambda *args: qapplication.exit())
-
-    qapplication.exec()
+    exec_qapplication(qapplication)
     runmanager_server.shutdown()

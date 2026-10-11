@@ -26,6 +26,8 @@ import labscript_utils.h5_lock
 import h5py
 
 import tomli_w
+
+from labscript_utils import ensure_str
 from labscript_profile.toml_config import load_toml_file
 
 
@@ -40,10 +42,6 @@ class GlobalsFileError(Exception):
 
 class LegacyGlobalsFileError(GlobalsFileError):
     pass
-
-
-def _ensure_str(value):
-    return value.decode() if isinstance(value, bytes) else str(value)
 
 
 def _blank_record():
@@ -61,12 +59,12 @@ def _normalise_record(record):
     normalised = dict(record)
     normalised.update(
         {
-            "default": _ensure_str(record.get("default", "")),
-            "units": _ensure_str(record.get("units", "")),
+            "default": ensure_str(record.get("default", "")),
+            "units": ensure_str(record.get("units", "")),
             "scan_enabled": bool(record.get("scan_enabled", False)),
             "jit_enabled": bool(record.get("jit_enabled", False)),
-            "scan": _ensure_str(record.get("scan", "")),
-            "expansion": _ensure_str(record.get("expansion", "")),
+            "scan": ensure_str(record.get("scan", "")),
+            "expansion": ensure_str(record.get("expansion", "")),
         }
     )
     if normalised["scan_enabled"] and normalised["jit_enabled"]:
@@ -91,14 +89,14 @@ def _new_document():
 def _normalise_document(data):
     # Keys not recognised here are data, and are kept at every level.
     document = {**data, "groups": {}}
-    document["format"] = _ensure_str(data.get("format", CANONICAL_FORMAT))
+    document["format"] = ensure_str(data.get("format", CANONICAL_FORMAT))
     document["version"] = int(data.get("version", CURRENT_VERSION))
     groups = data.get("groups", {})
     for group_name, group_data in groups.items():
         group_data = group_data if isinstance(group_data, dict) else {}
-        document["groups"][_ensure_str(group_name)] = {**group_data, "globals": {}}
+        document["groups"][ensure_str(group_name)] = {**group_data, "globals": {}}
         for global_name, record in group_data.get("globals", {}).items():
-            document["groups"][_ensure_str(group_name)]["globals"][_ensure_str(global_name)] = (
+            document["groups"][ensure_str(group_name)]["globals"][ensure_str(global_name)] = (
                 _normalise_record(record)
             )
     return document
@@ -159,13 +157,13 @@ def load_legacy_hdf5_document(filename):
             document["groups"][group_name] = {"globals": {}}
             for global_name, value in values.items():
                 # A global the h5 file expands is one it scans:
-                expansion = _ensure_str(expansions.get(global_name, ""))
+                expansion = ensure_str(expansions.get(global_name, ""))
                 document["groups"][group_name]["globals"][global_name] = {
-                    "default": _ensure_str(value),
-                    "units": _ensure_str(units.get(global_name, "")),
+                    "default": ensure_str(value),
+                    "units": ensure_str(units.get(global_name, "")),
                     "scan_enabled": bool(expansion),
                     "jit_enabled": False,
-                    "scan": _ensure_str(value) if expansion else "",
+                    "scan": ensure_str(value) if expansion else "",
                     "expansion": expansion,
                 }
     return document
