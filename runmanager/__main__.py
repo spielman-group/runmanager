@@ -383,12 +383,13 @@ class FingerTabBarWidget(QtWidgets.QTabBar):
         return QtCore.QSize(width, height)
 
     def setTabButton(self, index, geometry, button):
-        if not isinstance(button, TabToolButton):
+        if button is not None and not isinstance(button, TabToolButton):
             raise TypeError(
                 "Not a TabToolButton, won't paint correctly. Use a TabToolButton"
             )
         result = QtWidgets.QTabBar.setTabButton(self, index, geometry, button)
-        button.move(*button.get_correct_position())
+        if button is not None:
+            button.move(*button.get_correct_position())
         return result
 
 
