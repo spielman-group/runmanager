@@ -35,7 +35,6 @@ import sys
 import threading
 import time
 import types
-import warnings
 
 from labscript_utils.labconfig import LabConfig
 from qtutils import UiLoader
@@ -82,29 +81,22 @@ def _stub_splash_module():
 
 _stub_splash_module()
 
-with warnings.catch_warnings():
-    # labscript_utils.excepthook installs a warning logger that calls the
-    # deprecated logging.warn, which warns in turn, so any warning raised while
-    # it is installed recurses until the stack runs out. Importing the
-    # application installs it, so the import is done under a suppressed filter.
-    # Done once, here, so that no test module has to repeat it.
-    warnings.simplefilter('ignore')
-    import runmanager.__main__ as main_module  # noqa: E402
-    from runmanager.__main__ import (  # noqa: E402
-        Editor,
-        FingerTabWidget,
-        GroupTab,
-        RunManager,
-        RunmanagerServer,
-        TreeView,
-    )
-    # runviewer's application, whose server the runviewer tests serve, shows a
-    # splash at import too:
-    import runviewer.__main__ as runviewer_main  # noqa: E402
-    from lyse.client import LyseClient  # noqa: E402
-    from lyse.communication import LyseServer  # noqa: E402
-    from qtutils.qt.QtWidgets import QApplication  # noqa: E402
-    from runmanager.analysis_submission import AnalysisSubmission  # noqa: E402
+import runmanager.__main__ as main_module  # noqa: E402
+from runmanager.__main__ import (  # noqa: E402
+    Editor,
+    FingerTabWidget,
+    GroupTab,
+    RunManager,
+    RunmanagerServer,
+    TreeView,
+)
+# runviewer's application, whose server the runviewer tests serve, shows a
+# splash at import too:
+import runviewer.__main__ as runviewer_main  # noqa: E402
+from lyse.client import LyseClient  # noqa: E402
+from lyse.communication import LyseServer  # noqa: E402
+from qtutils.qt.QtWidgets import QApplication  # noqa: E402
+from runmanager.analysis_submission import AnalysisSubmission  # noqa: E402
 
 # The module itself, for the tests that patch names in its namespace rather
 # than borrow a method from it. Exported for the same reason the classes are:
