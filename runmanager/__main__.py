@@ -83,7 +83,7 @@ from labscript_utils.qtwidgets.themed_window import (
 from labscript_utils.text_editor import open_in_editor
 from blacs.client import BlacsClient
 from runviewer.client import RunviewerClient
-from zprocess import Interruptor, raise_exception_in_thread
+from zprocess import raise_exception_in_thread
 import runmanager
 from runmanager.client import (
     BLACS_COMPLETED,
@@ -2939,11 +2939,8 @@ class RunManager(LabscriptGuiApplication):
         # child rather than be sent to this one.
         self.child_ready.clear()
         self.to_child.put(['quit', None])
-        # Its own Interruptor: on the queue's, put() waits for a subscription
-        # that zmq never reports while the compile's get() holds the same one.
         self.from_child.put(
-            ['done', False, 'The compiler subprocess was restarted during the compile.'],
-            interruptor=Interruptor(),
+            ['done', False, 'The compiler subprocess was restarted during the compile.']
         )
         time.sleep(0.1)
         self.output_box.output('Asking subprocess to quit...')
