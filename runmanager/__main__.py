@@ -73,7 +73,7 @@ from labscript_utils.file_utils import next_available_indexed_filepath
 from labscript_utils.lookup_format import format_lookup_string, unescape_braces
 from labscript_utils.setup_logging import setup_logging
 import labscript_utils.shared_drive as shared_drive
-from labscript_utils.qtwidgets.leftclick import LeftClickMixin
+from labscript_utils.qtwidgets.leftclick import LeftClickMixin, MovableRowsMixin
 from labscript_utils.qtwidgets.link_indicator import LinkIndicator
 from labscript_utils.qtwidgets.themed_window import (
     FirstPaintWindow,
@@ -548,7 +548,7 @@ class ItemView(LeftClickMixin):
             return super(ItemView, self).moveCursor(cursor_action, keyboard_modifiers)
 
 
-class TreeView(ItemView, QtWidgets.QTreeView):
+class TreeView(ItemView, MovableRowsMixin, QtWidgets.QTreeView):
     """Treeview version of our customised ItemView"""
     def __init__(self, parent=None):
         super(TreeView, self).__init__(parent)
@@ -2368,10 +2368,14 @@ class RunManager(LabscriptGuiApplication):
         # self.ui.treeView_axes.customContextMenuRequested.connect(self.on_treeView_axes_context_menu_requested)
         self.action_axes_check_selected.triggered.connect(self.on_axes_check_selected_triggered)
         self.action_axes_uncheck_selected.triggered.connect(self.on_axes_uncheck_selected_triggered)
-        self.ui.toolButton_axis_to_top.clicked.connect(self.on_axis_to_top_clicked)
-        self.ui.toolButton_axis_up.clicked.connect(self.on_axis_up_clicked)
-        self.ui.toolButton_axis_down.clicked.connect(self.on_axis_down_clicked)
-        self.ui.toolButton_axis_to_bottom.clicked.connect(self.on_axis_to_bottom_clicked)
+        axes = self.ui.treeView_axes
+        self.ui.toolButton_axis_to_top.clicked.connect(lambda: axes.move_selected_rows('top'))
+        self.ui.toolButton_axis_up.clicked.connect(lambda: axes.move_selected_rows('up'))
+        self.ui.toolButton_axis_down.clicked.connect(lambda: axes.move_selected_rows('down'))
+        self.ui.toolButton_axis_to_bottom.clicked.connect(
+            lambda: axes.move_selected_rows('bottom')
+        )
+        axes.rowsReordered.connect(lambda order: self.update_axes_indentation())
         # axes tab item changed handler
         self.axes_model.itemChanged.connect(self.on_axes_item_changed)
         self.axes_model.rowsRemoved.connect(self.update_global_shuffle_state)
@@ -2998,95 +3002,6 @@ class RunManager(LabscriptGuiApplication):
 
     def on_axes_uncheck_selected_triggered(self, *args):
         raise NotImplementedError
-        
-    def on_axis_to_top_clicked(self, checked):
-        # Get the selection model from the treeview
-        selection_model = self.ui.treeView_axes.selectionModel()    
-        # Create a list of select row indices
-        selected_row_list = [index.row() for index in sorted(selection_model.selectedRows())]
-        # For each row selected
-        for i,row in enumerate(selected_row_list):
-            # only move the row while it is not element 0, and the row above it is not selected
-            # (note that while a row above may have been initially selected, it should by now, be one row higher
-            # since we start moving elements of the list upwards starting from the lowest index)
-            while row > 0 and (row-1) not in selected_row_list:
-                # Remove the selected row
-                items = self.axes_model.takeRow(row)
-                # Add the selected row into a position one above
-                self.axes_model.insertRow(row-1,items)
-                # Since it is now a newly inserted row, select it again
-                selection_model.select(self.axes_model.indexFromItem(items[0]),QtCore.QItemSelectionModel.SelectCurrent|QtCore.QItemSelectionModel.Rows)
-                # reupdate the list of selected indices to reflect this change
-                selected_row_list[i] -= 1
-                row -= 1
-                    
-        self.update_axes_indentation()
-
-    def on_axis_up_clicked(self, checked):
-        # Get the selection model from the treeview
-        selection_model = self.ui.treeView_axes.selectionModel()    
-        # Create a list of select row indices
-        selected_row_list = [index.row() for index in sorted(selection_model.selectedRows())]
-        # For each row selected
-        for i,row in enumerate(selected_row_list):
-            # only move the row if it is not element 0, and the row above it is not selected
-            # (note that while a row above may have been initially selected, it should by now, be one row higher
-            # since we start moving elements of the list upwards starting from the lowest index)
-            if row > 0 and (row-1) not in selected_row_list:
-                # Remove the selected row
-                items = self.axes_model.takeRow(row)
-                # Add the selected row into a position one above
-                self.axes_model.insertRow(row-1,items)
-                # Since it is now a newly inserted row, select it again
-                selection_model.select(self.axes_model.indexFromItem(items[0]),QtCore.QItemSelectionModel.SelectCurrent|QtCore.QItemSelectionModel.Rows)
-                # reupdate the list of selected indices to reflect this change
-                selected_row_list[i] -= 1
-                
-        self.update_axes_indentation()
-
-    def on_axis_down_clicked(self, checked):
-        # Get the selection model from the treeview
-        selection_model = self.ui.treeView_axes.selectionModel()    
-        # Create a list of select row indices
-        selected_row_list = [index.row() for index in reversed(sorted(selection_model.selectedRows()))]
-        # For each row selected
-        for i,row in enumerate(selected_row_list):
-            # only move the row if it is not the last element, and the row above it is not selected
-            # (note that while a row below may have been initially selected, it should by now, be one row lower
-            # since we start moving elements of the list upwards starting from the highest index)
-            if row < self.axes_model.rowCount()-1 and (row+1) not in selected_row_list:
-                # Remove the selected row
-                items = self.axes_model.takeRow(row)
-                # Add the selected row into a position one above
-                self.axes_model.insertRow(row+1,items)
-                # Since it is now a newly inserted row, select it again
-                selection_model.select(self.axes_model.indexFromItem(items[0]),QtCore.QItemSelectionModel.SelectCurrent|QtCore.QItemSelectionModel.Rows)
-                # reupdate the list of selected indices to reflect this change
-                selected_row_list[i] += 1
-            
-        self.update_axes_indentation()
-
-    def on_axis_to_bottom_clicked(self, checked):
-        selection_model = self.ui.treeView_axes.selectionModel()    
-        # Create a list of select row indices
-        selected_row_list = [index.row() for index in reversed(sorted(selection_model.selectedRows()))]
-        # For each row selected
-        for i,row in enumerate(selected_row_list):
-            # only move the row while it is not the last element, and the row above it is not selected
-            # (note that while a row below may have been initially selected, it should by now, be one row lower
-            # since we start moving elements of the list upwards starting from the highest index)
-            while row < self.axes_model.rowCount()-1 and (row+1) not in selected_row_list:
-                # Remove the selected row
-                items = self.axes_model.takeRow(row)
-                # Add the selected row into a position one above
-                self.axes_model.insertRow(row+1,items)
-                # Since it is now a newly inserted row, select it again
-                selection_model.select(self.axes_model.indexFromItem(items[0]),QtCore.QItemSelectionModel.SelectCurrent|QtCore.QItemSelectionModel.Rows)
-                # reupdate the list of selected indices to reflect this change
-                selected_row_list[i] += 1
-                row += 1
-                
-        self.update_axes_indentation()
         
     def on_axes_item_changed(self, item):
         if item.column() == self.AXES_COL_SHUFFLE:
