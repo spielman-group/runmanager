@@ -41,14 +41,8 @@ class SendToRunviewerTests(unittest.TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
 
-        # runviewer's server puts shots on this, which its application makes
-        # only when it starts:
+        # runviewer's server puts shots on this:
         self.shots = queue.Queue()
-        patcher = mock.patch.object(
-            runviewer_main, 'shots_to_process_queue', self.shots, create=True
-        )
-        patcher.start()
-        self.addCleanup(patcher.stop)
         with socket.socket() as probe:
             probe.bind(('127.0.0.1', 0))
             self.port = probe.getsockname()[1]
@@ -66,7 +60,7 @@ class SendToRunviewerTests(unittest.TestCase):
 
     def serve(self):
         server = runviewer_main.RunviewerServer(
-            port=self.port, bind_address='tcp://127.0.0.1'
+            self.port, self.shots, bind_address='tcp://127.0.0.1'
         )
         self.addCleanup(server.shutdown)
 
@@ -95,7 +89,7 @@ class SendToRunviewerTests(unittest.TestCase):
         self.assertEqual(self.shots.get_nowait(), '/tmp/a_shot.h5', 'and it has the shot')
 
     def test_the_operator_is_told_when_runviewer_cannot_take_the_shot(self):
-        runviewer_main.shots_to_process_queue = RefusingQueue()
+        self.shots = RefusingQueue()
         self.serve()
         self.send()
 
