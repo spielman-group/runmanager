@@ -2426,16 +2426,8 @@ class RunManager(LabscriptGuiApplication):
         self.preparse_globals_required.put(None)
 
     def on_close_event(self):
-        save_data = self.get_save_data()
-        if self.last_save_data is not None and save_data != self.last_save_data:
-            message = ('Current configuration (which groups are active/open and other GUI state) '
-                       'has changed: save config file \'%s\'?' % self.last_save_config_file)
-            reply = QtWidgets.QMessageBox.question(self.ui, 'Quit runmanager', message,
-                                               QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No | QtWidgets.QMessageBox.Cancel)
-            if reply == QtWidgets.QMessageBox.Cancel:
-                return False
-            if reply == QtWidgets.QMessageBox.Yes:
-                self.save_configuration(self.last_save_config_file)
+        if not self.offer_to_save_changes('Quit runmanager', quitting=True):
+            return False
         self.analysis_submission.shutdown()
         self.blacs_link.shutdown()
         self.runviewer_link.shutdown()
