@@ -4123,6 +4123,7 @@ class RunManager(LabscriptGuiApplication):
                      'axes': axes,
                      'queue_state': self.queue_controller.export_state(),
                      'analysis_submission': self.analysis_submission.get_configuration_data()}
+        save_data.update(self.geometry_save_data())
         return save_data
 
     def load_configuration(self, filename, at_startup=False):
@@ -4133,8 +4134,6 @@ class RunManager(LabscriptGuiApplication):
         # Ensure folder exists, if this was opened programmatically we are
         # creating the file, so the directory had better exist!
         appconfig, save_target = load_appconfig(filename, return_save_path=True)
-        self.last_save_config_file = save_target
-        self.ui.actionSave_configuration.setText('Save configuration %s'%save_target)
         runmanager_config = appconfig.get('runmanager_state', {})
 
         has_been_a_warning = [False]
@@ -4248,13 +4247,8 @@ class RunManager(LabscriptGuiApplication):
         self.analysis_submission.restore_configuration_data(
             runmanager_config.get('analysis_submission')
         )
-
-        # Set as self.last_save_data:
-        save_data = self.get_save_data()
-        self.last_save_data = save_data
-        self.ui.actionSave_configuration_as.setEnabled(True)
-        self.ui.actionRevert_configuration.setEnabled(True)
-        self.set_config_window_title(save_target)
+        self.restore_geometry(runmanager_config)
+        self.configuration_loaded(save_target)
 
     def compile_run_file(self, labscript_file, run_file):
         """Return ``(success, error)``: whether the file compiled and, if not, its traceback."""
