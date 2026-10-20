@@ -28,6 +28,7 @@ import h5py
 import tomli_w
 
 from labscript_utils import ensure_str
+from labscript_utils.file_utils import warn_legacy_file
 from labscript_profile.toml_config import load_toml_file
 
 
@@ -141,6 +142,8 @@ def load_toml_document(filename):
 
 
 def load_legacy_hdf5_document(filename):
+    # LEGACY HDF5 GLOBALS FILES. DEPRECATED CODE, WILL BE REMOVED.
+    warn_legacy_file(filename, 'is an HDF5 globals file, not TOML')
     document = _new_document()
     with h5py.File(filename, "r") as f:
         try:
