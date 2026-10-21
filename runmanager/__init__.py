@@ -24,7 +24,6 @@ from runmanager.tokenizer import (
     remove_comments_and_tokenify,
 )
 from runmanager.evaluator import (
-    TraceDictionary,
     iterator_to_tuple,
     evaluate_globals,
 )
@@ -73,7 +72,6 @@ __all__ = [
     'ExpansionError',
     'find_comments',
     'remove_comments_and_tokenify',
-    'TraceDictionary',
     'iterator_to_tuple',
     'evaluate_globals',
     'is_valid_python_identifier',
