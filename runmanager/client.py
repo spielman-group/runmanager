@@ -153,6 +153,141 @@ class RunmanagerClient(ZMQClient):
         """Set JIT? state for active globals."""
         return self.request('set_jit_enabled', globals)
 
+    def get_expansions(self):
+        """Return all active globals' expansion modes.
+
+        Waits for the preparse first, because it guesses the expansion of a
+        global whose type has changed.
+
+        Returns
+        -------
+        dict
+            ``{global_name: expansion}``, where expansion is ``''`` for none,
+            ``'outer'`` or the name of a zip group.
+        """
+        return self.request('get_expansions')
+
+    def set_expansions(self, globals, skip_missing=False):
+        """Set the expansion mode of active globals.
+
+        Parameters
+        ----------
+        globals : dict
+            ``{global_name: expansion}``, each a string: ``''`` for none,
+            ``'outer'`` or the name of a zip group. Nothing is written if any
+            is refused.
+        skip_missing : bool
+            If True, a name in no active group is skipped and the others are
+            written. Otherwise it is refused.
+
+        Returns
+        -------
+        list of str
+            The names skipped for being in no active group, as ``set_values``
+            returns them.
+
+        Raises
+        ------
+        ValueError
+            For a name in no active group while ``skip_missing`` is False, or
+            one in a legacy HDF5 globals file.
+        TypeError
+            For an expansion that is not a string.
+        RuntimeError
+            For a name defined in more than one active group.
+        """
+        return self.request('set_expansions', globals, skip_missing=skip_missing)
+
+    def get_units(self):
+        """Return all active globals' units.
+
+        Returns
+        -------
+        dict
+            ``{global_name: units}``, the text of each global's Units column.
+        """
+        return self.request('get_units')
+
+    def get_groups(self):
+        """Return which groups of the open globals files are active.
+
+        Returns
+        -------
+        dict
+            ``{globals_file: {group_name: active}}`` for every open globals
+            file, with ``active`` a bool. The same group name in two files stays
+            distinct.
+        """
+        return self.request('get_groups')
+
+    def set_groups_active(self, groups):
+        """Activate or deactivate groups of the open globals files.
+
+        Does what ticking each group's Active box does, so the globals are
+        parsed again. Groups not named are left as they are.
+
+        Parameters
+        ----------
+        groups : dict
+            ``{globals_file: {group_name: active}}``, as ``get_groups`` returns
+            it, with ``active`` a bool. Nothing is changed if any is refused.
+
+        Raises
+        ------
+        ValueError
+            For a group that is not in an open globals file.
+        TypeError
+            For an ``active`` that is not a bool.
+        """
+        return self.request('set_groups_active', groups)
+
+    def create_global(self, globals_file, group_name, global_name, value='', units=''):
+        """Add a global to a group, as the window's click-to-add row does.
+
+        Parameters
+        ----------
+        globals_file : str
+            Path of the globals file, as ``get_groups`` returns it.
+        group_name : str
+            A group in that file.
+        global_name : str
+            The new global's name, a valid Python variable name.
+        value : str
+            The Default expression, as text. Left empty if not given.
+        units : str
+            The Units text. Left empty if not given.
+
+        Raises
+        ------
+        ValueError
+            For a legacy HDF5 globals file, or a name that is not a valid
+            Python variable name.
+        TypeError
+            For a ``value`` or ``units`` that is not a string.
+        runmanager.globals_file.GlobalsFileError
+            For a name the group already has, or a group the file lacks.
+        """
+        return self.request(
+            'create_global', globals_file, group_name, global_name, value, units
+        )
+
+    def delete_global(self, global_name):
+        """Delete an active global from its group, with no confirmation.
+
+        Parameters
+        ----------
+        global_name : str
+            A global of an active group.
+
+        Raises
+        ------
+        ValueError
+            For a name in no active group, or one in a legacy HDF5 globals file.
+        RuntimeError
+            For a name defined in more than one active group.
+        """
+        return self.request('delete_global', global_name)
+
     def engage(self, submission_mode=SUBMISSION_MODE_NEW_SEQUENCE):
         """Compile the shots the window's globals expand into, and queue them.
 
