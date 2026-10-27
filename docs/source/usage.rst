@@ -457,9 +457,8 @@ shot also stays red at the head, but is held rather than reoffered until it is
 deleted or runmanager is restarted. Deleting a running row cancels it and keeps
 its file until BLACS next requests work or reports an outcome; deleting a
 failed or rejected row removes it. Deleting an unsent row discards it.
-A shot that fails to compile stays where it is, coloured red, and holds back the
-shots behind it once it is at the head. Right-click it and choose *Compile again*,
-or delete it.
+A shot that fails to compile leaves the queue, with its error in the output box,
+and the shots behind it carry on.
 Both *Empty queue, then add shots…* submission modes preserve every row already
 sent to BLACS, including failed or rejected rows.
 
