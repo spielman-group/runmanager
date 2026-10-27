@@ -487,9 +487,11 @@ def expand_globals(sequence_globals, evaled_globals, expansion_config = None, re
         if shuffle[axis_name]:
             random.shuffle(axis_values)
 
-    # sort axes and global names by order
-    axes = [axes.get(key) for key in sorted(order, key=order.get)]
-    global_names = [global_names.get(key) for key in sorted(order, key=order.get)]
+    # sort axes and global names by order. An ordered axis the globals no longer
+    # produce, such as a scan just disabled, is skipped:
+    ordered = [key for key in sorted(order, key=order.get) if key in axes]
+    axes = [axes[key] for key in ordered]
+    global_names = [global_names[key] for key in ordered]
 
     # flatten the global names
     global_names = [global_name for global_list in global_names for global_name in global_list]

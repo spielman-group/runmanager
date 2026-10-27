@@ -1257,6 +1257,36 @@ class CompileErrorTests(RemoteCommandTestCase):
         )
 
 
+class DisabledScanTests(RemoteCommandTestCase):
+    """A scan disabled remotely no longer expands the shots compiled."""
+
+    def make_app(self):
+        return SubmittingApp(self.directory)
+
+    def setUp(self):
+        self.directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.directory, True)
+        super().setUp()
+        runmanager.new_global(self.app.globals_file, 'group', 'x')
+        for field, value in [
+            ('default', '0'), ('scan', '[1, 2]'), ('scan_enabled', True), ('expansion', 'outer')
+        ]:
+            globals_file.set_field(self.app.globals_file, 'group', 'x', field, value)
+        self.app.compiling.set()
+
+    def test_a_scan_disabled_remotely_then_compiled_runs_the_default(self):
+        self.app.wait_until_preparse_complete()
+        # The preparse that would drop the scan's axis failed, as a write
+        # collision once made it, so the axes still list it:
+        self.app.wait_until_preparse_complete = lambda: None
+        self.request(self.client.set_scan_enabled, {'x': False})
+
+        answer = self.request(self.client.test_compile)
+
+        self.assertTrue(answer['success'])
+        with h5py.File(answer['path'], 'r') as f:
+            self.assertEqual(f['globals'].attrs['x'], 0)
+
 class PreparsingApp(FakeApp):
     """The application's preparse thread, over a globals file that is not there."""
 
