@@ -5486,19 +5486,34 @@ class RunmanagerServer(ZMQServer):
     @inmain_decorator()
     def handle_set_groups_active(self, groups):
         items = self._group_active_items()
+        active = {
+            (globals_file, group_name): item.checkState() == QtCore.Qt.Checked
+            for globals_file, file_items in items.items()
+            for group_name, item in file_items.items()
+        }
         changes = []
         # Refused before any is changed, so a batch is not half applied.
         for globals_file, states in groups.items():
-            for group_name, active in states.items():
-                active = self._coerce_remote_boolean(active, 'group %s' % group_name)
+            for group_name, state in states.items():
+                state = self._coerce_remote_boolean(state, 'group %s' % group_name)
                 if group_name not in items.get(globals_file, {}):
                     raise ValueError(
                         'Group %s not found in open globals file %s'
                         % (group_name, globals_file)
                     )
-                changes.append((items[globals_file][group_name], active))
-        for item, active in changes:
-            item.setCheckState(QtCore.Qt.Checked if active else QtCore.Qt.Unchecked)
+                active[globals_file, group_name] = state
+                changes.append((items[globals_file][group_name], state))
+        # Two active groups of one name would make the preparse open a modal
+        # dialog, which would hold this server until someone dismissed it.
+        names = [group_name for (_, group_name), on in active.items() if on]
+        repeated = sorted({name for name in names if names.count(name) > 1})
+        if repeated:
+            raise ValueError(
+                'Cannot leave two active groups with the same name: %s.'
+                % ', '.join(repeated)
+            )
+        for item, state in changes:
+            item.setCheckState(QtCore.Qt.Checked if state else QtCore.Qt.Unchecked)
 
     @inmain_decorator()
     def handle_create_global(

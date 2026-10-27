@@ -1405,6 +1405,18 @@ class GroupActivationTests(RemoteCommandTestCase):
             )
         self.assertFalse(self.request(self.client.get_groups)[file_b]['g'], 'none changed')
 
+    def test_two_active_groups_of_one_name_are_refused(self):
+        file_a, file_b = self.files
+        self.request(self.client.set_groups_active, {file_a: {'g': True}})
+
+        with self.assertRaises(ValueError):
+            self.request(self.client.set_groups_active, {file_b: {'g': True}})
+
+        self.assertEqual(
+            self.request(self.client.get_groups),
+            {file_a: {'g': True}, file_b: {'g': False}},
+        )
+
 
 class PreparsingApp(FakeApp):
     """The application's preparse thread, over a globals file that is not there."""
