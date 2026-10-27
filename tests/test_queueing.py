@@ -528,11 +528,7 @@ class DefaultShotTests(unittest.TestCase):
 
 
 class LazyCompileFailureTests(unittest.TestCase):
-    """A queued shot that cannot be compiled stays, red, with the reason.
-
-    Dropping it would look like the queue draining normally. It is not compiled
-    again by itself, or a shot that fails every time would be recompiled for ever.
-    """
+    """A queued shot that cannot be compiled leaves the queue, with the reason."""
 
     def make_runmanager(self, compiles):
         self.directory = tempfile.mkdtemp()
@@ -564,51 +560,24 @@ class LazyCompileFailureTests(unittest.TestCase):
     def rows(self, app):
         return app.queue_controller.get_queue_display_items()
 
-    def test_a_shot_that_cannot_be_compiled_stays_red_at_the_head_with_its_reason(self):
+    def test_a_shot_that_cannot_be_compiled_leaves_with_its_reason(self):
         for compiles, reason in (
             (False, COMPILE_ERROR),
             (RuntimeError('no such labscript file'), 'no such labscript file'),
         ):
             with self.subTest(compiles=repr(compiles)):
                 app = self.make_runmanager(compiles=compiles)
+                [failed] = [row['shot_id'] for row in self.rows(app)[:1]]
 
-                self.ask_until_settled(app)
+                responses = self.ask_until_settled(app, requests=2)
 
-                rows = self.rows(app)
                 self.assertEqual(
-                    [os.path.basename(row['path']) for row in rows],
-                    ['lazy_a.h5', 'shot_b.h5'],
-                    'it is still there, and still first',
+                    [r['state'] for r in responses], [PROVIDER_PENDING, PROVIDER_SHOT]
                 )
-                self.assertIn(
-                    rows[0]['state'],
-                    ROW_BACKGROUNDS,
-                    'and coloured, whichever kind of failure it was',
-                )
-                self.assertIn(reason, rows[0]['tooltip'])
-
-    def test_it_is_not_compiled_over_and_over(self):
-        app = self.make_runmanager(compiles=False)
-
-        self.ask_until_settled(app, requests=4)
-
-        self.assertEqual(
-            app.compiled,
-            [os.path.join(self.directory, 'lazy_a.h5')],
-            'a failed compile is not retried by itself, so it is only tried once',
-        )
-
-    def test_nothing_is_offered_while_it_is_held(self):
-        app = self.make_runmanager(compiles=False)
-
-        responses = self.ask_until_settled(app, requests=3)
-
-        self.assertEqual(
-            [response['state'] for response in responses],
-            [PROVIDER_PENDING, PROVIDER_NONE, PROVIDER_NONE],
-            'pending while it compiles, then nothing: the shot behind it waits '
-            'rather than overtaking it',
-        )
+                self.assertTrue(responses[-1]['path'].endswith('shot_b.h5'))
+                record = app.queue_controller.get_shot_statuses([failed])[failed]
+                self.assertEqual((record['compile'], record['queue']), ('failed', 'left'))
+                self.assertIn(reason, record['message'])
 
     def test_a_shot_that_compiles_is_offered_with_no_reason_on_it(self):
         app = self.make_runmanager(compiles=True)
@@ -620,40 +589,6 @@ class LazyCompileFailureTests(unittest.TestCase):
         row = self.rows(app)[0]
         self.assertEqual(row['state'], 'running')
         self.assertEqual(row['tooltip'], row['path'], 'nothing to explain')
-
-
-class CompileFailureIsNotAHandoverTests(unittest.TestCase):
-    """A shot that never compiled has not been given to BLACS.
-
-    The row is red and at the head, and holds the queue until it is deleted or
-    compiled again, but it makes no claim that BLACS has it.
-    """
-
-    def test_a_replacement_submission_clears_it(self):
-        controller = QueueController()
-        controller.enqueue(
-            [
-                {
-                    'path': '/tmp/lazy_a.h5',
-                    'labscript_file': '/tmp/e.py',
-                    'compile_mode': COMPILE_MODE_LAZY,
-                    'compiled': False,
-                },
-                queued_shot('/tmp/shot_b.h5'),
-            ]
-        )
-        item, _pending = controller.claim_next_for_compile()
-        controller.finish_compile(item, False, 'Could not be compiled. See the output.')
-
-        removed_paths, protected = controller.clear()
-
-        self.assertEqual(
-            sorted(os.path.basename(path) for path in removed_paths),
-            ['lazy_a.h5', 'shot_b.h5'],
-            'nothing here went to BLACS, so replacing the queue replaces all of '
-            'it rather than stranding the batch behind a row BLACS never had',
-        )
-        self.assertEqual(protected, [])
 
 
 class CompiledFlagOwnershipTests(unittest.TestCase):
@@ -704,14 +639,14 @@ class SubmittedShotTests(unittest.TestCase):
 
     A caller that submits and asks straight away is told about those rows, so it
     does not submit the same work again. The worker compiles the eager rows in
-    order, and a row that will not compile holds the queue only once it is the
-    head.
+    order, and a row that will not compile leaves the queue.
     """
 
     def setUp(self):
         self.directory = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.directory, True)
         self.compiles = True
+        self.failing = set()
         self.compiled = []
         # A compile the test can stop partway, to ask what is true while the
         # worker is in the middle of a batch. Held compiles are released
@@ -738,7 +673,8 @@ class SubmittedShotTests(unittest.TestCase):
             self.release.wait(5)
         if isinstance(self.compiles, Exception):
             raise self.compiles
-        return self.compiles, ('' if self.compiles else COMPILE_ERROR)
+        compiles = self.compiles and path not in self.failing
+        return compiles, ('' if compiles else COMPILE_ERROR)
 
     def submit(self, count=1, send_to_BLACS=True):
         records = self.manager.compile_shots(
@@ -793,20 +729,23 @@ class SubmittedShotTests(unittest.TestCase):
             ('left', 'completed', False),
         )
 
-    def test_a_shot_that_will_not_compile_is_marked_and_the_rest_still_compile(self):
-        # A red row holds the queue only once it is the head, so the worker
-        # goes on to the rows behind it rather than stopping there.
-        self.compiles = False
-        self.submit(count=3)
-
-        self.assertTrue(self.wait_until(lambda: len(self.compiled) == 3))
+    def test_a_shot_that_will_not_compile_leaves_and_the_rest_still_run(self):
+        self.failing = {os.path.join(self.directory, 'shot_1.h5')}
+        first, failed, last = self.submit(count=3)
         self.assertTrue(
-            self.wait_until(
-                lambda: [row['state'] for row in self.controller.get_queue_display_items()]
-                == ['compile_failed'] * 3
-            )
+            self.wait_until(lambda: self.status([last])[last]['compile'] == 'compiled')
         )
-        self.assertIsNone(self.manager.offer_next(), 'and the red head holds the queue')
+
+        ran = []
+        for _ in range(2):
+            offered = self.manager.offer_next()
+            ran.append(offered['shot_id'])
+            self.manager.shot_finished(offered['shot_id'], 'completed')
+
+        self.assertEqual(ran, [first, last])
+        record = self.status([failed])[failed]
+        self.assertEqual((record['compile'], record['queue']), ('failed', 'left'))
+        self.assertIn(COMPILE_ERROR, record['message'])
 
     def test_a_batch_that_is_not_going_to_the_queue_is_not_taken_on(self):
         # Compiling a batch for a look at it in runviewer queues nothing, so

@@ -386,16 +386,16 @@ class RunmanagerClient(ZMQClient):
                 As ``submit_shots`` returns them.
             ``compile``
                 ``'waiting'``, ``'compiling'``, ``'compiled'`` or ``'failed'``.
-                A shot that fails to compile stays in the queue and holds up
-                the shots behind it until an operator deletes it or asks for
-                another compile. ``None`` for a shot that left the queue
-                without having compiled or failed to compile.
+                A shot that fails to compile leaves the queue at once, with the
+                compile's error as its ``message``, and the shots behind it carry
+                on. ``None`` for a shot that left the queue without having
+                compiled or failed to compile.
             ``queue``
                 ``'queued'`` while the shot is in the queue, including a shot
                 that itself holds the queue up. ``'blocked'`` when it is in the
                 queue behind a shot only an operator can clear, one whose
-                ``blacs`` is ``'rejected'`` or whose ``compile`` is
-                ``'failed'``, so that it is not offered to BLACS until they do.
+                ``blacs`` is ``'rejected'``, so that it is not offered to BLACS
+                until they do.
                 ``'left'`` once it is no longer in the queue.
             ``blacs``
                 ``'waiting'`` for a shot not yet offered to BLACS, and
@@ -454,7 +454,6 @@ class RunmanagerClient(ZMQClient):
         ========  ======================  =============================================
         in queue  always                  lyse 'waiting'
         in queue  blacs not 'waiting'     compile 'compiled'
-        in queue  compile 'failed'        blacs 'waiting', pending False
         in queue  blacs 'rejected'        pending False
         in queue  blacs 'cancelled'       pending True
         in queue  queue 'blocked'         pending False
@@ -462,6 +461,7 @@ class RunmanagerClient(ZMQClient):
         left      blacs 'completed'       compile 'compiled'; lyse 'waiting', 'sent',
                                           'rejected' or 'not sent'
         left      blacs not 'completed'   lyse None
+        left      compile 'failed'        blacs None
         ========  ======================  =============================================
         """
         return self.request('shot_status', list(shot_ids))

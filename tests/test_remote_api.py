@@ -553,12 +553,14 @@ def is_legal(record):
             )
         else:
             ok = lyse is None
+        if compile_step == 'failed':
+            ok = ok and blacs is None
         return ok and not pending
     return (
         queue in ('queued', 'blocked')
         and lyse == 'waiting'
         and (blacs == 'waiting' or compile_step == 'compiled')
-        and (compile_step != 'failed' or (blacs == 'waiting' and not pending))
+        and compile_step != 'failed'
         and (blacs != 'rejected' or not pending)
         and (blacs != 'cancelled' or pending)
         and (queue != 'blocked' or not pending)
@@ -569,7 +571,6 @@ def may_still_complete(record):
     """Whether BLACS can still complete the shot, going by runmanager's side only."""
     return (
         record['queue'] == 'queued'
-        and record['compile'] != 'failed'
         and record['blacs'] != 'rejected'
     )
 
@@ -585,7 +586,7 @@ class ShotStatusTests(RemoteCommandTestCase):
 
     # Every state a queue row can be in: whether a shot in it can still produce
     # a result, and whether it holds up the rows behind it. A cancelled row
-    # clears itself at BLACS's next request; rejected and compile_failed wait.
+    # clears itself at BLACS's next request; a rejected row waits.
     EXPECTED = {
         # state: (pending, holds up the rows behind it)
         '': (True, False),
@@ -593,7 +594,6 @@ class ShotStatusTests(RemoteCommandTestCase):
         'failed': (True, False),
         'rejected': (False, True),
         'cancelled': (True, False),
-        'compile_failed': (False, True),
     }
 
     def setUp(self):
@@ -1206,8 +1206,8 @@ class CompileOnlyEngageTests(RemoteCommandTestCase):
 class CompileErrorTests(RemoteCommandTestCase):
     """What a remote caller is told when a compile fails.
 
-    A queued shot's row carries the error, and test_compile, which queues
-    nothing, answers with it.
+    A queued shot that fails leaves the queue with the error as its message,
+    and test_compile, which queues nothing, answers with it.
     """
 
     ERROR = 'NameError: name "z" is not defined'
@@ -1224,17 +1224,20 @@ class CompileErrorTests(RemoteCommandTestCase):
         self.app.compile_result = (False, self.ERROR)
         self.app.compiling.set()
 
-    def test_a_shot_that_fails_to_compile_lists_its_error_in_the_queue(self):
+    def test_a_shot_that_fails_to_compile_leaves_the_queue_with_its_error(self):
         [receipt] = self.request(self.client.engage)
+        shot_id = receipt['shot_id']
         wait_for(
-            lambda: self.app.queue_controller.get_queue()[0]['compile'] == 'failed'
+            lambda: self.app.queue_controller.get_shot_statuses([shot_id])[shot_id][
+                'compile'
+            ] == 'failed'
         )
 
-        [row] = self.request(self.client.get_queue)
+        record = self.request(self.client.shot_status, [shot_id])[shot_id]
 
-        self.assertEqual(row['shot_id'], receipt['shot_id'])
-        self.assertEqual(row['compile'], 'failed')
-        self.assertIn(self.ERROR, row['message'])
+        self.assertEqual(record['queue'], 'left')
+        self.assertIn(self.ERROR, record['message'])
+        self.assertEqual(self.request(self.client.get_queue), [])
 
     def test_a_test_compile_answers_with_the_error_and_queues_nothing(self):
         globals_file.set_field(self.app.globals_file, 'group', 'x', 'scan', '[1, 2]')
