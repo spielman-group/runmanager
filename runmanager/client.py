@@ -326,7 +326,7 @@ class RunmanagerClient(ZMQClient):
         """
         return self.request('new_group', globals_file, group_name)
 
-    def create_globals(self, globals_file, group_name, globals):
+    def new_globals(self, globals_file, group_name, globals):
         """Add globals to a group: all of them, or none if any is refused.
 
         Only a TOML globals file is written; convert a legacy HDF5 one in the
@@ -365,7 +365,7 @@ class RunmanagerClient(ZMQClient):
         FileNotFoundError
             For a globals file that does not exist.
         """
-        return self.request('create_globals', globals_file, group_name, globals)
+        return self.request('new_globals', globals_file, group_name, globals)
 
     def delete_global(self, global_name):
         """Delete an active global from its group, with no confirmation.

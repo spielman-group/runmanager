@@ -1359,7 +1359,7 @@ class GlobalEditTests(RemoteCommandTestCase):
     def test_globals_created_remotely_are_made_as_given_and_all_or_none(self):
         path = self.app.globals_file
         created = self.request(
-            self.client.create_globals,
+            self.client.new_globals,
             path,
             'group',
             {'y': {'value': '2*3', 'units': 'm', 'scan': '[1, 2]', 'scan_enabled': True}},
@@ -1381,7 +1381,7 @@ class GlobalEditTests(RemoteCommandTestCase):
         self.assertEqual(self.request(self.client.get_scans, raw=True)['y'], '[1, 2]')
         self.assertEqual(self.request(self.client.get_units)['y'], 'm')
         with self.assertRaises(globals_file.GlobalsFileError):
-            self.request(self.client.create_globals, path, 'group', {'z': {}, 'y': {}})
+            self.request(self.client.new_globals, path, 'group', {'z': {}, 'y': {}})
         self.assertNotIn('z', self.request(self.client.get_values), 'none was made')
 
     def test_a_global_deleted_remotely_is_gone_and_an_unknown_one_is_refused(self):
@@ -1403,7 +1403,7 @@ class GlobalEditTests(RemoteCommandTestCase):
         self.app.currently_open_groups[path, 'group'] = tab
 
         self.request(
-            self.client.create_globals, path, 'group', {'y': {'value': '2', 'units': 'm'}}
+            self.client.new_globals, path, 'group', {'y': {'value': '2', 'units': 'm'}}
         )
         self.request(self.client.set_expansions, {'y': 'outer'})
         self.request(self.client.delete_global, 'x')
@@ -1568,7 +1568,7 @@ class GlobalsFileCopyTests(RemoteCommandTestCase):
                 }
                 for name in names
             }
-            self.request(self.client.create_globals, copy, group_name, fields)
+            self.request(self.client.new_globals, copy, group_name, fields)
         self.request(
             self.client.set_groups_active,
             {

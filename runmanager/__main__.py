@@ -5571,7 +5571,7 @@ class RunmanagerServer(ZMQServer):
         return item.checkState() == QtCore.Qt.Checked
 
     @inmain_decorator()
-    def handle_create_globals(self, globals_file, group_name, globals):
+    def handle_new_globals(self, globals_file, group_name, globals):
         records = {}
         for global_name, fields in globals.items():
             record = records[global_name] = {}

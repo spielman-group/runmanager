@@ -281,7 +281,7 @@ class QueueController(object):
         self._items = []
         # The record of each shot that left the queue this session, as it was
         # when it left, and of each shot compiled without being queued.
-        self._departed = {}
+        self._out_of_queue = {}
         # {local path: shot id} of each file handed to lyse and not yet settled.
         # BLACS may have run a fresh copy, so the path lyse is given is not
         # always the row's.
@@ -511,7 +511,7 @@ class QueueController(object):
 
         Call with the lock held.
         """
-        self._departed[item['shot_id']] = dict(
+        self._out_of_queue[item['shot_id']] = dict(
             self._status(item, QUEUE_LEFT), message=message, **changes
         )
 
@@ -537,7 +537,7 @@ class QueueController(object):
         """Keep a record of shots compiled without being queued, as not yet compiled."""
         with self._lock:
             for item in items:
-                self._departed[item['shot_id']] = dict(
+                self._out_of_queue[item['shot_id']] = dict(
                     shot_receipt(item),
                     compile=COMPILE_WAITING,
                     queue=QUEUE_NOT_QUEUED,
@@ -551,7 +551,7 @@ class QueueController(object):
     def set_unqueued_compile(self, item, compile_step, message=''):
         """Record how far the compile of a shot that is not queued got."""
         with self._lock:
-            self._departed[item['shot_id']].update(
+            self._out_of_queue[item['shot_id']].update(
                 compile=compile_step, message=message, since=time.time()
             )
 
@@ -577,7 +577,7 @@ class QueueController(object):
                     item['lyse'] = lyse
                     item['lyse_message'] = message
                     return
-            record = self._departed.get(shot_id)
+            record = self._out_of_queue.get(shot_id)
             if record is not None and record['lyse'] == LYSE_WAITING:
                 record.update(lyse=lyse, message=message, since=time.time())
 
@@ -589,8 +589,8 @@ class QueueController(object):
             for shot_id in shot_ids:
                 if shot_id in live:
                     answer[shot_id] = live[shot_id]
-                elif shot_id in self._departed:
-                    answer[shot_id] = dict(self._departed[shot_id])
+                elif shot_id in self._out_of_queue:
+                    answer[shot_id] = dict(self._out_of_queue[shot_id])
                 else:
                     answer[shot_id] = None
         return answer
