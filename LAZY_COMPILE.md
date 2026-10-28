@@ -45,8 +45,13 @@ which shot and why, and its `shot_status` record keeps the compile's error. The
 rows behind it carry on. Nothing compiles it again, since a shot that always fails
 would be recompiled for ever: engage it again once the cause is fixed.
 
-A default shot that fails is not made again until the globals or the default
-labscript file change. Meanwhile a red ! beside the empty-queue policy says why.
+A default shot that fails is not made again until the active globals or the
+default labscript file change, compared by content, however they are changed.
+Meanwhile a red ! beside the empty-queue policy says why. The ! goes, and the shot
+is tried again, when the empty-queue policy or the choice of default labscript
+file changes too. A changed file is seen at BLACS's next request for a shot. A
+default shot that is ready but not yet handed over is deleted when the globals or
+the script change, since it was made from them.
 
 Restarting the compiler subprocess fails the compile in flight, and later
 compiles wait until the new subprocess is up.

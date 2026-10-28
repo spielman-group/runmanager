@@ -19,6 +19,7 @@ import threading
 import time
 import types
 import unittest
+from pathlib import Path
 from unittest import mock
 
 import labscript_utils.h5_lock, h5py
@@ -49,6 +50,8 @@ from fixtures import (
 )
 from runmanager.queueing import (
     COMPILE_MODE_EAGER,
+    EMPTY_QUEUE_DEFAULT_LABSCRIPT,
+    EMPTY_QUEUE_NOTHING,
     QueueController,
     QueueManager,
 )
@@ -1403,7 +1406,6 @@ def groups_window(paths):
     app = RunManager.__new__(RunManager)
     app.ui = load_main_ui()
     app.currently_open_groups = {}
-    app.globals_changes = 0
     app.preparse_globals_required = queue.Queue()
     app.on_groups_model_active_changed_recursion_depth = 0
     app.queue_manager = FakeApp().queue_manager
@@ -1564,6 +1566,104 @@ class GlobalsFileCopyTests(RemoteCommandTestCase):
         self.assertEqual(list(self.request(self.client.get_groups)), [copy])
         with self.assertRaises(FileExistsError):
             self.request(self.client.new_globals_file, original)
+
+
+class DefaultShotFailureTests(RemoteCommandTestCase):
+    """A default shot that failed waits for its source to change, by content."""
+
+    def make_app(self):
+        directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, directory, True)
+        self.globals_file = os.path.join(directory, 'globals.toml')
+        globals_file.new_globals_file(self.globals_file)
+        runmanager.new_group(self.globals_file, 'g')
+        runmanager.new_globals(self.globals_file, 'g', {'x': {'default': '1'}})
+        self.script = os.path.join(directory, 'experiment.py')
+        Path(self.script).write_text('x\n')
+        app = groups_window([self.globals_file])
+        # What RunManager's startup sets up for default shots:
+        app.exp_config = labconfig(directory)
+        app.sequences = {}
+        app.output_box = types.SimpleNamespace(output=lambda text, red=False: None)
+        app._default_shot_lock = threading.Lock()
+        app._default_shot_preparing = False
+        app._default_shot_ready = None
+        app._default_shot_source = None
+        app._default_shot_failed = False
+        app.queue_controller = app.queue_manager.controller
+        app.setup_queue_tab()
+        app.queue_empty_policy_combo.currentIndexChanged.connect(
+            app.on_queue_empty_policy_changed
+        )
+        app.ui.lineEdit_default_labscript_file.textChanged.connect(
+            app.on_default_labscript_file_text_changed
+        )
+        self.compiles = []
+        self.broken = True
+
+        def compile_run_file(labscript_file, run_file):
+            self.compiles.append(run_file)
+            return not self.broken, 'NameError'
+
+        app.queue_manager.compile_run_file_callback = compile_run_file
+        return app
+
+    def setUp(self):
+        super().setUp()
+        self.request(self.client.set_groups_active, {self.globals_file: {'g': True}})
+        self.set_policy(EMPTY_QUEUE_DEFAULT_LABSCRIPT)
+        self.app.ui.lineEdit_default_labscript_file.setText(self.script)
+
+    def set_policy(self, policy):
+        combo = self.app.queue_empty_policy_combo
+        combo.setCurrentIndex(combo.findData(policy))
+        QApplication.processEvents()
+
+    def ask(self):
+        """Ask for a shot as BLACS does, and wait for the default shot it starts."""
+        self.request(self.client.queue_exchange)
+        wait_for(lambda: not self.app._default_shot_preparing)
+        QApplication.processEvents()
+
+    def test_a_failed_default_shot_is_tried_again_only_once_its_source_changes(self):
+        self.ask()
+        self.ask()
+        self.assertEqual(len(self.compiles), 1, 'not tried again while nothing changed')
+        self.request(self.client.set_values, {})
+        self.ask()
+        self.assertEqual(len(self.compiles), 1, 'nor after a change of nothing')
+
+        globals_file.set_field(self.globals_file, 'g', 'x', 'default', '2')
+        self.ask()
+        self.assertEqual(len(self.compiles), 2, 'tried again for an edit to the file')
+        mtime = os.path.getmtime(self.script)
+        Path(self.script).write_text('y\n')
+        os.utime(self.script, (mtime, mtime))
+        self.ask()
+        self.assertEqual(len(self.compiles), 3, 'and for a script edited in the same second')
+
+    def test_the_failure_mark_goes_when_the_policy_the_script_or_the_shot_changes(self):
+        mark = self.app.ui.label_default_shot_failed
+        self.ask()
+        self.assertFalse(mark.isHidden())
+
+        self.set_policy(EMPTY_QUEUE_NOTHING)
+        self.assertTrue(mark.isHidden())
+        self.set_policy(EMPTY_QUEUE_DEFAULT_LABSCRIPT)
+        self.ask()
+        self.assertFalse(mark.isHidden(), 'tried again and failed again')
+
+        self.app.ui.lineEdit_default_labscript_file.setText(self.script + '.bak')
+        QApplication.processEvents()
+        self.assertTrue(mark.isHidden())
+        self.app.ui.lineEdit_default_labscript_file.setText(self.script)
+        self.ask()
+        self.assertFalse(mark.isHidden())
+
+        self.broken = False
+        globals_file.set_field(self.globals_file, 'g', 'x', 'default', '2')
+        self.ask()
+        self.assertTrue(mark.isHidden())
 
 
 class PreparsingApp(FakeApp):
