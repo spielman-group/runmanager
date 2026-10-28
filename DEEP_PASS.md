@@ -587,3 +587,12 @@ with its test 52466dc, and on `Production` as d475d27, adapted to its helpers; i
 reached `CodeHealth` in the merge 7ede9b5, with `LabAgentFixes2`. Bug 2's meta
 issue is closed (meta 376dc32). The suite is 146 tests, with 27 subtests, and each
 new or changed test fails without its change.
+
+Codex's review, all five agreed by Ian, is `92290b9..5ab9f2f`: H's unknown
+settings are replaced again and reported (0e9fa47); bug 3's source is compared by
+content, and a policy or script change clears the ! (fd02976), which also says in
+LAZY_COMPILE.md that a ready default shot goes when its script changes; the
+hidden-Unicode test collapses the row and reads the tooltip (c1caa88); and the
+default shot a close during its preparation leaves is in KNOWN_ISSUES.md
+(5ab9f2f), since waiting for it would deadlock on the preparation's `inmain`. The
+suite is 148 tests, and each new test fails without its change.
