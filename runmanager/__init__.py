@@ -599,7 +599,6 @@ def new_sequence_details(
     config=None,
     increment_sequence_index=True,
     default=False,
-    format_globals=None,
     subdirectory_in_prefix=False,
 ):
     """Generate the details for a new sequence: the toplevel attrs sequence_date,
@@ -645,7 +644,7 @@ def new_sequence_details(
     context = dict(
         sequence_attrs,
         sequence_timestamp=sequence_timestamp,
-        globals={} if format_globals is None else format_globals,
+        globals={},
     )
 
     # Dated at the sequence's start, for all its shots; each shot fills in only globals.
