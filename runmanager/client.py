@@ -164,7 +164,8 @@ class RunmanagerClient(ZMQClient):
         -------
         dict
             ``{global_name: expansion}``, where expansion is ``''`` for none,
-            ``'outer'`` or the name of a zip group.
+            ``'outer'`` or the name of a zip group. A global with Scan? ticked
+            always has one.
         """
         return self.request('get_expansions')
 
@@ -175,8 +176,9 @@ class RunmanagerClient(ZMQClient):
         ----------
         globals : dict
             ``{global_name: expansion}``, each a string: ``''`` for none,
-            ``'outer'`` or the name of a zip group. Nothing is written if any
-            is refused.
+            ``'outer'`` or the name of a zip group. A global with Scan? ticked
+            always has an expansion, so ``''`` is stored for it as ``'outer'``.
+            Nothing is written if any is refused.
         skip_missing : bool
             If True, a name in no active group is skipped and the others are
             written. Otherwise it is refused.
