@@ -570,3 +570,19 @@ nothing of runmanager.
    `set_expansions({'x': ''})` on such a global answers as though `''` were
    stored, against `client.py:176-177` ("`''` for none"), and clearing the
    window's Expansion cell comes back as `outer` after the preparse.
+
+### Decided and applied
+
+Ian kept F, G and I, and had A–E and H cut as recommended. He had bugs 1–4 and 6
+fixed; bug 5 is with blacs's owner, and bug 7 waits on his reply. For bug 3 a
+failed default shot now waits for its source, the globals or the default
+labscript file, to change, with a red ! beside the empty-queue policy meanwhile;
+for bug 6 the file has upstream BLACS's banner again.
+
+Range for review: `7ede9b5..1f96b72` on `CodeHealth`, one commit each: A
+29de04e, B fa97b78, C 7915026, D 319a7ab, E 6ab5242, H 2cebb82, bug 2 cd5b36d,
+bug 3 a1d5d85, bug 4 c8171f8, bug 6 1f96b72. Bug 1 is on `Development` as 07058b7,
+with its test 52466dc, and on `Production` as d475d27, adapted to its helpers; it
+reached `CodeHealth` in the merge 7ede9b5, with `LabAgentFixes2`. Bug 2's meta
+issue is closed (meta 376dc32). The suite is 146 tests, with 27 subtests, and each
+new or changed test fails without its change.
