@@ -524,26 +524,18 @@ class ItemView(LeftClickMixin):
     def moveCursor(self, cursor_action, keyboard_modifiers):
         current_index = self.currentIndex()
         current_row, current_column = current_index.row(), current_index.column()
-
-        def beside(step):
-            # A hidden column holds data another column shows, so it is no stop:
-            column = current_column + step
-            while self.isColumnHidden(column):
-                column += step
-            return current_index.sibling(current_row, column)
-
         if cursor_action == QtWidgets.QAbstractItemView.MoveUp:
             return current_index.sibling(current_row - 1, current_column)
         elif cursor_action == QtWidgets.QAbstractItemView.MoveDown:
             return current_index.sibling(current_row + 1, current_column)
         elif cursor_action == QtWidgets.QAbstractItemView.MoveLeft:
-            return beside(-1)
+            return current_index.sibling(current_row, current_column - 1)
         elif cursor_action == QtWidgets.QAbstractItemView.MoveRight:
-            return beside(1)
+            return current_index.sibling(current_row, current_column + 1)
         elif cursor_action == QtWidgets.QAbstractItemView.MovePrevious:
-            return beside(-1)
+            return current_index.sibling(current_row, current_column - 1)
         elif cursor_action == QtWidgets.QAbstractItemView.MoveNext:
-            return beside(1)
+            return current_index.sibling(current_row, current_column + 1)
         else:
             return super(ItemView, self).moveCursor(cursor_action, keyboard_modifiers)
 
