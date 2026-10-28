@@ -2068,10 +2068,13 @@ class RunManager(LabscriptGuiApplication):
         self._default_shot_lock = threading.Lock()
         self._default_shot_preparing = False
         self._default_shot_ready = None
-        # How many times the globals have changed, and how many there had been
-        # when the default shot now being made or waiting was started:
+        # How many times the globals have changed. A default shot is made from
+        # the default labscript file as it stands and the globals: the source
+        # of the one made last, and whether it failed. One that failed is not
+        # tried again until its source changes.
         self.globals_changes = 0
-        self._default_shot_globals_changes = 0
+        self._default_shot_source = None
+        self._default_shot_failed = False
 
         splash.update_text('starting compiler subprocess')
         # Start the compiler subprocess:
@@ -2304,6 +2307,7 @@ class RunManager(LabscriptGuiApplication):
         self.queue_empty_policy_combo.addItem(
             'Send default shot', EMPTY_QUEUE_DEFAULT_LABSCRIPT
         )
+        self.ui.label_default_shot_failed.hide()
         self.queue_pause_button = self.ui.queue_pause_button
         pause_icon = QtGui.QIcon()
         pause_icon.addPixmap(
@@ -4660,26 +4664,40 @@ class RunManager(LabscriptGuiApplication):
             except OSError:
                 pass
 
+    @inmain_decorator(wait_for_return=False)
+    def show_default_shot_failure(self, message):
+        """Show beside the empty-queue policy why no default shot is made; None hides it."""
+        self.ui.label_default_shot_failed.setVisible(message is not None)
+        self.ui.label_default_shot_failed.setToolTip(message or '')
+
     def take_default_shot(self, labscript_file):
         """Return a compiled default shot's queue row, or None while one is
-        being produced.
+        being produced, or while one that failed has the same source.
 
         At most one is produced at a time, however often BLACS asks. The shot
         is collected by a later request once it is ready."""
-        # A default shot started before the latest change to the globals read
-        # the old ones. Drop it now if it is ready; one still compiling is
-        # dropped by the request that finds it ready:
-        if self._default_shot_globals_changes != self.globals_changes:
+        try:
+            mtime = os.path.getmtime(labscript_file)
+        except OSError:
+            mtime = None
+        source = (labscript_file, mtime, self.globals_changes)
+        # A default shot started before the latest change to its source is
+        # stale. Drop it now if it is ready; one still compiling is dropped by
+        # the request that finds it ready:
+        if self._default_shot_source != source:
             self.discard_default_shot()
         with self._default_shot_lock:
             row = self._default_shot_ready
             if row is not None:
                 self._default_shot_ready = None
                 return row
-            if self._default_shot_preparing:
+            if self._default_shot_preparing or (
+                self._default_shot_failed and self._default_shot_source == source
+            ):
                 return None
             self._default_shot_preparing = True
-            self._default_shot_globals_changes = self.globals_changes
+            self._default_shot_source = source
+        self.show_default_shot_failure(None)
         send_to_runviewer = inmain(self.ui.checkBox_view_shots.isChecked)
         thread = threading.Thread(
             target=self.prepare_default_shot,
@@ -4694,6 +4712,10 @@ class RunManager(LabscriptGuiApplication):
         row = None
         run_file = None
         try:
+            if not os.path.isfile(labscript_file):
+                raise RuntimeError(
+                    'Default-shot labscript file does not exist: %s' % labscript_file
+                )
             active_groups = inmain(self.get_active_groups, interactive=False)
             _, runglobals = runmanager.get_queue_compile_globals(
                 active_groups, default_globals=True
@@ -4749,6 +4771,11 @@ class RunManager(LabscriptGuiApplication):
             self.output_box.output(
                 'Could not produce a default shot: %s\n' % str(e), red=True
             )
+            self.show_default_shot_failure(
+                f'The default shot could not be made: {e}. The output tab has the '
+                'details. It is tried again once the globals or the default '
+                'labscript file change.'
+            )
             if run_file is not None:
                 try:
                     os.remove(run_file)
@@ -4758,6 +4785,7 @@ class RunManager(LabscriptGuiApplication):
             with self._default_shot_lock:
                 self._default_shot_ready = row
                 self._default_shot_preparing = False
+                self._default_shot_failed = row is None
 
     def queue_exchange(self, outcome=None, request_shot=True):
         """Apply BLACS's outcome for the shot it was offered, then offer one.
@@ -4905,10 +4933,6 @@ class RunManager(LabscriptGuiApplication):
                 self.discard_default_shot()
                 # The queue is empty between batches; the anchor stands.
                 return no_shot
-            if not os.path.isfile(labscript_file):
-                raise RuntimeError(
-                    'Default-shot labscript file does not exist: %s' % labscript_file
-                )
             # Producing a default shot means evaluating the globals, writing
             # the shot file and compiling it. That happens off this thread for
             # the same reason a queued shot's compile does: it must not hold up

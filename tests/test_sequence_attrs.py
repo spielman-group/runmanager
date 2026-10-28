@@ -13,10 +13,13 @@ from unittest import mock
 # on runmanager below, so that this file can be run on its own.
 import labscript_utils.h5_lock  # noqa: F401
 import h5py
+from qtutils.qt.QtWidgets import QApplication
 import runmanager
 import runmanager.globals_file as globals_file
-from fixtures import RunManager, labconfig
+from fixtures import RunManager, labconfig, load_main_ui, wait_for
 from runmanager.queueing import QueueController, QueueManager
+
+_qapplication = None
 
 
 class DefaultSequenceTests(unittest.TestCase):
@@ -26,6 +29,7 @@ class DefaultSequenceTests(unittest.TestCase):
         self.directory = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.directory, True)
         self.labscript_file = os.path.join(self.directory, 'experiment.py')
+        open(self.labscript_file, 'w').close()
         self.globals_file = os.path.join(self.directory, 'globals.toml')
         globals_file.new_globals_file(self.globals_file)
         runmanager.new_group(self.globals_file, 'group')
@@ -87,6 +91,40 @@ class DefaultSequenceTests(unittest.TestCase):
         )
         self.addCleanup(app.queue_manager.shutdown)
         return app
+
+    def test_a_default_shot_that_failed_is_tried_again_only_once_its_source_changes(self):
+        global _qapplication
+        if QApplication.instance() is None:
+            _qapplication = QApplication([])
+        app = self.default_shot_app()
+        app.ui = load_main_ui()
+        app.globals_changes = 0
+        app._default_shot_preparing = False
+        app._default_shot_ready = None
+        app._default_shot_source = None
+        app._default_shot_failed = False
+        compiles = []
+
+        def compile_run_file(labscript_file, run_file):
+            compiles.append(run_file)
+            return False, 'NameError'
+
+        app.queue_manager.compile_run_file_callback = compile_run_file
+
+        def ask():
+            self.assertIsNone(app.take_default_shot(self.labscript_file))
+            wait_for(lambda: not app._default_shot_preparing)
+            QApplication.processEvents()
+
+        ask()
+        ask()
+        self.assertEqual(len(compiles), 1, 'not tried again while nothing changed')
+        self.assertFalse(app.ui.label_default_shot_failed.isHidden())
+        app.globals_changes += 1
+        ask()
+        os.utime(self.labscript_file, (0, 0))
+        ask()
+        self.assertEqual(len(compiles), 3, 'tried again for the globals and the script')
 
     def test_closing_runmanager_deletes_a_default_shot_not_handed_over(self):
         app = self.default_shot_app()
