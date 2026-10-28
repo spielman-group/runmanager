@@ -1,0 +1,423 @@
+# runmanager deep pass
+
+The code-health campaign's pass over runmanager (`issues/code_health_campaign.md`
+in the meta repo), on `CodeHealth`. Line references are to `57d3d21`, the merge of
+Development's lab fixes into CodeHealth.
+
+## Step 1: contract
+
+What each existing test protects. Marks: **keep**, **rename** (the name does not
+state the behaviour), **fix** (a real behaviour, but the test cannot fail when it
+breaks, carries a stale or dead part, or pins a message shape), **cut** (protects
+nothing worth keeping). Every test was written by the fork; upstream has none. A
+"cannot fail" mark was shown by breaking the behaviour on a scratch copy and
+running the test there.
+
+### Totals
+
+- Test files: 13, plus `fixtures.py` and `conftest.py`. Tests: 145, with 37 subtests.
+- Marks: keep 111, rename 13, fix 17, cut 4. For Ian to decide; nothing is changed yet.
+
+### For Ian: the non-keep marks
+
+Cut:
+- test_queueing `test_a_shot_written_earlier_keeps_the_extent_it_was_written_with`: its `n_runs` check repeats `test_an_added_shot_is_numbered_by_the_filename_it_is_given`; its earlier-file check cannot fail, since `name_run_files` opens no file.
+- test_remote_api `test_pending_is_whether_the_shot_can_still_produce_a_result`, `test_the_queue_lists_each_row_as_its_status_gives_it` and `test_a_held_row_keeps_its_state_and_deleting_it_frees_the_rows_behind`: each repeats a stage of `test_every_record_is_one_the_table_allows_whatever_became_of_the_shot`, and the same mutations fail both.
+
+Fix, because the test cannot fail when its behaviour breaks:
+- test_queueing `test_no_default_shot_is_produced_while_the_queue_holds_work`: a running head is answered by the reclaim, never reaching the `n_items` guard; hold a rejected head instead.
+- test_queueing `test_a_shot_that_compiles_is_offered_with_no_reason_on_it`: the "no reason" check cannot fail; assert the first answer is pending, and rename `test_a_lazy_shot_is_pending_until_compiled_then_offered`.
+- test_queueing `test_the_anchor_survives_blacs_finding_the_queue_empty`: the default-labscript subtest sets no default file, so it leaves at the same early return; give it one.
+- test_queueing `test_a_record_is_compiled_with_the_id_its_row_will_have`: assert on the records `compile_shots` returns, and rename `test_the_records_compile_shots_returns_carry_their_row_ids`.
+- test_compiler_restart `test_a_restart_during_a_compile_does_not_wedge_later_compiles`: the old child is released at once, so removing the restart's fake reply still passes; keep the old child hung until the new one compiles (prototyped: fails without the reply).
+- test_frozen_globals `test_a_scanned_value_compiles_back_to_exactly_what_was_frozen`: every check is inside a loop over `pending`; assert it holds two shots.
+- test_remote_api `test_nothing_is_submitted_when_a_later_entry_would_expand`: `assertIn('3', ...)` is met by the entry's repr; check the refusal names the expanding global instead.
+- test_remote_api `test_groups_are_listed_by_file_and_activated_by_file`: its unknown-group half is refused by the duplicate-name rule first; use a batch that is otherwise allowed.
+- test_remote_api `test_a_command_waiting_on_a_preparse_is_answered_after_one_fails`: when broken it hangs in cleanup instead of failing; bound the wait.
+
+Fix, because it pins a message or carries stale prose:
+- test_analysis_submission `test_each_shot_file_is_reported_as_sent_rejected_or_not_sent`: pins 'Analysis is off.' and 'Cleared before it was sent to lyse.'; assert the kind and that a reason is given.
+- test_remote_api `test_a_global_no_active_group_has_is_refused_before_anything_is_set`: pins the sentence and catches `Exception`; assert `ValueError` naming the global.
+- test_queueing `test_a_failure_choosing_a_shot_is_reported_and_answered`: stale "no input makes choosing a shot raise"; drive it with a default labscript file that is gone, instead of overriding `offer_next`.
+- test_remote_api `test_a_batch_is_distinct_shots_of_one_new_sequence_added_to_the_queue`, `test_a_later_submission_joins_the_sequence_it_names` and `test_adding_twice_before_the_first_compiles_does_not_reuse_its_numbers`: comments say a submitted shot has no queue row, which stopped being true.
+- test_remote_api `test_a_scan_disabled_remotely_then_compiled_runs_the_default`: its comment narrates history.
+- test_value_column `test_toggling_scan_commits_editor_and_swaps_active_expression`: an unused local `parent`.
+
+Rename (proposed names in the entries below): test_queueing 8, test_remote_api 2, test_configuration 1, test_value_column 2.
+
+Prose beside the tests, to correct with them: test_remote_api's file docstring (13 tests drive Engage on the app, not the client) and `ShotStatusTests`' docstring (`pending` is whether BLACS may still complete the shot, not "can still produce a result"); test_queueing's unused `ROW_BACKGROUNDS` import and the never-read `FakeRunManager.compiled`.
+
+Gaps found, not marks (no test is added in this step): nothing in test_queueing sees a lyse outcome that arrives before its row retires; the remote tour never reaches a failed compile.
+
+### tests/test_queueing.py
+
+The runmanager-owned shot queue: `QueueController`, `QueueManager` and the queue widget in `runmanager/queueing.py`, and `RunManager`'s BLACS-exchange and batch-naming methods in `runmanager/__main__.py`, run on a `FakeRunManager` (RunManager's own methods over a real `QueueManager` and a real lyse; only the compile step and default-shot production are stood in). 59 tests.
+
+#### QueueIdentityTests
+
+Each queued shot has an id of its own, kept through save and restore, and a saved queue holds only work still to do.
+- `test_queued_shots_have_distinct_ids_that_survive_save_and_restore`: every queued shot has its own id, and a restored queue has the same ids. **keep**.
+- `test_running_and_failing_a_shot_does_not_change_the_saved_queue`: running and failing a row leaves the saved queue unchanged, so runmanager does not ask to save the configuration after each shot. **keep**. Broken on the copy by taking `state` out of `SESSION_ONLY_FIELDS`; it failed.
+- `test_a_restored_record_without_an_id_is_given_one_and_keeps_the_rest`: a saved row with no id, or with a retired setting beside it, opens, is offerable with its other fields kept, and its new id is stable. **keep**.
+
+#### QueuePauseTests
+
+Pause is runmanager's policy on its own queue.
+- `test_a_saved_queue_with_no_pause_state_loads_unpaused`: a configuration with no pause state opens with the queue running. **keep**. Broken on the copy by letting restore keep the old pause; it failed.
+- `test_a_paused_queue_offers_no_shot_until_it_is_resumed`: a paused queue answers "paused" and leaves its row waiting; resuming offers the same row. **keep**. Broken on the copy by ignoring pause in `offer_shot`; it failed.
+
+#### QueueOfferTests
+
+What the queue offers BLACS, and when.
+- `test_offered_shot_stays_at_the_head_of_the_queue`: the offered shot stays at the head of the queue, marked running. **keep**.
+- `test_failed_row_is_offered_again_under_the_same_id`: a failed row is offered again under its id, runs like any shot, loses the old reason, and a second failure keeps its row. **keep**.
+- `test_head_that_is_not_compiled_yet_is_not_offered`: a head not yet compiled is not offered, nor is a compiled row behind it. **keep**. Broken on the copy by dropping the `compiled` check in `offer_next`; it failed.
+
+#### QueueOutcomeTests
+
+What BLACS's outcome does to the row.
+- `test_completed_shot_leaves_the_queue_and_the_next_one_is_offered`: a completed shot leaves the queue and the next one is offered. **keep**.
+- `test_shot_that_did_not_complete_stays_queued_with_its_reason`: a failed, aborted or rejected shot stays at the head under its id with the reason; a rejected one shows as rejected. **keep**.
+
+#### RejectedShotTests
+
+A shot BLACS could not read is held at the head until an operator deletes it.
+- `test_a_rejected_shot_is_not_offered_again`: a rejected shot is not offered again and holds its place against the rows behind it. **keep**. Broken on the copy by removing the rejected refusal from `REFUSED_STATES`; it failed.
+- `test_deleting_it_lets_the_queue_go_on`: deleting the rejected row lets the next shot be offered. **rename** to `test_deleting_a_rejected_shot_lets_the_queue_go_on`: "it" is named only by the class. Broken on the copy by making `delete_rows` keep refused rows; it failed.
+
+#### DefaultShotTests
+
+A shot runmanager made for an empty queue is an ordinary row of the queue (take_default_shot is a stand-in that returns a prepared row).
+- `test_a_default_shot_is_offered_as_a_row_of_the_queue`: a default shot is offered as a row of the queue, visible and running. **keep**.
+- `test_a_completed_default_shot_leaves_the_queue_and_goes_for_analysis`: a completed default shot leaves the queue and is sent to lyse. **keep**.
+- `test_a_default_shot_that_failed_stays_red_and_holds_back_the_next_one`: a failed default shot stays red, is not analysed, is offered again under its id, and no new default shot is made meanwhile. **keep**.
+- `test_no_default_shot_is_produced_while_the_queue_holds_work`: no default shot is made while the queue holds work. **fix**: the scenario is a running head offered a second time, which `offer_next` answers by reclaiming the row, so `offer_shot` never reaches the `n_items` guard the test is named for. Broken on the copy by deleting that guard it still passed (exit 0); it fails only when reclaim breaks, which `test_a_lost_offer_reply_leaves_the_same_row_available` also covers. Hold a rejected head instead: a scratch variant of that test took 1 default shot instead of 0 with the guard removed, and passes with it present.
+- `test_a_default_shot_is_not_saved_with_the_queue`: a default shot is left out of the saved queue and the real rows are kept. **keep**. Broken on the copy by saving default rows; it failed.
+
+#### LazyCompileFailureTests
+
+A queued shot that cannot be compiled leaves the queue with the reason, and a lazy one that compiles is offered (a real background compile with a stand-in compile step).
+- `test_a_shot_that_cannot_be_compiled_leaves_with_its_reason`: a lazy shot whose compile fails or raises leaves the queue with the reason, answered "pending" and then the next shot. **keep**.
+- `test_a_shot_that_compiles_is_offered_with_no_reason_on_it`: a lazy shot is compiled in the background and then offered as the running head. **fix**: the title and the `tooltip == path` assertion promise "no reason on it", which cannot fail, since a row not yet compiled never has a message. Broken on the copy by deleting `finish_compile`'s `state` and `message` reset, this and every other compile test in the file still passed (exit 0). Rename to `test_a_lazy_shot_is_pending_until_compiled_then_offered`, assert the first answer is "pending", drop the tooltip check.
+
+#### CompiledFlagOwnershipTests
+
+The controller alone records a compile, so a row cannot be offered half-compiled.
+- `test_a_row_is_not_offerable_until_the_controller_records_the_compile`: a row whose compile has run but not been recorded is not offerable. **keep**. Broken on the copy by having `compile_shot` mark the row compiled; it failed.
+
+#### SubmittedShotTests
+
+A submitted batch has its rows at once, compiles in order, and a row that will not compile leaves (a real worker thread with a stand-in compile step the test can hold).
+- `test_a_shot_just_submitted_has_its_row_at_once`: a submitted shot is in the queue, queued and pending, while its compile is still held. **keep**.
+- `test_a_shot_that_completed_before_its_batch_did_is_finished_with`: a shot that completes while later shots of its batch are still compiling is reported left and completed, not pending. **keep**.
+- `test_a_shot_that_will_not_compile_leaves_and_the_rest_still_run`: a shot that fails to compile leaves with the error and the shots around it still run. **keep**.
+- `test_a_batch_that_is_not_going_to_the_queue_is_not_taken_on`: a batch not sent to BLACS queues nothing, so the queue knows no such shot. **rename** to `test_a_batch_not_sent_to_blacs_queues_nothing`: "is not taken on" says nothing. Broken on the copy by queueing every batch; it failed.
+
+#### ContinuingSequenceAnchorTests
+
+"Add shots to last sequence" carries on from the shot last sent, however the queue looks.
+- `test_a_queue_with_work_in_it_is_what_is_continued`: with BLACS running the first shot, the sequence continues from the last waiting shot. **keep**. Broken on the copy by preferring the shot last sent; it failed.
+- `test_a_default_shot_in_the_gap_does_not_become_what_is_continued`: a default shot filling the gap after a batch does not replace the submitted shot as the anchor. **keep**.
+- `test_loading_a_configuration_mid_session_keeps_the_anchor`: loading a configuration without its rows keeps the shot last sent as the anchor. **keep**. Broken on the copy by having restore forget it; it failed.
+- `test_the_anchor_survives_blacs_finding_the_queue_empty`: an empty queue does not let go of the shot last sent, under either empty-queue policy. **fix**: the default-labscript subtest sets no default labscript file, so `offer_shot` leaves at the same early return as under "nothing" and never reaches default-shot production. Made `take_default_shot` raise on the copy and both subtests still passed (exit 0). Set a default labscript file for that subtest, so a default shot is being prepared and none is offered.
+
+#### ShotIdBeforeCompileTests
+
+A shot has its id before anything writes its file.
+- `test_a_record_is_compiled_with_the_id_its_row_will_have`: the records `compile_shots` takes carry the id their rows will have. **fix**: it reads the record the compile worker is given, which is the queue's own row, so it holds whatever `compile_shots` does; the caller's record is never looked at. Broken on the copy by deleting `record['shot_id'] = new_shot_id()` in `compile_shots` it still passed (exit 0), while the records returned to the caller lost their ids. Assert on the records `compile_shots` returns: a scratch variant failed with the line deleted and passes with it present. Rename to `test_the_records_compile_shots_returns_carry_their_row_ids`.
+- `test_a_queued_shot_is_written_with_its_id`: a queued shot's file carries the id of its row. **keep**. Broken on the copy by not passing `shot_id` to `make_single_run_file`; it failed.
+
+#### QueueEditingTests
+
+Delete and Clear keep the shot BLACS has and take the rest.
+- `test_delete_removes_the_rest_of_the_selection_around_it`: deleting a selection that includes the running row removes the waiting rows and their files and cancels, but keeps, the running one. **keep**. Broken on the copy by removing the running row on delete; it failed.
+- `test_clear_keeps_the_shot_blacs_is_running_and_removes_the_rest`: Clear removes the waiting rows and their files and keeps the running one with its file. **keep**. Broken on the copy by clearing the sent row too, and by not deleting files; it failed each time.
+- `test_clear_leaves_a_failed_row_alone_with_the_running_one`: Clear keeps a row that came back failed, red and with its file, and removes the waiting rows. **rename** to `test_clear_keeps_a_row_that_came_back_failed_and_removes_the_rest`: the test has no running row. Broken on the copy by clearing the sent row; it failed.
+- `test_deleting_a_failed_row_uncovers_the_next_waiting_shot`: deleting a failed row removes it and its file, and the next request is offered the waiting shot. **keep**.
+- `test_a_row_still_marked_running_can_be_deleted_after_a_restart`: a row stuck marked running comes back unmarked after a restart and can then be deleted. **keep**. Broken on the copy only when both the save and the restore kept `state` (either alone leaves the behaviour whole, and it passed); then it failed.
+
+#### ReplayTests
+
+A message BLACS sends again costs a poll, not a shot or the queue.
+- `test_a_lost_offer_reply_leaves_the_same_row_available`: a request with no outcome after an offer is offered the same row under the same id. **keep**. Broken on the copy by not reclaiming a running head; it failed.
+- `test_a_completed_outcome_that_arrives_twice_retires_the_row_once`: a completed outcome sent twice retires the row once and is passed to lyse both times. **keep**.
+- `test_a_repeated_outcome_cannot_reach_a_later_shot_of_the_same_file`: a resent outcome cannot retire a later row queued for the same file, which has its own id. **keep**. Broken on the copy by matching rows by file name; it failed.
+- `test_a_repeated_failed_outcome_keeps_one_red_row_and_one_reason`: a failed outcome sent twice leaves one red row, one reason, and one report to the operator. **keep**.
+- `test_a_retry_that_fails_the_same_way_is_still_a_second_failure`: a retry that fails again for the same reason is reported again. **keep**.
+
+#### OutcomeAppliedOnceTests
+
+A failure while applying an outcome costs a re-run, not the data.
+- `test_a_submission_that_falls_over_leaves_the_shot_to_be_run_again`: when the hand-off to lyse raises, BLACS is still answered and the row stays queued, to be offered again. **keep**. The raise is injected because the real hand-off only queues the path.
+- `test_a_completion_that_named_no_file_is_reported_under_the_rows_own`: a completion naming no file goes to lyse under the row's own path, and the row is retired. **keep**. Broken on the copy by not reading the row's path; it failed.
+- `test_a_completed_shot_lyse_took_is_recorded_as_sent`: once lyse takes a completed shot, its record says so after the row has left. **keep**. Broken on the copy by not updating the departed record; it failed.
+
+#### CancelledShotTests
+
+Deleting the shot BLACS was given cancels it until BLACS shows its file is free.
+- `test_it_is_never_offered_again`: a cancelled shot is never offered, and at the next request the queue drops its row and offers the next shot. **rename** to `test_a_cancelled_shot_is_not_offered_and_goes_at_the_next_request`: "it" is named only by the class, and half the test is the row going. Broken on the copy by never dropping the cancelled head; it failed.
+- `test_an_outcome_for_it_clears_it_and_only_a_completed_one_is_analysed`: any outcome for a cancelled shot clears its row, and only a completed one is sent for analysis. **rename** to `test_any_outcome_for_a_cancelled_shot_clears_it_and_only_a_completed_one_is_analysed`: "it" is named only by the class.
+
+#### QueueBookkeepingUnderSubmissionTests
+
+A default shot made because the queue looked empty does not outlive that.
+- `test_a_default_shot_behind_real_work_is_discarded_with_its_file`: a default shot that real work has overtaken is dropped, with its file, when the next shot is offered. **keep**. Broken on the copy by not dropping overtaken default shots; it failed.
+
+#### MalformedOutcomeTests
+
+An outcome runmanager cannot read is refused and the exchange goes on.
+- `test_an_outcome_runmanager_cannot_read_is_refused_and_answered`: a non-mapping, empty, shot-less, status-less or unknown-status outcome changes nothing and the reply still offers the shot. **keep**. Broken on the copy by raising on an unreadable outcome; every subtest failed.
+
+#### SentToBlacsRowTests
+
+The shot BLACS was given is the widget's reserved first row.
+- `test_the_shot_that_was_sent_moves_into_the_reserved_row`: the shot sent to BLACS is drawn in the reserved first row and not listed twice. **keep**. Broken on the copy by never reserving the row; it failed.
+
+#### QueueDisplayTests
+
+A failed row is tinted, and its text stands off the tint.
+- `test_a_tinted_row_names_its_text_colour_too`: a failed row is tinted with a text colour that stands off the fill, and an untinted row is left to the theme. **keep**. Broken on the copy by not naming the text colour; it failed.
+
+#### ExchangeFailureTests
+
+A fault on runmanager's side must not read to BLACS as an outage.
+- `test_a_failure_choosing_a_shot_is_reported_and_answered`: a failure while choosing a shot is reported and answered normally, and the outcome that came with the request is still applied. **fix**: the comment says "no input makes choosing a shot raise", which is not true: with the default-labscript policy and a default labscript file that no longer exists, `offer_shot` raises `RuntimeError` on real input. The test replaces `queue_manager.offer_next` with a raiser instead. A scratch variant using the missing file passes, and fails (exit 1) with `queue_exchange` no longer catching, as the present test also does. Drive it with the missing file.
+
+#### LostRowTests
+
+A completed shot that matches no row must not vanish quietly.
+- `test_a_completed_shot_with_no_row_is_still_analysed`: a completed shot whose row has gone is still sent to lyse. **keep**.
+
+#### SequenceContinuityTests
+
+Shots added to the last sequence keep its attributes and continue its run numbers, and claim no new sequence index.
+- `test_an_added_shot_is_numbered_by_the_filename_it_is_given`: shots added after `experiment_03` get `_04` and `_05` with the same run numbers, `n_runs` 6, and the sequence's attributes. **rename** to `test_shots_added_to_a_sequence_continue_its_run_numbers_and_keep_its_attributes`: the name covers one of its three assertions. Broken on the copy by giving added shots run number 0; it failed.
+- `test_a_shot_written_earlier_keeps_the_extent_it_was_written_with`: a batch added after an existing shot gets `n_runs` 3 and the earlier file is left as written. **cut**: its `n_runs` assertion repeats the previous test's, and the two failed together when `n_runs` was made one too many on the copy. The earlier file cannot change in this call: `name_run_files` names files and opens none (a scratch variant with `h5py.File` made to raise during the add still passed), so the assertion on it can only fail if rewriting is added.
+- `test_adding_shots_to_a_sequence_claims_no_new_sequence_index`: adding shots to a sequence does not use up a new sequence index. **keep**. Broken on the copy by claiming an index when adding; it failed.
+- `test_a_batch_of_its_own_does_claim_a_sequence_index`: a batch that joins nothing claims the next sequence index, which also shows the test above can see a claim. **keep**.
+- `test_a_replacement_batch_resumes_after_the_shots_blacs_has`: after Clear, a replacement batch is numbered after the shot BLACS has and takes the waiting shot's number back. **keep**. Broken on the copy by not deleting cleared files; it failed.
+
+#### DeletedAnchorTests
+
+The shot last sent stays the end of its sequence whatever becomes of its row and file.
+- `test_deleting_the_failed_shot_it_named_keeps_the_anchor`: deleting the failed shot last sent removes its file but leaves it the anchor, with its sequence attributes. **rename** to `test_deleting_the_failed_shot_last_sent_keeps_it_as_the_anchor`: "it named" is unclear. Broken on the copy by having delete forget the shot last sent; it failed.
+- `test_deleting_another_shot_leaves_the_anchor_alone`: deleting a waiting shot does not change the shot last sent. **keep**. Failed under the same break.
+- `test_a_cancelled_shots_file_going_leaves_the_anchor`: a cancelled shot released at the next request loses its file and is still the anchor. **rename** to `test_a_cancelled_shot_whose_file_goes_is_still_the_anchor`: "leaves" reads as departing. Failed under the same break.
+
+#### Not tests
+
+- `FakeRunManager.compiled` is never read, and the comment saying it is "recorded so a test can say how many times it was asked" is stale; `SubmittedShotTests` keeps its own list. The import `ROW_BACKGROUNDS` is unused.
+- Not covered: a lyse outcome arriving before its row retires (the `lyse=item['lyse']` carried into the departed record in `shot_finished`); breaking it passes, since the test sees the other ordering.
+
+#### Totals
+
+- Tests: 59 (14 subtests). Marks: keep 45, rename 8, fix 5, cut 1.
+
+### tests/test_remote_api.py
+
+Runmanager's remote commands, sent by the real `RunmanagerClient` to a real `RunmanagerServer` over a free loopback port; the application behind it is `FakeApp` (a real `QueueManager`) or `SubmittingApp` (real `RunManager` methods over a stand-in window). 48 tests, 17 subtests. The file docstring says each test is sent by the client, but 13 are not: all of `SubmissionAnchorTests` except its last, both `ShuffledEngageTests` and `CompileOnlyEngageTests` drive `RunManager.engage` or `on_engage_clicked` on the app directly, as the operator's Engage button does. They protect real behaviour and are marked below on that; the docstring needs correcting, or they belong in an engage test file.
+
+#### SubmitShotsTests: `submit_shots` by globals that differ per entry; a refused call leaves the queue and the window as it found them (two tests, the raw comment and `skip_missing`, are `set_values` behaviour)
+
+- `test_a_batch_is_distinct_shots_of_one_new_sequence_added_to_the_queue`: a batch's shots get distinct paths, shot ids and run numbers in one new sequence of their own, and join the queue without replacing it. **fix**. Its comment says a submitted shot "has no file and no queue row until the worker reaches it"; `QueueManager.compile_shots` queues the row at submission (a probe in the copy: both paths in `get_queue_paths()` straight after `submit_shots` with the compile blocked, files not yet written). The assertions are sound: making a first submission join the queue's sequence fails this test and three more. Reword the comment.
+- `test_a_batch_of_no_entries_submits_nothing_and_says_so`: an empty entry list returns `[]` and makes no batch. **keep**.
+- `test_a_later_submission_joins_the_sequence_it_names`: a submission naming an earlier one's `sequence_id` is numbered after it, in its folder, though the first is still compiling. **fix**. Its comment says the first batch's shots "have neither rows nor files"; the rows exist from submission (see the first entry). Reword the comment; the assertions stay.
+- `test_a_session_joins_its_own_sequence_when_another_shares_its_id`: with the sequence index, a join finds the session's sequence even when an operator's Engage in the same second has the same `sequence_id`. **keep**. Breaking the index match (join by id alone) makes it fail.
+- `test_a_joined_shot_is_named_from_its_own_globals`: a joined shot's folder and filename are made from the sequence's formats and its own globals. **keep**.
+- `test_a_join_is_refused_once_the_labscript_file_has_changed`: a join onto a sequence of another labscript file raises `SequenceRefused` and queues nothing. **keep**. Removing the check makes it fail.
+- `test_a_sequence_runmanager_has_no_record_of_is_refused`: naming an unknown sequence raises `SequenceRefused` instead of starting afresh. **keep**.
+- `test_a_submission_that_raises_has_queued_nothing_at_all`: a submission that fails (labscript file cleared) leaves the queue as it was. **keep**. Moving the raise to after the batch is queued makes it fail.
+- `test_the_window_is_left_holding_the_last_shot_submitted`: after a batch the globals hold the last entry's values, comments kept. **keep**. Dropping the `set_values` of the last entry makes it fail.
+- `test_nothing_is_submitted_when_a_later_entry_would_expand`: an entry that would be more than one shot refuses the whole batch, naming the global whose scan caused it and not an innocent one. **fix**. `assertIn('3', ...)` is met by the entry's repr `{'x': 3}`, so it never checks the count (with the count in the message replaced by 0 the test still passes). Drop it, or assert the count separately; the `y` named and `depth` not named assertions do the real work.
+- `test_an_error_in_the_globals_is_refused_before_anything_is_submitted`: a global that does not evaluate refuses the batch, naming it. **keep**.
+- `test_a_global_no_active_group_has_is_refused_before_anything_is_set`: an entry naming a global in no active group is refused before any set. **fix**. It pins the exact sentence 'Global not_a_global not found in any active group'; rewording the message to 'No global named not_a_global is active' (same `ValueError`, same global named) fails it. Assert `ValueError` (it takes `Exception` now) and that the name appears. If wording parity with `set_values` is wanted, compare against `set_values`'s own refusal text, not a literal.
+- `test_a_global_with_scan_or_jit_ticked_is_refused_before_anything_is_set`: a global with Scan? or JIT? ticked refuses the batch, naming both, and sets nothing. **keep**.
+- `test_a_raw_expression_with_its_own_comment_is_written_as_given`: `set_values(raw=True)` of an expression with its own comment does not stack the old comment. **keep**. Filed under `submit_shots` but a `set_values` behaviour.
+- `test_skip_missing_writes_the_globals_that_exist_and_returns_the_rest`: `set_values` refuses a batch with an unknown global and writes nothing; with `skip_missing` it writes the rest and returns the names skipped. **keep**. Filed under `submit_shots` but a `set_values` behaviour.
+
+#### ShotStatusTests: `shot_status` and `get_queue`: how far each shot has got, whether it is blocked, and what became of it when it left
+
+Class docstring and the `EXPECTED` comment: **fix**. Both speak of "whether a shot ... can still produce a result" and "whether a caller should go on waiting for a shot". The client's table says `pending` is "whether the shot may still reach blacs 'completed' ... and nothing about lyse": a shot BLACS completed has left the queue, so `pending` is False while its lyse result is still to come. Say "BLACS can still complete it".
+
+Helpers `steps`, `is_legal`, `may_still_complete`: checked line by line against the table and `pending` text in `RunmanagerClient.shot_status`. Not stale. In queue: lyse 'waiting', blacs not 'waiting' means compile 'compiled', rejected means not pending, cancelled means pending, blocked means not pending. Left: never pending; blacs 'completed' means compile 'compiled' and lyse one of the four values; any other blacs means lyse None; compile 'failed' means blacs None. `is_legal` also refuses compile 'failed' for a row still in the queue, which the client's prose gives ("leaves the queue at once") though its table does not. `may_still_complete` is queued and not rejected, which matches. Below, the tour is `test_every_record_is_one_the_table_allows_whatever_became_of_the_shot`. Rows reach their states in the other tests by writing the state into the controller's `_items`; only the tour goes through `offer_next`, `shot_finished` and `delete_rows`.
+
+- `test_pending_is_whether_the_shot_can_still_produce_a_result`: `pending` for one row in each state: true for waiting, running, failed and cancelled, false for rejected. **cut**. Duplicates `test_every_record_is_one_the_table_allows_whatever_became_of_the_shot`, which reaches each of those states through the real transitions and asserts `pending` at each. Evidence: setting `pending` True for every refused-state row in `QueueController._row_statuses` fails this test and fails that one. If it is kept instead, it needs a fix to its name (`pending` is not about a result; see the class note) and stop writing `state` into `_items`.
+- `test_a_row_behind_a_held_one_says_it_is_blocked`: a row behind a rejected one is blocked and not pending; behind a waiting, running, failed or cancelled one it is queued and pending. **keep**. Evidence: making a cancelled head hold up the rows behind (`REFUSED_STATES[BLACS_CANCELLED] = True`) fails this test and no other, the tour included.
+- `test_the_queue_lists_each_row_as_its_status_gives_it`: `get_queue` and `shot_status` give the same record for a row, blocked rows included. **cut**. Duplicates `test_every_record_is_one_the_table_allows_whatever_became_of_the_shot`, whose `ask()` asserts `listed == [answer[...]]` at every stage; both calls are one function (`_row_statuses`). Evidence: making `get_queue` say 'queued' for every row fails both.
+- `test_a_held_row_keeps_its_state_and_deleting_it_frees_the_rows_behind`: a rejected head keeps 'rejected' while the row behind is blocked; deleting it frees that row. **cut**. Duplicates the tour, which does exactly this sequence (retried rejected, behind blocked, delete, behind queued and pending, retried left with blacs 'rejected'). Evidence: making `delete_rows` keep a rejected row fails both.
+- `test_a_completed_shots_lyse_outcome_is_recorded_whenever_it_arrives`: lyse's outcome for a completed shot is recorded whether it arrives before or after the shot leaves the queue. **keep**. Evidence: ignoring the late outcome fails the 'after' subtest; losing the early one fails the 'before' subtest.
+- `test_a_shot_the_queue_no_longer_has_is_not_pending`: a shot that left is recorded by how it left (completed with lyse waiting; deleted or emptied with no blacs and no lyse), none pending; an id never heard of has no record. **rename**. Proposed name `test_a_shot_that_left_is_told_apart_by_how_it_left_and_an_unknown_id_has_no_record`; the name states only the `pending` half.
+- `test_every_record_is_one_the_table_allows_whatever_became_of_the_shot`: four shots taken through rejection and deletion, completion and lyse, cancellation, and emptying while compiling: each stage's record is the one expected, a legal combination, `pending` agrees with BLACS being able to complete, and `since` advances at every change. **rename**. Proposed name `test_a_shots_record_advances_step_by_step_and_is_always_a_legal_one`; the name covers the legality check alone. Gap, not a mark: no stage reaches a failed compile, so the table's "left, compile 'failed', blacs None" row is never run through `is_legal` (`CompileErrorTests` reaches it without the check).
+
+#### EmptyQueueTests: the remote abort ("Empty queue") backs out of waiting work
+
+- `test_a_batch_still_compiling_goes_with_its_files`: abort empties the queue, the batch's second shot never compiles, and the first's file is removed once its compile ends. **keep**. Evidence: not deleting the file of a compile that finishes after its row went makes it fail.
+
+#### SubmissionAnchorTests: the shot each Engage submission mode numbers its batch after (all but the last drive `engage` on the app, not the client)
+
+- `test_a_replacement_takes_no_name_of_a_shot_still_compiling`: a replacement batch skips the filename of a shot still compiling, numbering from 0 again. **keep**. Evidence: not skipping compiling names makes it fail and no other test.
+- `test_a_join_after_a_replacement_numbers_after_both_batches`: a join after a replacement is numbered after both batches. **keep**. Evidence: the next run number forgetting the earlier batch, or a join not using the recorded sequence, fails it.
+- `test_adding_twice_before_the_first_compiles_does_not_reuse_its_numbers`: two "add to last sequence" Engages in a row give distinct, consecutive run numbers and paths. **fix**. Its comment says the first batch's shot has "no row and no file, so the queue's last row is still the shot it was added to"; the row is queued at submission, so the premise is stale. Either numbering mechanism on its own now suffices (the queue row as anchor, or the recorded sequence): with the recorded-sequence join disabled the test still passes, three runs. Restate the behaviour without the stale cause.
+- `test_adding_to_the_last_sequence_carries_on_from_the_shot_blacs_has`: with the queue empty, "last sequence" joins the sequence of the shot last sent to BLACS. **keep**.
+- `test_adding_to_the_last_sequence_joins_one_still_compiling`: "last sequence" joins the sequence just submitted, compiled or not. **keep**.
+- `test_adding_to_nothing_at_all_starts_a_sequence`: with nothing queued or sent, "last sequence" starts sequence 0. **keep**.
+- `test_replacing_nothing_at_all_starts_a_sequence`: the same for the replace mode. **keep**.
+- `test_a_replacement_onto_a_row_with_no_sequence_is_refused_before_the_clear`: a replacement anchored on a restored row with no sequence on record raises `SequenceRefused`, and the queue and the file are untouched. **keep**.
+- `test_the_queue_is_read_once_for_the_sequence_being_added_to`: a batch acts on one read of the queue, so a queue BLACS empties mid-batch does not turn "add to last sequence" into a new sequence. **keep**. Evidence: reading the queue twice in `get_submission_anchor` makes it fail. It simulates the race by replacing `app.get_queue_append_filepath`, so it is tied to that method name.
+- `test_a_replacement_batch_joins_the_sequence_blacs_is_running`: a replacement joins the sequence BLACS is running, throws away the waiting work, and takes back its run numbers. **keep**.
+- `test_a_remote_engage_carries_out_the_mode_and_receipts_each_shot`: a remote `engage(mode)` carries out the mode and returns a receipt per shot, and the queue lists those shots. **keep**. Evidence: the server dropping the mode fails it.
+
+#### ShuffledEngageTests: Engage with the shuffle button down or an axis's box checked (drives Engage on the app)
+
+- `test_a_shuffled_batch_keeps_each_shot_named_for_the_globals_it_carries`: with the shuffle button down, the batch is queued in shuffled order and each file is named for the globals compiled into it. **keep**. Evidence: ignoring the button fails it.
+- `test_an_axis_is_shuffled_only_when_its_shuffle_box_is_checked`: an unchecked axis keeps its order; a checked one is shuffled. **keep**. Evidence: ignoring the box fails it.
+
+#### CompileOnlyEngageTests: Engage with neither destination ticked (drives Engage on the app)
+
+- `test_the_shots_are_compiled_and_go_nowhere`: with Run shots and View shots off, the batch is compiled, its files kept, and nothing is queued or sent to runviewer. **keep**. Evidence: queueing the batch anyway makes it fail.
+
+#### CompileErrorTests: what a remote caller is told when a compile fails
+
+- `test_a_shot_that_fails_to_compile_leaves_the_queue_with_its_error`: a queued shot that fails to compile leaves the queue at once, the error in its message. **keep**.
+- `test_a_test_compile_answers_with_the_error_and_queues_nothing`: `test_compile` compiles the window's first shot into a scratch file, answers with the failure, and queues nothing, claims no sequence, touches no folder. **keep**. Evidence: claiming a sequence index makes it fail.
+
+#### DisabledScanTests: a scan turned off remotely stops expanding the shots compiled
+
+- `test_a_scan_disabled_remotely_then_compiled_runs_the_default`: after `set_scan_enabled` off, `test_compile` runs the default even when the axes list still holds the scan's axis. **fix**. The comment narrates history ("as a write collision once made it"); say what is true now. The test is the only guard on a stale axis: dropping the filter in `expand_globals` that skips an ordered axis the globals no longer produce fails this test and no other.
+
+#### GlobalEditTests: expansions, units, and creating and deleting globals, in the file and in an open tab
+
+- `test_an_expansion_set_remotely_is_read_back`: `set_expansions` is read back by `get_expansions`, and a non-string expansion raises `TypeError`. **keep**.
+- `test_units_are_read`: `get_units` returns the units of the active globals. **keep**.
+- `test_a_global_created_remotely_has_its_value_and_units_and_is_not_made_twice`: `create_global` stores the value and units, and creating it again raises. **keep**.
+- `test_a_global_deleted_remotely_is_gone_and_an_unknown_one_is_refused`: `delete_global` removes a global; deleting an unknown one raises `ValueError`. **keep**.
+- `test_edits_to_a_group_open_in_a_tab_show_in_the_tab`: remote creation, expansion and deletion show in a group tab that is open. **keep**. Evidence: skipping the tab's units update fails it.
+
+#### GroupActivationTests: groups of one name in two open files are told apart by file
+
+- `test_groups_are_listed_by_file_and_activated_by_file`: `get_groups` lists by file and `set_groups_active` activates by file; a batch naming an unknown group changes none. **fix**. The last assertion cannot fail for the reason it states. File A's `g` is already active, so the batch's `{file_b: {'g': True}}` half is refused by the two-active-groups rule whatever happens to the unknown `h`. Evidence: replacing the unknown-group refusal by skipping it leaves the test passing. Use a batch whose valid half would succeed alone, such as `{file_a: {'g': False, 'h': True}}`, and assert `g` is still active.
+- `test_two_active_groups_of_one_name_are_refused`: activating a second group of the same name raises `ValueError` and changes nothing. **keep**. Evidence: removing the check fails it.
+
+#### PreparseFailureTests: a command waiting on the preparse is answered even if the preparse fails
+
+- `test_a_command_waiting_on_a_preparse_is_answered_after_one_fails`: after a failed preparse, `n_shots` is still answered and the failure still reported. **fix**. It fails as a hang. With the `task_done` in `preparse_globals_loop`'s `finally` removed, the assertion fails, then the cleanup `server.shutdown` joins the handler stuck in `wait_until_preparse_complete` and never returns (a faulthandler dump shows it; the run had to be killed, exit 143). Release the waiter before the server shutdown in the test's cleanups (cleanups run in reverse), so a regression reports a failure.
+
+#### Mutations run in a scratch copy of CodeHealth (57d3d21), each restored afterwards; pytest's exit status read unpiped
+
+Positive control: a mutation in the copy's `queueing.py` failed the expected tests, so the copy's runmanager is the one imported. Broken, one at a time: a rejected row's `pending` set True; delete of a rejected row refused; `get_queue` rows all 'queued'; `REFUSED_STATES[BLACS_CANCELLED]` True; the departed lyse outcome ignored; the carried lyse outcome dropped; late-compile file not deleted; Run shots off still queues; stale-axis filter in `expand_globals` removed; compiling names not skipped; next run number forgetting earlier batches; recorded-sequence join disabled (three runs); Shuffle button ignored; axis shuffle box ignored; `get_submission_anchor` reading twice; join ignoring the sequence index; labscript-file check removed; first submission joining the queue's sequence; last entry not set in the window; unknown-global message reworded; shot count in the expand message replaced by 0; raise moved after the queue; test-compile claiming a sequence index; remote engage dropping its mode; tab units update skipped; duplicate-group check removed; unknown-group refusal turned into a skip; `task_done` removed from the preparse loop. A probe subclass of `SubmitShotsTests` confirmed rows are queued at submission.
+
+- Test files: 1. Tests: 48, with 17 subtests.
+- Marks: keep 35, rename 2, fix 8, cut 3.
+
+### tests/test_analysis_submission.py
+
+Shots runmanager's `AnalysisSubmission` sends to lyse, through a real `LyseClient` to a
+real `LyseServer`; lyse's window is a stand-in holding the incoming queue.
+- `test_a_submitted_shot_reaches_lyse_as_its_local_path`: a completed shot handed to the submission arrives in lyse's incoming queue as this machine's path. **keep**.
+- `test_a_shot_lyse_refuses_is_dropped_not_retried`: a shot lyse answers with a refusal is offered once and not again, so it cannot go ahead of the next shot. **keep**.
+- `test_each_shot_file_is_reported_as_sent_rejected_or_not_sent`: each shot file is settled with one outcome (sent; rejected with lyse's reason; not sent because Analyse is off or because it was cleared while lyse was away), and a connection failure is retried, not reported. **fix**. It pins message text at two places: `'Analysis is off.'` and `'Cleared before it was sent to lyse.'`. Rewording either string in `analysis_submission.py` fails the test with the behaviour unchanged (both mutated, see Evidence). Assert the path, the kind `'not sent'` and that a reason is given, not its words. The `assertIn('lyse cannot take shots', ...)` stays: that is lyse's own reason relayed, and dropping the relay fails it.
+- `test_a_shot_waits_while_lyse_is_away_and_goes_once_it_is_back`: a shot sent while lyse is down is kept, and goes to lyse once it is back and a retry is made. **keep**.
+
+### tests/test_blacs_status.py
+
+`blacs_state`: what runmanager says BLACS is doing, worked out from BLACS's `get_status` answer. The output is words shown beside the BLACS light, so the words are what is asserted (the tooltip and stop-reason checks only loosely).
+- `test_the_state_says_whether_blacs_is_asking_for_work`: with no shot running, the state says whether BLACS is requesting shots. **keep**.
+- `test_a_blacs_running_a_shot_names_the_shot`: a BLACS running a queued shot says `running <file name>`, even while it still requests more. **keep**. The base case: the next two repeat its state assertion for their variants.
+- `test_a_shot_blacs_ran_on_its_own_is_told_apart_from_queue_work`: a shot with no id is the BLACS local override, and the tooltip says it is not a queued shot. **keep**.
+- `test_a_shot_path_from_another_machine_still_names_the_shot`: a shared-drive-agnostic Windows path still names its file and is shown in this machine's form. **keep**.
+- `test_the_reason_blacs_stopped_is_in_the_state`: when BLACS has stopped with an error, the state says it stopped and gives the reason. **keep**.
+
+### tests/test_compiler_restart.py
+
+Restarting the compiler subprocess while a shot is compiling; the child is a thread at the far end of real zprocess queues, the rest is runmanager's own.
+- `test_a_restart_during_a_compile_does_not_wedge_later_compiles`: pressing Restart subprocess mid-compile frees that compile and sends the next shot to the new child, not the old one. **fix**. The compile in flight is freed only by the fake `['done', False, ...]` reply that `on_restart_subprocess_clicked` puts on the queue, and that reply can be deleted with the test still passing: the test calls `release.set()` straight after the restart, so the old child finishes the compile itself and replies (mutated, exit 0). The case Restart exists for, a child that is hung, is not tested. Fix: keep the old child hung until the new one has compiled the later shot (`release.set()` as a cleanup, not before), give `FakeChild` a `terminate()` that ends it, because runmanager terminates a child that does not quit within 2 s, and optionally assert the first compile came back failed. I tried this in the scratch copy: it passes on the real code and fails with the fake reply removed. The other three parts of the restart (holding `child_ready`, telling the child to quit, marking the new child ready) are enforced already.
+
+### tests/test_configuration.py
+
+The shots waiting in the queue, in a saved configuration.
+- `test_queued_shots_come_back_at_startup_and_a_later_load_leaves_them`: a saved configuration brings its queued shots back when runmanager starts, a load during a session leaves the session's own queue, and the saved queue settings (paused) apply either way. **rename**. The name omits the third behaviour, the settings applied on every load. Proposed: `test_queued_shots_return_only_at_startup_but_queue_settings_load_every_time`.
+
+### tests/test_frozen_globals.py
+
+Shots frozen from scanned globals compile back to what was scanned.
+- `test_a_scanned_value_compiles_back_to_exactly_what_was_frozen`: the text a scanned value is frozen as, when compiled, gives back every digit and every element of the value, including a 2000-element array. **fix**. The assertions sit in `for shot, frozen in pending:` and nothing asserts `pending` has any shots, so the test passes when `get_shots_with_frozen_globals` returns no shots at all, or only the first of the two (both mutated, exit 0). Add `self.assertEqual(len(pending), 2)` before the loop. As written it does fail on the real fault: plain `repr` instead of `np.printoptions(..., floatmode='unique')`, or without `threshold=sys.maxsize`, both exit 1.
+
+### tests/test_globals_file.py
+
+Edits to a TOML globals file.
+- `test_edits_from_two_threads_all_persist`: two threads editing different globals of one file at once, as a remote call and the preparse do, lose none of the edits. **keep**. Removing the lock fails it every time (3 of 3 runs).
+
+### tests/test_legacy_globals_file.py
+
+Legacy HDF5 globals files, which are read-only until converted to TOML.
+- `test_opening_a_legacy_file_with_a_list_global_stores_nothing`: opening a legacy file whose global is a list does not try to store an expansion guess in it. **keep**.
+- `test_a_global_the_file_expands_arrives_as_a_scan`: a global the legacy file expands is read as a scan with its expansion and shot count; a global with none, and a group written before expansions were stored, have no scans. **keep**.
+- `test_a_converted_file_holds_the_globals_the_legacy_file_did`: converting a legacy file to TOML keeps every expression, unit, expansion and scan flag. **keep**. It compares the converted file against the legacy read, so it catches conversion losses and leaves reading errors to the test above (each mutation fails only its own test).
+
+### tests/test_new_globals_file_dialog.py
+
+The save panel behind *New globals file*; only the OS panel is replaced, and what is read back is the name it was offered and what the handler does with the answer. The macOS panel invents an extension for a bare folder, so the name offered must carry `.toml`.
+- `test_the_offered_filename_carries_the_toml_extension`: the panel is offered a file name ending in `.toml`, so it keeps the extension and only the stem is typed over. **keep**.
+- `test_the_offered_filename_sits_in_the_last_opened_folder`: the panel opens in the folder globals files were last opened from. **keep**.
+- `test_a_name_returned_without_the_extension_is_given_one`: a name returned without `.toml` still makes a `.toml` globals file, which is written and opened. **keep**.
+- `test_a_name_returned_with_the_extension_keeps_it_as_it_is`: a name that already ends in `.toml` is not given a second one. **keep**.
+
+### tests/test_send_to_runviewer.py
+
+`send_to_runviewer` through the real `RunviewerClient` to a real `RunviewerServer`; only the process start is faked.
+- `test_a_shot_reaches_a_running_runviewer_as_its_local_path`: with runviewer running, the shot reaches it as its local path and no second runviewer is started. **keep**.
+- `test_runviewer_is_started_when_nothing_is_listening`: with nothing listening, exactly one runviewer is started and then given the shot. **keep**. `assertIn('runviewer', self.launched[0])` matches an argv element, so it pins the `python -m runviewer` form of the launch; a different launch command for runviewer would need that line loosened.
+- `test_the_operator_is_told_when_runviewer_cannot_take_the_shot`: when runviewer refuses the shot, its own reason reaches the output box. **keep**.
+
+### tests/test_sequence_attrs.py
+
+The sequence a default shot belongs to.
+- `test_every_default_shot_of_a_day_is_in_one_sequence`: default shots made at different times of one day share one sequence id, have sequence index -1, and claim no sequence index. **keep**.
+- `test_default_shots_named_by_a_global_are_numbered_through_a_restart`: default shots count 0, 1, 2 as run numbers, written into the shot files with the sequence's attributes, even when the day's file names differ by a global and runmanager is restarted between them. **keep**.
+
+### tests/test_value_column.py
+
+The foldable Default and Scan expressions in a group tab: a real `GroupTab` in a real tree view, rendered offscreen, driven by mouse and key events.
+- `test_native_fold_shows_two_distinct_editable_expressions`: the inactive expression sits folded under its global, shows when the row is unfolded, and each expression is edited and saved on its own. **rename**. "Native fold" says how, not what. Proposed: `test_the_second_expression_unfolds_under_its_global_and_each_expression_edits_on_its_own`.
+- `test_rendered_label_and_text_follow_active_expression`: the value cell draws a label and text that change when Scan is ticked (the label reads default or scan). **keep**.
+- `test_toggling_scan_commits_editor_and_swaps_active_expression`: ticking Scan commits a half-typed default first, then makes the scan expression the active one; unticking returns to the default. **fix**. The first line binds `parent` and never reads it (found by an AST scan for names assigned and never read; its other hits are the intentional `_qapplication` holders and the `labscript_utils.h5_lock` side-effect imports); use `_`.
+- `test_remote_toggle_preserves_other_globals_uncommitted_editor`: a remote change of another global's Scan or JIT leaves the half-typed editor of the global being edited open and uncommitted. **keep**.
+- `test_ticking_scan_with_no_scan_opens_its_line_for_typing`: ticking Scan on a global with no scan expression opens the scan line for typing, and what is typed is saved. **keep**.
+- `test_keyboard_and_copy_follow_selected_expression`: typing on a selected expression edits that one and Copy copies the selected one, default or scan. **keep**.
+- `test_checkbox_cells_toggle_and_shift_click_preserves_selection`: a click anywhere in a Scan or JIT cell toggles it, and a shift-click does not toggle it. **rename**. The test never asserts the selection, which is Qt's own: it asserts only that the shift-click leaves the box alone. Proposed: `test_a_click_in_a_checkbox_cell_toggles_it_and_a_shift_click_does_not`.
+- `test_child_selection_targets_the_global_for_bulk_changes`: a bulk change applies to the global when its folded child row is the one selected. **keep**.
+- `test_metadata_refresh_keeps_uncommitted_editor_text`: a refresh of an expression's display (backgrounds, tooltip) does not replace text the user is typing. **keep**. Not the same guard as the remote-toggle test: removing it fails this test and leaves that one passing.
+- `test_expansion_selection_and_sort_survive_scan_toggle`: ticking Scan keeps the global unfolded, selected and current, and re-sorts the list on the new value. **keep**.
+- `test_arrow_keys_visit_expanded_child`: Down from an unfolded global's value goes to its folded child, not to the next global. **keep**. Not a Qt fact: `ItemView.moveCursor` moves flat, and `GlobalsTreeView.moveCursor` is what lets Down enter the child (mutated, exit 1).
+- `test_tab_from_active_value_goes_to_units`: Tab from the value editor commits and moves on to Units, not down a row. **keep**. Qt's own Tab in a tree moves down a row, so this is `GlobalsTreeView.moveCursor` (mutated, exit 1).
+- `test_hidden_unicode_in_inactive_expression_stays_visible`: an expression with a hidden character in the folded line forces the fold open and cannot be collapsed. **keep**.
+
+#### Totals (eleven files)
+
+- Test files: 11 (and `fixtures.py`, `conftest.py` as context). Tests: 38, with 6 subtests.
+- Marks: keep 31, rename 3, fix 4, cut 0.
+- rename: `test_queued_shots_come_back_at_startup_and_a_later_load_leaves_them`, `test_native_fold_shows_two_distinct_editable_expressions`, `test_checkbox_cells_toggle_and_shift_click_preserves_selection`.
+- fix: `test_each_shot_file_is_reported_as_sent_rejected_or_not_sent` (pins two message texts), `test_a_restart_during_a_compile_does_not_wedge_later_compiles` (cannot fail without its fake reply), `test_a_scanned_value_compiles_back_to_exactly_what_was_frozen` (vacuous loop), `test_toggling_scan_commits_editor_and_swaps_active_expression` (dead `parent`).
+
+#### Evidence (eleven files)
+
+Scratch copy: `git archive CodeHealth` extracted to `.../scratchpad/contract_other/copy`, with `copy/runmanager/__init__.py` confirmed as the imported package. One line broken at a time by `.../contract_other/mut.py`, which restores the file; each test then run alone from inside the copy: `cd copy && LABSCRIPT_NO_ERROR_DIALOG=1 ~/miniforge3/envs/labscript/bin/python -m pytest tests/<file> -q -p no:cacheprovider -k <name>`. Exit status read directly. Baseline before any mutation: 38 passed. After the mutations the copy was diffed against a fresh `git archive` and was identical. Exit 1 = the test failed (caught); exit 0 = it still passed.
+
+Backing the fix and rename marks:
+- `test_a_scanned_value_compiles_back_to_exactly_what_was_frozen`: `get_shots_with_frozen_globals` returning `[]` for its shots, and returning only `shots[:1]`: both exit 0, so it cannot fail on them. Plain `repr`, and dropping `threshold=sys.maxsize`: both exit 1.
+- `test_a_restart_during_a_compile_does_not_wedge_later_compiles`: the `from_child.put(['done', False, ...])` fake reply deleted from `on_restart_subprocess_clicked`: exit 0, so it cannot fail on that. The prototype with the old child kept hung (scratch copy only) passes on real code and exits 1 on that same mutation. Exit 1 for: `self.child_ready.clear()` removed; `to_child.put(['quit'...])` removed; `self.child_ready.set()` after the spawn removed.
+- `test_each_shot_file_is_reported_as_sent_rejected_or_not_sent`: fails on a harmless rewording, exit 1 with `'Analysis is off.'` changed to another sentence (subtest "Analyse is off"), and with `'Cleared before it was sent to lyse.'` changed (subtest "cleared while lyse is away"). Relaying lyse's reason replaced by a fixed word also exits 1, so that assertion stays.
+- `test_checkbox_cells_toggle_and_shift_click_preserves_selection`: shift-click toggling exits 1, and a click that does not toggle exits 1, so the toggle half is enforced. The selection half is not asserted anywhere in the test (read from the code, not mutated).
+
+Mutations that fail the keeps (all exit 1):
+- analysis_submission: a rejected shot also kept for retry (`success = False`) fails `test_a_shot_lyse_refuses_is_dropped_not_retried`; a connection failure counted as delivered fails `test_a_shot_waits_while_lyse_is_away_...`. `test_a_submitted_shot_reaches_lyse_as_its_local_path` was not mutated: its one assertion is the path arriving through `add_shot`.
+- blacs_status: `path_to_local` removed; override note removed; `shot_path` branch disabled; error left out of the state; `requesting_shots` ignored. Each fails its own test.
+- new globals file dialog: suggested name `untitled`; suggested folder `~`; extension guard removed; guard replaced by always append. Each fails its own test.
+- send_to_runviewer: `add_shot` removed; `say_hello` always failing (second server on the port); launch command changed to `-m blacs`; launch replaced by a no-op; the add_shot error not shown. Each fails its own test. A mutation that only changed `if os.name == 'nt'` to `if False` is equivalent on POSIX and was not counted.
+- sequence_attrs: not dated from the start of the day; default shot claiming a sequence index; run count forgotten after a restart (`start = 0`); run number always 0. Each fails its own test.
+- globals_file: lock removed from `_locked`, three runs, each failed with a stale value.
+- configuration: rows restored on every load; rows never restored; queue settings applied only at startup. Each fails.
+- legacy: `scan_enabled` no longer derived from the expansion fails only `test_a_global_the_file_expands_arrives_as_a_scan`; the converter dropping units fails only `test_a_converted_file_holds_...`; the legacy guard removed from the last loop of `guess_expansion_modes` fails the stores-nothing test.
+- value column, all 13 mutated: scan child not editable (1); delegate label constant, and expression text not painted (2); no commit on swap (3); swap commits any open editor (4); no `edit_cell` on tick (5); `AnyKeyPressed` removed, and Copy copying nothing (6); click not toggling (7); child selection not mapped to its global (8); `setEditorData` guard removed (9); no re-sort after a tick (10); `GlobalsTreeView.moveCursor` always flat (11); Tab as Qt's native next row (12); auto-expand removed, and collapse allowed (13).
+
+Not done: the three stand-ins (lyse window, compile child, OS save panel) were not replaced by real ones. The lyse window and the panel cannot run in a test. The compile child could be a real `batch_compiler` process, but the test is about the restart's queue handling, not compiling.
