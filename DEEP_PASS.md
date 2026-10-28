@@ -424,3 +424,149 @@ Mutations that fail the keeps (all exit 1):
 - value column, all 13 mutated: scan child not editable (1); delegate label constant, and expression text not painted (2); no commit on swap (3); swap commits any open editor (4); no `edit_cell` on tick (5); `AnyKeyPressed` removed, and Copy copying nothing (6); click not toggling (7); child selection not mapped to its global (8); `setEditorData` guard removed (9); no re-sort after a tick (10); `GlobalsTreeView.moveCursor` always flat (11); Tab as Qt's native next row (12); auto-expand removed, and collapse allowed (13).
 
 Not done: the three stand-ins (lyse window, compile child, OS save panel) were not replaced by real ones. The lyse window and the panel cannot run in a test. The compile child could be a real `batch_compiler` process, but the test is about the restart's queue handling, not compiling.
+
+## Step 2.1: behaviour no one asked for
+
+The source is `git diff master CodeHealth`: 338 commits, merges included, and
+runmanager's package and docs +6411 −2077 lines. Line references are to
+`72baf75`, whose sources are those of `57d3d21`. Almost every behaviour the fork
+added traces to a request, to Ian's plan for the queue, or to a contract he
+agreed. The March work (fa0b98c..0f55afe) has bare commit subjects; its record
+is labscript-suite's `RunmanagerQueue.md` (8fcb362, 2026-03-17, deleted in
+45eb515) and the branch entries in `CODEX.md`.
+
+| Behaviour | Commits | Where it was asked for |
+| --- | --- | --- |
+| TOML globals files with a Default and a Scan field, Scan? and JIT? per global, Expansion only with Scan?; HDF5 globals read as an import and converted to TOML at the first edit; unknown keys kept | fa0b98c, deeffe4, 1bc4313, bf675b5, 9c2942e | `RunmanagerQueue.md` steps 3 and 4; `RunmanagerTOMLGlobals` in `CODEX.md`. JIT? comes from `LAZY_COMPILE.md` (deeffe4) and was named by Ian on 2026-09-29; unknown keys kept, Ian (memory `runmanager-toml-rules`) |
+| An HDF5 file's expanded globals arrive as scans; no expansion guess is stored in one; a remote set of one is refused; one warning per file | f76fca0, 464ea2a, 7a84b00, 0df67ea | Bugs found on 2026-09-25, hotfixed onto Production (dc824d6, a367fdd); the 2026-09-29 review; the campaign's legacy-file warning. 464ea2a overrides the plan's "Legacy HDF5 scan semantics are intentionally not preserved" |
+| One Value(s) column, the expression not in use folded below it; cell colours from the theme | 96f4dd7, ee14b7e, 3a2188d, e4a440f, 831d384, 94c7f95, 5c54e64, 5bb5ba5 | `GlobalsValueColumn` in `CODEX.md`, a prototype for Ian to try in the lab |
+| Remote getters and setters named after the field they touch, `get_globals` as what runs, a refused batch writing nothing, `set_globals` gone | 1bc4313, ae80fee, 6258451, 5a766bc, b6b9a7f, c7bf121, 8b06041, 4cd262d, 4e89cd8 | Ian's M1 ruling, 2026-09-29 (memory `runmanager-value-and-scan-fields`); `PreexistingReviewFixes` in `CODEX.md` |
+| The queue in runmanager: its tab, eager and lazy compile, the empty-queue policy and default-shot file, Delete by key and menu, Clear deleting files, the queue saved with the front panel and restored only at startup, uncompiled eager rows compiled after a restore | 208d130, 9631c64, deeffe4, 72d5c12, 7fb935b, 8d0ee0d, 41c22cf, 35c0bdc, af2bc10, da162e9, 4e2a0fa, de97960, 57198bb | `RunmanagerQueue.md` step 5; `RunmanagerQueue` and `RunmanagerQueueSimple` in `CODEX.md`; the 2026-08-28 review's slices (meta `issues/runmanager_issues_2026_08_28.md`, 6a22e24); Ian's M2 ruling (memory `runmanager-queue-saved-with-front-panel`) |
+| Engage's hold menu of four submission modes, greyed with no last sequence | 51d3bc3, 30eec60, 9c84e0c, 0759ac0, bc93c37, aaff64a, ada06a0 | `RunmanagerQueueSubmissionTypes` in `CODEX.md`; the names from `AgentEngage` |
+| "Add shots to last sequence" always joins; the sequence record keyed by id and index; a join refused for an unknown sequence or another labscript file; a replacement numbered around shots still compiling; joined shots named from their sequence's formats | a616e5c, 94b90db, 60cce11, 73a15d6, c5888b3, 37c388b, d779c9d, d08af64, 8e52d6d, 8f4f289, a56169f, 2827765, 3427363, 7cedeec, fc3372b | Ian, 2026-10-08 (memory `runmanager-add-to-last-sequence-always-joins`); the 2026-09-24 review's slices 2, 3, 4, 9 and 16 (runmanager's `issues/runmanager_issues_2026_09_24.md` at 66aec0d), the HITL ones decided by Ian |
+| Output-folder and filename-prefix templates read globals; braces kept; two formatting passes | c29bfba, 0f55afe, 506caf2, 2d41314, cb35865, 2e19640, 523ad2c | `RunmanagerGlobalFormatStrings` in `CODEX.md`; Ian, 2026-09-29 and 10-11 (memory `runmanager-shot-names-no-braces`) |
+| The BLACS handover: one exchange, a stable `shot_id` per row, the reserved first row, red failed and rejected rows, Pause queue, Delete cancelling a running row, the reclaim, repeated outcomes harmless, errors answered rather than raised, unreadable outcomes refused, a completion with no row still sent to lyse, pending while the head compiles, BLACS's status beside its checkbox | 03ee4d9..83179fc, 0e8f1ce, 1c06af0 | `RunmanagerControl` in `CODEX.md`; blacs's `docs/source/shot-management.rst`, the contract of record |
+| Default shots as ordinary rows of the day's default sequence (index −1), numbered within it, left out of a saved queue, dropped after a globals change, a failed one's file removed | 9631c64, 265fcd3, 6499c12, 7ca1ee1, f54ea89, c4a668b, 6550507 | `RunmanagerQueue.md`'s standard shot; `shot-management.rst`, "Default shots"; the 2026-09-24 review's slice 10; meta 283c329 |
+| Each shot's id written into its file, `submit_shots`, `shot_status`, `n_runs` as the sequence's reach when a file is written, a failed preparse releasing its waiting callers | d3e5f08, 29f798a, daa0274, 4178be4, 453c949, 9b92884, 0687152, b9409da, cd81188, c1a3862 | `labscript-optimization` in `CODEX.md`, which submits with `submit_shots`; the 2026-09-24 review of that work |
+| Remote Engage by submission mode with receipts, the lyse toggle, `get_queue`, `test_compile` into a scratch file, the compile traceback on the child's reply, one record per shot with its compile, queue, BLACS and lyse steps, a lyse clear between files | 19db018, ccb16df, 1834a02, c5910ea, a55a688, a336cd0, 2e77c15, 0d5fc2b | meta `issues/runmanager_agent_engage_2026_10_06.md`; `AgentEngage` in `CODEX.md` |
+| Remote expansions, units, groups, and creation and deletion of globals; a temp file per save and a lock per edit; an ordered axis the globals no longer produce skipped; a shot that fails to compile leaving the queue | f0024a6, e6702ef, 00ea2a4, 5d5cf4d | The lab's list (T1–T4, T13–T15), named in merge 5695de2; labscript-agents' `Development` uses the calls (4807785, f25f7d0, 1cdb02d) |
+| lyse submission in runmanager: its row, its retries, refusals not retried | 208d130, 9846f69, b41de54 | `RunmanagerQueue.md` step 9; memory `lyse-submission-decoupled-from-acquisition` |
+| `RunmanagerServer` and `runmanager.client` on labscript-utils' base, `remote.py` building the default client; BLACS, lyse and runviewer reached through their clients | 59a0dab, 7688d1d, 9a73b66, 7e9ebd0, 01a5cd9, a68cda8, c83fba5 | meta `issues/server_interfaces_2026_09_25.md` |
+| The BLACS, lyse and runviewer lights; the destination checkboxes named for their applications, with logos; the window rearranged; a client per light and per runviewer send | f29274a..952216f, 98f8eb8 | `LinkCheck` in `CODEX.md` |
+| Files opened in the labconfig's editor; no `[programs]` keys required | 49f5ffb, a8fcadb | `EditFile` in `CODEX.md` |
+| TOML configuration, its path in the window title, macOS names | 552374d, 7f2fdb0, 6d04b41, ceb5051, 570e029 | `toml`, `UpdatedTitleBars` and `MacOS` in `CODEX.md` |
+| PyQt6 and Qt6's removed APIs; upstream's 2026 work recovered; the Shuffle boxes' check states | 1d9a17f, 36f1e03, 811a3ef, 514fad9, a09dead, d938f95, b835297, 5dd27dd, 9754120, 9f7e270, 3bb19f3, 11d2867, 83b6fa2 | The suite's move to PyQt6; `UpstreamRecovery` and `PreexistingReviewFixes` (L14) in `CODEX.md` |
+| runviewer started without `os.fork`; compiles held while the compiler restarts; Empty queue stopping a batch compiled for runviewer alone; each shot keeping its View shot(s) choice; Engage with neither box ticked compiling; `get_labscript_file` answering `''` | 9ba9c52, 0fea5cd, 796634d, 5765d7e, 4fb0c60, 1dac815, 8fb99f6, 9a7b0e4, 1362cef | Bugs: the RunmanagerControl operator pass (`CODEX.md`), the 2026-09-29 review, and the mapping pass (meta fa91d9f) |
+| Shared code, version scheme, docs and the campaign's earlier rounds, among them `LabscriptGuiApplication`'s save prompt and window geometry, which upstream runmanager did not save | 5db8175, 538ce6c, 9877b45, 26a7777, 74457a7, 20ee516, 169056a, 16857fd, 3dcdfea, e3e03ac, 6e80ffb, e21a5f2, bdf128f | The campaign's approved rounds; the geometry came with blacs's D1 |
+| Test environment and test rules | 1729743, ad0ab10, c8a1a26, 7b44155, 4335491, 3dd56d0, 65991aa, 9c36351..72baf75 | The workspace's test rules and Ian's rule 13 |
+
+Not candidates:
+
+- The handover's guards are stated in `shot-management.rst`. The one line it
+  does not state, the red output line when a running row is offered again,
+  the 2026-08-28 review's slice 3a asked for ("announced").
+- A bare path in a saved queue becomes a compiled eager row
+  (`queueing.py:279-280`): Production saves its queue as bare paths
+  (`Production:runmanager/queueing.py:175-181`), so this restores a lab's
+  configuration.
+- The remote setters' type checks (`__main__.py:4997-5008`): PyQt6's
+  `setChecked` already refuses a str, None or numpy bool (checked offscreen),
+  and without them `set_scan_enabled({'x': 'False'})` would store True.
+- The refusal of a remote set of an HDF5 globals file (7a84b00): the Convert
+  dialog would otherwise hold the server.
+- The refusal of a remote group activation that leaves two active groups of
+  one name (8ee58d8): Ian asked for it on 2026-10-27, through the coordinator,
+  after the lab's remote calls. It refuses at the remote boundary; the
+  preparse's dialog itself waits for the suite-wide notification bar (item 21
+  of the 2026-10-07 review).
+- Fixes of faults the reviews reproduced, such as compiles held during a
+  restart and a replacement never taking a compiling shot's name.
+- For step 4: `notify_shot_complete`'s `return 'queued'`
+  (`analysis_submission.py:160`), which nothing reads; `prepare_queue_shot`'s
+  `active_groups is None` (`__main__.py:4583`), which
+  `get_active_groups(interactive=False)` never returns; the `None` checks at
+  `__main__.py:2482` and `:2488`; `get_queue_paths()`'s default
+  `include_default_shots=True`, used only by tests; `remote.py`'s demo block
+  (`:39-47`); the upstream functions taken out of `__init__.py`, and
+  `set_globals` (b083388, 610f9a4, 4cd262d). For step 5:
+  `docs/source/index.rst:31` still links the BitBucket archive.
+
+### Candidates
+
+| | Behaviour | Cost | Recommendation |
+| --- | --- | --- | --- |
+| A | An expression holding an invisible or control character gets an icon and a tooltip line, and its row refuses to collapse while the expression not in use holds one (`__main__.py:221-243`, `:1536-1537`, `:1555-1574`, `:1008`). It came with the TOML commit fa0b98c; no request was found, and `RunmanagerQueue.md` does not name it. Python already refuses such a character outside a string literal, and that error shows in the cell's tooltip, so the warning adds string contents and the expression not in use | about 35 lines, one test | keep the icon and tooltip; drop the refusal to collapse (`on_global_collapsed`, 8 lines) |
+| B | The globals view's Copy shortcut, `on_globals_copy` (`__main__.py:1022-1028`, `:1220-1224`), from the value-column review (ee14b7e), when one cell drew two expressions. Since the tree (e4a440f) it copies the current cell's text, which Qt's item view does itself on the Copy key: shown offscreen on a plain `QTreeView` | 12 lines; one test calls the method directly | cut; the test sends the Copy key instead |
+| C | `ItemView.moveCursor` steps past hidden columns (`__main__.py:528-532`), added in ee14b7e for the value column's hidden Scan column. e4a440f removed that column, and no runmanager view hides one now | 6 lines | cut, back to upstream's `sibling` |
+| D | `new_sequence_details(format_globals=)` (`__init__.py:593`, `:639`), added for default shots (0f55afe). Its last caller went in cb35865, and no repo passes it | 3 lines | cut |
+| E | `runmanager.remote.queue_exchange` (`remote.py:37`, 03ee4d9), BLACS's exchange as a flat function for user code. No repo's history has called it: BLACS used `remote.Client`, then `RunmanagerClient` (blacs 47aefd6). `shot-management.rst` says a request for work from anywhere but BLACS's shot loop hands one shot out twice | 1 line | cut |
+| F | `skip_missing` on `set_scans` and `set_expansions` (2e77c15, f0024a6). labscript-optimization passes it only to `set_values`, and labscript-agents, `CodeHealth` and `Development`, passes it to none | about 10 lines in client and server | keep, as one signature for the three setters |
+| G | `submit_shots` with no entries answers `[]` (453c949, `__main__.py:5390-5394`). labscript-optimization returns before submitting when it has nothing, and it is the only caller; without the check the server raises `IndexError` | 5 lines, one test | keep |
+| H | An unknown compile mode or empty-queue policy, in a saved queue or on a row, is replaced silently by the default (deeffe4, `queueing.py:294-295`, `:674-678`, `:687-688`). runmanager has only ever written `eager`/`lazy` and `nothing`/`default_labscript`, and Production saves neither setting, so only a hand-edited file holds another value | 9 lines | cut |
+| I | A default shot that real work got in front of is dropped, with its file, at the next offer (`drop_overtaken_default_shots`, ecc4262, `queueing.py:709-736`, `:1169-1171`). It guards a race the RunmanagerControl review found between deciding that the queue is empty and enqueueing the default row. `shot-management.rst` does not state it, and no record names it | about 30 lines, one test | keep; step 2.3 traces the race to its cause |
+
+Searched: `CODEX.md` and the meta repo's `issues/`, with their history
+(`git log -p`), including the deleted 2026-08-28 slices; runmanager's `issues/`
+history (the 2026-09-24 slices at 66aec0d), `DEEP_PASS.md`, `LAZY_COMPILE.md`
+and docs; labscript-suite's deleted `RunmanagerQueue.md`; blacs's
+`shot-management.rst`; shared memory; and each commit's message and branch.
+Runmanager's 2026-09-29 review is in no repo; its labels (H3, M1, M2, M8, L9,
+L12, L14) survive in commit messages, `CODEX.md` and memory. The lab's T-list
+is named only in 5695de2. Callers: `git grep` over every repo in the workspace,
+hyde and the meta repo included, tests included, at `CodeHealth` (else `main`
+or `Production`), and at labscript-agents' and labscript-optimization's
+`Development`, each beside a pattern that matched. Users reached: the operator
+through the window; BLACS through `queue_exchange`, `get_status` and its
+integration tests; lyse through `LyseClient.add_shot`; runviewer through
+`RunviewerClient`; labscript-optimization and labscript-agents through
+`RunmanagerClient`; labscript scripts through their globals and shot-file
+attributes; labscript-devices' FunctionRunner through `runmanager.remote`,
+blacs's connection-table plugin through `globals_file`, and labscript-utils'
+profile through `compile_labscript_async`. Of labs' own code, spielman-devices
+imports nothing from runmanager; lab scripts and userlib are not on this
+machine and could not be searched. The two probes ran PyQt6 alone, importing
+nothing of runmanager.
+
+### Bugs found
+
+1. **fix**, both tiers. `__main__.py:4493-4503`: the last of
+   `guess_expansion_modes`' three expansion writes, which clears a zip group
+   from a global that is not iterable, has no legacy-HDF5 skip. f76fca0 gave
+   the other two one, reasoning that an HDF5 import carries no expansion, and
+   464ea2a made it carry them the same day. So an HDF5 global in a zip group
+   whose value is not iterable, such as a dependent of a TOML global changed
+   from a list to a number, raises `LegacyGlobalsFileError` on every preparse:
+   an error window each time, no evaluation in the tabs, and Engage left
+   disabled. Production has the same write (`__main__.py:3884-3891`). Found by
+   reading, not run. The fix is the other two's skip.
+2. **fix**. `__main__.py:2457-2466`: `on_close_event` does not call
+   `discard_default_shot`, so a default shot prepared but not yet collected
+   stays in the day's default folder as a shot nobody ran. Open in meta
+   `issues/runmanager_issues_2026_08_28.md`, whose entry goes with the fix.
+3. **fix**, Ian's decision; otherwise **document**. A default shot that
+   cannot be made is attempted again on every BLACS request. With the
+   default-shot file gone, `offer_shot` raises (`__main__.py:4908-4911`) and
+   each exchange writes a red line, about once a second while BLACS has no
+   local override shot. With a default script that fails to compile,
+   `take_default_shot` (`:4663`) starts a new compile on each request: a
+   traceback each time, and the compiler kept busy ahead of Engage's shots.
+   f54ea89 removed the files this left, not the repetition. A queued shot that
+   fails to compile is not retried (5d5cf4d).
+4. **fix**. `LAZY_COMPILE.md:39-45` says a failed compile leaves its row red at
+   the head, to be recompiled with *Compile again*. Since 5d5cf4d the shot
+   leaves the queue, and there is no Compile again.
+5. **fix**, by blacs's owner. blacs `docs/source/shot-management.rst:112-119`
+   and `:219-221` say the same of a shot that fails to compile. runmanager's
+   `usage.rst`, `client.py` and labscript-agents (1cdb02d) already say it
+   leaves the queue.
+6. **fix**, the wording Ian's. `analysis_submission.py:1-13` reads "Copyright
+   2026, JQI, Author: Ian Spielman" (bdf128f, replacing "Copyright 2026, Monash
+   University"). The module is BLACS's upstream `analysis_submission.py`,
+   moved: its mainloop, waiting list, `check/retry` signal and
+   `update_waiting_files_message` are upstream's, under "Copyright 2013, Monash
+   University", a notice the BSD licence requires kept.
+7. **document**, or refuse, Ian's decision. `globals_file.py:92-93` turns an
+   empty expansion on a global with Scan? ticked into `outer` on every save. So
+   `set_expansions({'x': ''})` on such a global answers as though `''` were
+   stored, against `client.py:176-177` ("`''` for none"), and clearing the
+   window's Expansion cell comes back as `outer` after the preparse.
