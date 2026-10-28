@@ -16,7 +16,10 @@ running the test there.
 ### Totals
 
 - Test files: 13, plus `fixtures.py` and `conftest.py`. Tests: 145, with 37 subtests.
-- Marks: keep 111, rename 13, fix 17, cut 4. For Ian to decide; nothing is changed yet.
+- Marks: keep 111, rename 13, fix 17, cut 4. Approved by Ian and applied in
+  9c36351, 19b8587 and 0b43a8c; the suite is now 141 tests, with 27 subtests. Each
+  fix was shown to fail when its behaviour breaks. The entries below keep the old
+  names, as the record of what was decided.
 
 ### For Ian: the non-keep marks
 
@@ -47,7 +50,7 @@ Rename (proposed names in the entries below): test_queueing 8, test_remote_api 2
 
 Prose beside the tests, to correct with them: test_remote_api's file docstring (13 tests drive Engage on the app, not the client) and `ShotStatusTests`' docstring (`pending` is whether BLACS may still complete the shot, not "can still produce a result"); test_queueing's unused `ROW_BACKGROUNDS` import and the never-read `FakeRunManager.compiled`.
 
-Gaps found, not marks (no test is added in this step): nothing in test_queueing sees a lyse outcome that arrives before its row retires; the remote tour never reaches a failed compile.
+Gaps found, kept as notes (no test is added in this step): nothing in test_queueing sees a lyse outcome that arrives before its row retires; the remote tour never reaches a failed compile.
 
 ### tests/test_queueing.py
 
