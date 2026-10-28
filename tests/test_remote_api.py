@@ -160,9 +160,7 @@ class SubmittingApp(object):
         self.compiling = threading.Event()
         # What a compile answers: whether it worked and, if not, why.
         self.compile_result = (True, '')
-        self.test_compile_dir = tempfile.TemporaryDirectory(
-            prefix='runmanager_test_compile_'
-        )
+        self.scratch_dir = tempfile.TemporaryDirectory(prefix='runmanager_scratch_')
         self.axes_model = QStandardItemModel()
         self.queue_compile_mode_combo = types.SimpleNamespace(
             currentData=lambda: COMPILE_MODE_EAGER
@@ -1180,7 +1178,10 @@ class ShuffledEngageTests(RemoteCommandTestCase):
 
 
 class CompileOnlyEngageTests(RemoteCommandTestCase):
-    """Engage with neither destination ticked compiles the batch and leaves it alone."""
+    """Engage with BLACS unticked compiles the batch where runmanager removes it.
+
+    The shots are never run, so they are not a sequence and leave nothing in
+    the shot output folder."""
 
     def make_app(self):
         return SubmittingApp(self.directory)
@@ -1198,6 +1199,7 @@ class CompileOnlyEngageTests(RemoteCommandTestCase):
     def test_the_shots_are_compiled_and_go_nowhere(self):
         self.app.compiling.set()
         self.app.wait_until_preparse_complete()
+        stored = sorted(os.listdir(self.directory))
 
         self.app.on_engage_clicked()
         # The worker compiles the whole batch before it closes:
@@ -1206,6 +1208,18 @@ class CompileOnlyEngageTests(RemoteCommandTestCase):
         self.assertEqual(self.app.said, [])
         self.assertEqual(len(self.app.compiled), 2)
         self.assertTrue(all(os.path.isfile(path) for path in self.app.compiled))
+        self.assertTrue(
+            all(
+                os.path.commonpath([path, self.app.scratch_dir.name])
+                == self.app.scratch_dir.name
+                for path in self.app.compiled
+            )
+        )
+        self.assertEqual(
+            sorted(os.listdir(self.directory)),
+            stored,
+            'and no sequence was claimed and no output folder touched',
+        )
         self.assertEqual(self.app.queue_controller.get_queue_paths(), [])
         self.assertEqual(self.app.sent_to_runviewer, [])
         [batch] = self.app.batches
@@ -1213,6 +1227,9 @@ class CompileOnlyEngageTests(RemoteCommandTestCase):
         self.assertEqual(
             [steps(record) for record in records.values()],
             [('compiled', 'not queued', None, None, False)] * 2,
+        )
+        self.assertEqual(
+            [record['path'] for record in records.values()], self.app.compiled
         )
 
 

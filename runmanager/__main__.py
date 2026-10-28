@@ -2157,9 +2157,12 @@ class RunManager(LabscriptApplication):
         # queue manager starts its worker thread, as that thread compiles
         # shots via self.compile_run_file():
         self.compiler_lock = threading.Lock()
-        # One file, overwritten by each test compile; the directory is removed on exit.
-        self.test_compile_dir = tempfile.TemporaryDirectory(
-            prefix='runmanager_test_compile_'
+        # Shot files that never run: each test compile's, overwritten by the
+        # next, and each batch compiled with BLACS unticked, in a folder of its
+        # own. Removed when runmanager exits, since Windows never clears %TEMP%.
+        # A file runviewer still holds open on Windows is left behind.
+        self.scratch_dir = tempfile.TemporaryDirectory(
+            prefix='runmanager_scratch_', ignore_cleanup_errors=True
         )
         # Each sequence made or added to here, by (sequence_id, sequence_index), as
         # two started in the same second share an id: its newest shot's path,
@@ -2952,7 +2955,7 @@ class RunManager(LabscriptApplication):
         if not labscript_file:
             raise ValueError('No labscript file is selected.')
         output_folder = self.ui.lineEdit_shot_output_folder.text()
-        if not output_folder:
+        if send_to_BLACS and not output_folder:
             raise ValueError('No output folder is selected.')
         active_groups = self.get_active_groups(interactive=False)
         index_start = None
@@ -3005,6 +3008,10 @@ class RunManager(LabscriptApplication):
         if mode.clears_queue:
             self.queue_manager.clear()
         logger.info('Making h5 files')
+        if not send_to_BLACS:
+            # Shots that will never run are not a sequence: they claim no
+            # sequence index, and leave nothing in the shot output folder.
+            output_folder = tempfile.mkdtemp(dir=self.scratch_dir.name)
         run_files = self.name_run_files(
             labscript_file,
             output_folder,
@@ -3013,6 +3020,7 @@ class RunManager(LabscriptApplication):
             index_start=index_start,
             sequence_attrs=sequence_attrs,
             name_format=name_format,
+            increment_sequence_index=send_to_BLACS,
         )
         compile_mode = self.queue_compile_mode_combo.currentData()
         queue_records = []
@@ -3034,11 +3042,12 @@ class RunManager(LabscriptApplication):
         # For a later batch to join. Its next run number is kept here rather
         # than read from files, which shots still being compiled do not have,
         # and never goes down, though a replacement numbers from 0 again.
-        last = queue_records[-1]
-        attrs = last['sequence_attrs']
-        key = (attrs['sequence_id'], attrs['sequence_index'])
-        next_run = max(last['run_no'] + 1, self.sequences.get(key, (None, None, 0))[2])
-        self.sequences[key] = (last['path'], last['sequence_attrs'], next_run, name_format)
+        if send_to_BLACS:
+            last = queue_records[-1]
+            attrs = last['sequence_attrs']
+            key = (attrs['sequence_id'], attrs['sequence_index'])
+            next_run = max(last['run_no'] + 1, self.sequences.get(key, (None, None, 0))[2])
+            self.sequences[key] = (last['path'], last['sequence_attrs'], next_run, name_format)
         return self.queue_manager.compile_shots(
             queue_records, send_to_BLACS, send_to_runviewer
         )
@@ -4605,7 +4614,7 @@ class RunManager(LabscriptApplication):
             labscript_file, config=self.exp_config, increment_sequence_index=False
         )
         record = {
-            'path': os.path.join(self.test_compile_dir.name, 'test_compile.h5'),
+            'path': os.path.join(self.scratch_dir.name, 'test_compile.h5'),
             'labscript_file': labscript_file,
             'active_groups': active_groups,
             'frozen_globals': frozen,
@@ -4825,6 +4834,7 @@ class RunManager(LabscriptApplication):
         index_start=None,
         sequence_attrs=None,
         name_format=None,
+        increment_sequence_index=True,
     ):
         """Name and number the shot files of a batch, without writing them.
 
@@ -4832,7 +4842,8 @@ class RunManager(LabscriptApplication):
 
         ``indexed_path_base`` is a shot whose sequence this batch is joining,
         with ``sequence_attrs`` the sequence of that shot, or None for a
-        sequence of its own.
+        sequence of its own, which claims a sequence index if
+        ``increment_sequence_index``.
         """
         if indexed_path_base is not None:
             # The shot being added to supplies the folder, filename stem and
@@ -4858,7 +4869,7 @@ class RunManager(LabscriptApplication):
                 runmanager.new_sequence_details(
                     labscript_file,
                     config=self.exp_config,
-                    increment_sequence_index=True,
+                    increment_sequence_index=increment_sequence_index,
                     subdirectory_in_prefix=using_default,
                 )
             )

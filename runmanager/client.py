@@ -399,8 +399,11 @@ class RunmanagerClient(ZMQClient):
         a file will be written and not a file that is there yet. With 'BLACS'
         unticked the shots are not queued, so ``get_queue`` does not list them,
         and ``shot_status`` gives each a ``queue`` of ``'not queued'``, with a
-        compile error as its ``message``. ``test_compile`` is how to check
-        that a script compiles without writing a sequence.
+        compile error as its ``message``. Nor are they a sequence: they claim
+        no sequence index, no later batch can join them, and their files are
+        written not to the shot output folder but to a temporary folder that
+        runmanager removes when it exits. ``test_compile`` is how to check
+        that a script compiles.
 
         Parameters
         ----------
@@ -438,8 +441,9 @@ class RunmanagerClient(ZMQClient):
         ValueError
             For a ``submission_mode`` that is not one of these, for any but the
             first while 'BLACS' is unticked, since the others are about the
-            queue, and when there is no labscript file or output folder, or the
-            globals cannot be evaluated or expand into no shots.
+            queue, and when there is no labscript file, or no output folder with
+            'BLACS' ticked, or the globals cannot be evaluated or expand into
+            no shots.
         SequenceRefused
             For a last sequence runmanager has no record of, or one of another
             labscript file.
