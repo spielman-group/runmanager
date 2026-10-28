@@ -292,8 +292,6 @@ class QueueController(object):
             os.path.abspath(str(labscript_file)) if labscript_file else ''
         )
         compile_mode = record.get('compile_mode', COMPILE_MODE_EAGER)
-        if compile_mode not in (COMPILE_MODE_EAGER, COMPILE_MODE_LAZY):
-            compile_mode = COMPILE_MODE_EAGER
         record['compile_mode'] = compile_mode
         record['compiled'] = bool(record.get('compiled', compile_mode == COMPILE_MODE_EAGER))
         # A shot runmanager made for an empty queue.
@@ -691,25 +689,14 @@ class QueueController(object):
 
     def restore_state(self, state, restore_rows=True):
         with self._lock:
-            empty_queue_policy = state.get(
-                'empty_queue_policy', EMPTY_QUEUE_NOTHING
-            )
-            if empty_queue_policy not in (
-                EMPTY_QUEUE_NOTHING,
-                EMPTY_QUEUE_DEFAULT_LABSCRIPT,
-            ):
-                empty_queue_policy = EMPTY_QUEUE_NOTHING
-            self.empty_queue_policy = empty_queue_policy
+            self.empty_queue_policy = state.get('empty_queue_policy', EMPTY_QUEUE_NOTHING)
             default_labscript_file = state.get('default_labscript_file', '')
             self.default_labscript_file = (
                 os.path.abspath(default_labscript_file)
                 if default_labscript_file
                 else ''
             )
-            compile_mode = state.get('compile_mode', COMPILE_MODE_EAGER)
-            if compile_mode not in (COMPILE_MODE_EAGER, COMPILE_MODE_LAZY):
-                compile_mode = COMPILE_MODE_EAGER
-            self.compile_mode = compile_mode
+            self.compile_mode = state.get('compile_mode', COMPILE_MODE_EAGER)
             # A configuration written before there was a pause control opens
             # with the queue running, rather than silently stopped:
             self.paused = bool(state.get('paused', False))
