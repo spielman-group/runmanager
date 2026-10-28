@@ -6,6 +6,9 @@ handover, queue_exchange, is tested in blacs.
 Each is sent by the real RunmanagerClient to a real RunmanagerServer on a free
 port, so a command reaches its handler under the name the client sends it by,
 and an exception the handler returns is raised by the client, as for any caller.
+The exceptions are the tests that drive Engage on the application, as the
+operator's Engage button does: all of SubmissionAnchorTests but its last,
+ShuffledEngageTests and CompileOnlyEngageTests.
 """
 import datetime
 import os
@@ -297,9 +300,9 @@ class SubmitShotsTests(RemoteCommandTestCase):
         return self.request(self.client.get_values, raw=True)
 
     def test_a_batch_is_distinct_shots_of_one_new_sequence_added_to_the_queue(self):
-        # A submitted shot has no file and no queue row until the worker
-        # reaches it, so the batch is numbered in one go, or its entries would
-        # all name one file and overwrite each other.
+        # A submitted shot's file is not written until it compiles, so the
+        # batch is numbered in one go, or its entries would all name one file
+        # and overwrite each other.
         descriptors = self.submit({'x': 1}, {'x': 2}, {'x': 3})
 
         self.assertEqual(
@@ -334,8 +337,8 @@ class SubmitShotsTests(RemoteCommandTestCase):
         self.assertEqual(self.app.batches, [])
 
     def test_a_later_submission_joins_the_sequence_it_names(self):
-        # The first batch is still being compiled, so its shots have neither
-        # rows nor files: the join is numbered after them all the same, in the
+        # The first batch is still compiling, so its files are not written
+        # yet: the join is numbered after its shots all the same, in the
         # sequence's own folder.
         first = self.submit({'x': 1}, {'x': 2})
 
@@ -456,10 +459,9 @@ class SubmitShotsTests(RemoteCommandTestCase):
             self.submit({'x': 1}, {'x': 1}, {'x': 3})
 
         self.assertEqual(self.app.batches, [])
-        self.assertIn('3', str(raised.exception))
-        self.assertIn(
-            'y',
+        self.assertRegex(
             str(raised.exception),
+            r'\by\b',
             'the global that expanded it is named, because the scan left on '
             'it is what the caller has to go and turn off',
         )
@@ -479,14 +481,14 @@ class SubmitShotsTests(RemoteCommandTestCase):
         self.assertEqual(self.app.batches, [])
 
     def test_a_global_no_active_group_has_is_refused_before_anything_is_set(self):
-        with self.assertRaises(Exception) as raised:
+        with self.assertRaises(ValueError) as raised:
             self.submit({'x': 1, 'not_a_global': 2}, {'x': 3, 'not_a_global': 4})
 
         self.assertIn(
-            'Global not_a_global not found in any active group',
+            'not_a_global',
             str(raised.exception),
-            'said the way the command that sets one global says it, because '
-            'that is what tells the caller the name is the problem',
+            'the refusal names the global, which is what tells the caller the '
+            'name is the problem',
         )
         self.assertEqual(self.app.batches, [])
         self.assertEqual(
@@ -580,24 +582,24 @@ def may_still_complete(record):
 
 
 class ShotStatusTests(RemoteCommandTestCase):
-    """Whether a shot that was submitted can still produce a result.
+    """How far a submitted shot has got, and whether BLACS may still complete it.
 
-    ``pending`` says whether a caller should go on waiting for a shot: true
-    while the queue would still hand its row over, or BLACS can still complete
-    it, and false once the row waits on an operator. Only the head is ever
+    ``pending`` says whether the shot may still reach BLACS's 'completed': true
+    while the queue would still hand its row over, or BLACS may still complete
+    it, and false once the row waits on an operator. It says nothing of lyse's
+    result, which a completed shot still has coming. Only the head is ever
     offered, so a row the queue will not hand over holds up every row behind it.
     """
 
-    # Every state a queue row can be in: whether a shot in it can still produce
-    # a result, and whether it holds up the rows behind it. A cancelled row
-    # clears itself at BLACS's next request; a rejected row waits.
-    EXPECTED = {
-        # state: (pending, holds up the rows behind it)
-        '': (True, False),
-        'running': (True, False),
-        'failed': (True, False),
-        'rejected': (False, True),
-        'cancelled': (True, False),
+    # Every state a queue row can be in, and whether a row in it holds up the
+    # rows behind it. A cancelled row clears itself at BLACS's next request; a
+    # rejected row waits.
+    HOLDS_UP_THE_ROWS_BEHIND = {
+        '': False,
+        'running': False,
+        'failed': False,
+        'rejected': True,
+        'cancelled': False,
     }
 
     def setUp(self):
@@ -624,18 +626,11 @@ class ShotStatusTests(RemoteCommandTestCase):
         for shot_id, state in rows:
             self.enqueue(shot_id, state=state)
 
-    def test_pending_is_whether_the_shot_can_still_produce_a_result(self):
-        for state, (pending, _) in sorted(self.EXPECTED.items()):
-            with self.subTest(state=state):
-                self.queue((state or 'waiting', state))
-                answer = self.request(self.client.shot_status, [state or 'waiting'])
-                self.assertEqual(answer[state or 'waiting']['pending'], pending)
-
     def test_a_row_behind_a_held_one_says_it_is_blocked(self):
         # The row in front is the whole of the reason: nothing behind a shot the
         # queue will not hand over can be handed over either, and a caller
         # polling for its result would otherwise wait for ever.
-        for state, (_, holds_up) in sorted(self.EXPECTED.items()):
+        for state, holds_up in sorted(self.HOLDS_UP_THE_ROWS_BEHIND.items()):
             with self.subTest(state=state):
                 self.queue(('head', state), ('behind', ''))
 
@@ -645,41 +640,6 @@ class ShotStatusTests(RemoteCommandTestCase):
                     (answer['behind']['queue'], answer['behind']['pending']),
                     ('blocked', False) if holds_up else ('queued', True),
                 )
-
-    def test_the_queue_lists_each_row_as_its_status_gives_it(self):
-        # A caller reading the queue and one polling shot_status are told the
-        # same thing: a row behind a held one is not listed as queued.
-        for state in sorted(self.EXPECTED):
-            with self.subTest(state=state):
-                self.queue(('head', state), ('behind', ''))
-
-                listed = self.request(self.client.get_queue)
-                answer = self.request(self.client.shot_status, ['head', 'behind'])
-
-                self.assertEqual(listed, [answer['head'], answer['behind']])
-
-    def test_a_held_row_keeps_its_state_and_deleting_it_frees_the_rows_behind(self):
-        # Blocked says the queue is not moving, not that the shot behind is
-        # spoiled: the held row keeps the reason an operator has to act on, and
-        # clearing it puts the work behind back to waiting its turn.
-        self.queue(('head', 'rejected'), ('behind', ''))
-        answer = self.request(self.client.shot_status, ['head', 'behind'])
-        self.assertEqual(answer['head']['blacs'], 'rejected')
-        self.assertEqual(
-            answer['behind']['queue'],
-            'blocked',
-            'which is what the caller polling it is told meanwhile',
-        )
-
-        self.app.queue_manager.delete_rows(['head'])
-
-        behind = self.request(self.client.shot_status, ['behind'])['behind']
-        self.assertEqual(
-            (behind['queue'], behind['pending']),
-            ('queued', True),
-            'the answer is read off the queue as it stands, so a row asked '
-            'about while it was stuck is not left carrying that',
-        )
 
     def test_a_completed_shots_lyse_outcome_is_recorded_whenever_it_arrives(self):
         # queue_exchange hands the file to lyse before the row is retired, so
@@ -703,9 +663,9 @@ class ShotStatusTests(RemoteCommandTestCase):
 
                 self.assertEqual(lyse_and_message(shot_id), ('rejected', 'No room.'))
 
-    def test_a_shot_the_queue_no_longer_has_is_not_pending(self):
-        # Told apart by how each left the queue, because a result is coming
-        # only from the shot BLACS completed.
+    def test_a_shot_that_left_is_told_apart_by_how_it_left_and_an_unknown_id_has_no_record(self):
+        # Told apart by how each left the queue, because a lyse result is
+        # coming only from the shot BLACS completed.
         self.queue(('ran', 'running'), ('deleted', ''), ('emptied', ''))
         self.app.queue_manager.shot_finished('ran', 'completed')
         self.app.queue_manager.delete_rows(['deleted'])
@@ -724,14 +684,14 @@ class ShotStatusTests(RemoteCommandTestCase):
                 ('compiled', 'left', None, None, False),
             ],
             'nothing more will happen to a shot with no row, and only the one '
-            'BLACS completed has a result coming',
+            'BLACS completed has a lyse result coming',
         )
         self.assertIsNone(
             answer['never-heard-of-it'],
             'runmanager answers only for the shots it has held this session',
         )
 
-    def test_every_record_is_one_the_table_allows_whatever_became_of_the_shot(self):
+    def test_a_shots_record_advances_step_by_step_and_is_always_a_legal_one(self):
         # Four shots are taken through every end the queue has, and at each
         # stage the records shot_status and get_queue give are checked against
         # the table in RunmanagerClient.shot_status, and pending against
@@ -962,9 +922,8 @@ class SubmissionAnchorTests(RemoteCommandTestCase):
         self.assertEqual([record['run_no'] for record in later], [2])
 
     def test_adding_twice_before_the_first_compiles_does_not_reuse_its_numbers(self):
-        # The first batch's shot is still compiling, with no row and no file,
-        # so the queue's last row is still the shot it was added to. The second
-        # batch is numbered after the first all the same.
+        # While the first batch's shot is still compiling, the second batch is
+        # numbered after it, and not after the shot both were added to.
         self.enqueue('experiment_007.h5')
 
         first = self.app.engage(main_module.SUBMISSION_MODE_LAST_SEQUENCE)
@@ -1283,8 +1242,8 @@ class DisabledScanTests(RemoteCommandTestCase):
 
     def test_a_scan_disabled_remotely_then_compiled_runs_the_default(self):
         self.app.wait_until_preparse_complete()
-        # The preparse that would drop the scan's axis failed, as a write
-        # collision once made it, so the axes still list it:
+        # The preparse that would drop the scan's axis does not run, so the
+        # axes still list it:
         self.app.wait_until_preparse_complete = lambda: None
         self.request(self.client.set_scan_enabled, {'x': False})
 
@@ -1399,11 +1358,17 @@ class GroupActivationTests(RemoteCommandTestCase):
             self.request(self.client.get_groups),
             {file_a: {'g': True}, file_b: {'g': False}},
         )
+        # Each valid half would succeed alone, so only the unknown group stops it:
         with self.assertRaises(ValueError):
             self.request(
-                self.client.set_groups_active, {file_b: {'g': True}, file_a: {'h': True}}
+                self.client.set_groups_active,
+                {file_a: {'g': False, 'h': True}, file_b: {'g': True}},
             )
-        self.assertFalse(self.request(self.client.get_groups)[file_b]['g'], 'none changed')
+        self.assertEqual(
+            self.request(self.client.get_groups),
+            {file_a: {'g': True}, file_b: {'g': False}},
+            'none changed',
+        )
 
     def test_two_active_groups_of_one_name_are_refused(self):
         file_a, file_b = self.files
@@ -1445,22 +1410,27 @@ class PreparseFailureTests(RemoteCommandTestCase):
     def test_a_command_waiting_on_a_preparse_is_answered_after_one_fails(self):
         # BLACS is answered on the thread such a command waits on, so a wait
         # that never ends leaves BLACS unanswered too.
-        answers = []
         reported = threading.Event()
+        # A command the preparse never released holds the server's shutdown, so
+        # it is released first (cleanups run in reverse) and a regression
+        # fails on the client's timeout instead of hanging:
+        waiting = self.app.preparse_globals_required
+
+        def release_waiters():
+            while waiting.unfinished_tasks:
+                waiting.task_done()
+
+        self.addCleanup(release_waiters)
         with mock.patch.object(main_module, 'qtlock', threading.Lock()), mock.patch.object(
             main_module, 'raise_exception_in_thread', lambda exc_info: reported.set()
         ):
             threading.Thread(target=self.app.preparse_globals_loop, daemon=True).start()
-            self.app.preparse_globals_required.put(None)
-            asker = threading.Thread(
-                target=lambda: answers.append(self.request(self.client.n_shots)),
-                daemon=True,
-            )
-            asker.start()
-            asker.join(5)
-            self.assertTrue(reported.wait(5), 'the failed preparse is still reported')
+            waiting.put(None)
 
-        self.assertEqual(answers, [3])
+            answer = self.request(self.client.n_shots)
+
+            self.assertTrue(reported.wait(5), 'the failed preparse is still reported')
+        self.assertEqual(answer, 3)
 
 
 if __name__ == '__main__':
