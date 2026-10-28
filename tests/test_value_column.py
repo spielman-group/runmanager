@@ -308,9 +308,8 @@ class ValueColumnTests(unittest.TestCase):
         send_key(self.editor(), QtCore.Qt.Key.Key_Tab)
         self.assertEqual(self.view.currentIndex().column(), self.tab.GLOBALS_COL_UNITS)
 
-    def test_hidden_unicode_in_inactive_expression_stays_visible(self):
+    def test_hidden_unicode_in_inactive_expression_is_shown_with_a_warning(self):
         self.tab.change_global_scan('freq', 'linspace(0, 1, 3)', '1\u200b', interactive=False)
         root = self.tab.get_global_item_by_name('freq', self.tab.GLOBALS_COL_SCAN_ENABLED).index()
         self.assertTrue(self.view.isExpanded(root))
-        self.view.collapse(root)
-        self.assertTrue(self.view.isExpanded(root))
+        self.assertFalse(self.expression_item('freq', 'scan').icon().isNull())

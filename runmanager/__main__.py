@@ -1005,7 +1005,6 @@ class GroupTab(object):
         self.ui.treeView_globals.customContextMenuRequested.connect(
             self.on_treeView_globals_context_menu_requested
         )
-        self.ui.treeView_globals.collapsed.connect(self.on_global_collapsed)
         self.action_globals_set_selected_true.triggered.connect(
             lambda: self.on_globals_set_selected_bools_triggered('True')
         )
@@ -1568,13 +1567,6 @@ class GroupTab(object):
             item.setData(None, QtCore.Qt.DecorationRole)
         if hidden_unicode_issues(item.text()) and item.index().parent().isValid():
             self.ui.treeView_globals.expand(item.index().parent())
-
-    def on_global_collapsed(self, index):
-        parent = self.globals_model.itemFromIndex(index.siblingAtColumn(0))
-        if parent is not None:
-            inactive = parent.child(0, self.GLOBALS_COL_VALUE)
-            if inactive is not None and hidden_unicode_issues(inactive.text()):
-                self.ui.treeView_globals.expand(index)
 
     def do_model_sort(self):
         header = self.ui.treeView_globals.header()
