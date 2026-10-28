@@ -20,6 +20,7 @@ from unittest import mock
 
 import labscript_utils.h5_lock, h5py
 from labscript_utils.ls_zprocess import ZMQServer
+from qtutils import inmain
 from qtutils.qt.QtCore import QCoreApplication, QEvent, Qt
 from qtutils.qt.QtGui import QStandardItemModel
 from qtutils.qt.QtWidgets import QApplication
@@ -1319,14 +1320,33 @@ class GlobalEditTests(RemoteCommandTestCase):
     def test_units_are_read(self):
         self.assertEqual(self.request(self.client.get_units), {'x': 'MHz'})
 
-    def test_a_global_created_remotely_has_its_value_and_units_and_is_not_made_twice(self):
+    def test_globals_created_remotely_are_made_as_given_and_all_or_none(self):
         path = self.app.globals_file
-        self.request(self.client.create_global, path, 'group', 'y', '2*3', 'm')
+        created = self.request(
+            self.client.create_globals,
+            path,
+            'group',
+            {'y': {'value': '2*3', 'units': 'm', 'scan': '[1, 2]', 'scan_enabled': True}},
+        )
 
-        self.assertEqual(self.request(self.client.get_values, raw=True)['y'], '2*3')
+        self.assertEqual(
+            created,
+            {
+                'y': {
+                    'value': '2*3',
+                    'units': 'm',
+                    'scan': '[1, 2]',
+                    'scan_enabled': True,
+                    'jit_enabled': False,
+                    'expansion': 'outer',
+                }
+            },
+        )
+        self.assertEqual(self.request(self.client.get_scans, raw=True)['y'], '[1, 2]')
         self.assertEqual(self.request(self.client.get_units)['y'], 'm')
         with self.assertRaises(globals_file.GlobalsFileError):
-            self.request(self.client.create_global, path, 'group', 'y')
+            self.request(self.client.create_globals, path, 'group', {'z': {}, 'y': {}})
+        self.assertNotIn('z', self.request(self.client.get_values), 'none was made')
 
     def test_a_global_deleted_remotely_is_gone_and_an_unknown_one_is_refused(self):
         self.request(self.client.delete_global, 'x')
@@ -1346,7 +1366,9 @@ class GlobalEditTests(RemoteCommandTestCase):
         tab = GroupTab(tabs, path, 'group')
         self.app.currently_open_groups[path, 'group'] = tab
 
-        self.request(self.client.create_global, path, 'group', 'y', '2', 'm')
+        self.request(
+            self.client.create_globals, path, 'group', {'y': {'value': '2', 'units': 'm'}}
+        )
         self.request(self.client.set_expansions, {'y': 'outer'})
         self.request(self.client.delete_global, 'x')
 
@@ -1361,6 +1383,34 @@ class GlobalEditTests(RemoteCommandTestCase):
             tab.get_global_item_by_name('x', tab.GLOBALS_COL_NAME)
 
 
+def groups_window(paths):
+    """The window without its startup, with these globals files open.
+
+    Stood in for are the signal that connect_signals wires, and the preparse,
+    by doing at once what it does to ``n_shots``."""
+    app = RunManager.__new__(RunManager)
+    app.ui = load_main_ui()
+    app.currently_open_groups = {}
+    app.globals_changes = 0
+    app.preparse_globals_required = queue.Queue()
+    app.on_groups_model_active_changed_recursion_depth = 0
+    app.queue_manager = FakeApp().queue_manager
+    app.setup_groups_tab()
+    app.groups_model.itemChanged.connect(app.on_groups_model_item_changed)
+    app.groups_model_item_changed_disconnected = main_module.DisconnectContextManager(
+        app.groups_model.itemChanged, app.on_groups_model_item_changed
+    )
+    for path in paths:
+        app.open_globals_file(path)
+
+    def wait_until_preparse_complete():
+        active_groups = inmain(app.get_active_groups, interactive=False)
+        app.n_shots = len(app.parse_globals(active_groups, raise_exceptions=False)[1])
+
+    app.wait_until_preparse_complete = wait_until_preparse_complete
+    return app
+
+
 class GroupActivationTests(RemoteCommandTestCase):
     """Groups of the same name in two open files are told apart by file."""
 
@@ -1371,20 +1421,7 @@ class GroupActivationTests(RemoteCommandTestCase):
         for path in self.files:
             globals_file.new_globals_file(path)
             runmanager.new_group(path, 'g')
-        # The window without its startup. Stood in for are the preparse queue
-        # that globals_changed feeds and the signal that connect_signals wires.
-        app = RunManager.__new__(RunManager)
-        app.ui = load_main_ui()
-        app.currently_open_groups = {}
-        app.globals_changes = 0
-        app.preparse_globals_required = queue.Queue()
-        app.on_groups_model_active_changed_recursion_depth = 0
-        app.queue_manager = FakeApp().queue_manager
-        app.setup_groups_tab()
-        app.groups_model.itemChanged.connect(app.on_groups_model_item_changed)
-        for path in self.files:
-            app.open_globals_file(path)
-        return app
+        return groups_window(self.files)
 
     def test_groups_are_listed_by_file_and_activated_by_file(self):
         file_a, file_b = self.files
@@ -1405,6 +1442,17 @@ class GroupActivationTests(RemoteCommandTestCase):
             )
         self.assertFalse(self.request(self.client.get_groups)[file_b]['g'], 'none changed')
 
+    def test_a_new_group_is_active_unless_a_group_of_its_name_is(self):
+        file_a, file_b = self.files
+
+        self.assertTrue(self.request(self.client.new_group, file_a, 'h'))
+        self.assertFalse(self.request(self.client.new_group, file_b, 'h'))
+
+        self.assertEqual(
+            self.request(self.client.get_groups),
+            {file_a: {'g': False, 'h': True}, file_b: {'g': False, 'h': False}},
+        )
+
     def test_two_active_groups_of_one_name_are_refused(self):
         file_a, file_b = self.files
         self.request(self.client.set_groups_active, {file_a: {'g': True}})
@@ -1416,6 +1464,88 @@ class GroupActivationTests(RemoteCommandTestCase):
             self.request(self.client.get_groups),
             {file_a: {'g': True}, file_b: {'g': False}},
         )
+
+
+class GlobalsFileCopyTests(RemoteCommandTestCase):
+    """A globals file built remotely from nothing stands in for the one it copies."""
+
+    GROUPS = {
+        'one': {
+            'a': {'default': '1', 'units': 'MHz'},
+            'b': {'default': 'a', 'scan': '[a, 2]', 'scan_enabled': True, 'expansion': 'pair'},
+        },
+        'two': {
+            'c': {'default': '0', 'scan': '[3, 4]', 'scan_enabled': True, 'expansion': 'pair'},
+            'd': {'default': '0', 'scan': '[5, 6]', 'scan_enabled': True},
+            # As a tab leaves a boolean:
+            'e': {'default': 'True', 'units': 'Bool', 'jit_enabled': True},
+        },
+    }
+
+    def make_app(self):
+        self.directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.directory, True)
+        self.original = os.path.join(self.directory, 'original.toml')
+        globals_file.new_globals_file(self.original)
+        for group_name, records in self.GROUPS.items():
+            runmanager.new_group(self.original, group_name)
+            runmanager.new_globals(self.original, group_name, records)
+        return groups_window([self.original])
+
+    def read_globals(self):
+        """Everything a shot is made from, as a remote caller reads it."""
+        return {
+            'globals': self.request(self.client.get_globals),
+            'values': self.request(self.client.get_values, raw=True),
+            'scans': self.request(self.client.get_scans, raw=True),
+            'units': self.request(self.client.get_units),
+            'scan_enabled': self.request(self.client.get_scan_enabled),
+            'jit_enabled': self.request(self.client.get_jit_enabled),
+            'expansions': self.request(self.client.get_expansions),
+            'n_shots': self.request(self.client.n_shots),
+            'error_in_globals': self.request(self.client.error_in_globals),
+        }
+
+    def test_a_copy_built_remotely_is_used_in_place_of_the_original(self):
+        original = self.original
+        self.request(self.client.set_groups_active, {original: {'one': True, 'two': True}})
+        before = self.read_globals()
+        self.assertEqual(before['n_shots'], 4)
+        self.assertFalse(before['error_in_globals'])
+
+        copy = self.request(
+            self.client.new_globals_file, os.path.join(self.directory, 'copy.toml')
+        )
+        for group_name, names in self.GROUPS.items():
+            self.assertFalse(
+                self.request(self.client.new_group, copy, group_name),
+                'an active group has its name, so it is left inactive',
+            )
+            fields = {
+                name: {
+                    'value': before['values'][name],
+                    'units': before['units'][name],
+                    'scan': before['scans'][name],
+                    'scan_enabled': before['scan_enabled'][name],
+                    'jit_enabled': before['jit_enabled'][name],
+                    'expansion': before['expansions'][name],
+                }
+                for name in names
+            }
+            self.request(self.client.create_globals, copy, group_name, fields)
+        self.request(
+            self.client.set_groups_active,
+            {
+                original: {'one': False, 'two': False},
+                copy: {'one': True, 'two': True},
+            },
+        )
+        self.request(self.client.close_globals_file, original)
+
+        self.assertEqual(self.read_globals(), before)
+        self.assertEqual(list(self.request(self.client.get_groups)), [copy])
+        with self.assertRaises(FileExistsError):
+            self.request(self.client.new_globals_file, original)
 
 
 class PreparsingApp(FakeApp):

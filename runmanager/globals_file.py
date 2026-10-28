@@ -326,13 +326,20 @@ def delete_group(filename, groupname):
 
 
 @_locked
-def new_global(filename, groupname, globalname):
+def new_globals(filename, groupname, records):
+    """Add globals to a group, ``{name: record}``, or none if any name is taken.
+
+    A field a record leaves out is blank."""
     _require_editable(filename)
     document = load_document(filename)
     group = _get_group(document, groupname)
-    if globalname in group:
-        raise GlobalsFileError("Can't create global: target name already exists.")
-    group[globalname] = _blank_record()
+    taken = sorted(set(records) & set(group))
+    if taken:
+        raise GlobalsFileError(
+            "Can't create globals: %s already exist." % ", ".join(taken)
+        )
+    for globalname, record in records.items():
+        group[globalname] = _normalise_record({**_blank_record(), **record})
     save_document(filename, document)
 
 

@@ -241,35 +241,130 @@ class RunmanagerClient(ZMQClient):
         """
         return self.request('set_groups_active', groups)
 
-    def create_global(self, globals_file, group_name, global_name, value='', units=''):
-        """Add a global to a group, as the window's click-to-add row does.
+    def new_globals_file(self, path):
+        """Create an empty TOML globals file and open it, as New globals file does.
 
         Parameters
         ----------
-        globals_file : str
-            Path of the globals file, as ``get_groups`` returns it.
-        group_name : str
-            A group in that file.
-        global_name : str
-            The new global's name, a valid Python variable name.
-        value : str
-            The Default expression, as text. Left empty if not given.
-        units : str
-            The Units text. Left empty if not given.
+        path : str
+            Path of the new file, ending in ``.toml``. A relative path is taken
+            from runmanager's working directory.
+
+        Returns
+        -------
+        str
+            The absolute path of the file, as ``get_groups`` names it.
+
+        Raises
+        ------
+        FileExistsError
+            For a path that exists.
+        runmanager.globals_file.GlobalsFileError
+            For a path not ending in ``.toml``.
+        """
+        return self.request('new_globals_file', path)
+
+    def open_globals_file(self, path):
+        """Open a globals file, with none of its groups active.
+
+        Opening one already open changes nothing. A legacy HDF5 globals file
+        can be opened and read, but not written remotely.
+
+        Returns
+        -------
+        str
+            The absolute path of the file, as ``get_groups`` names it.
+
+        Raises
+        ------
+        FileNotFoundError
+            For a path that is not a file.
+        """
+        return self.request('open_globals_file', path)
+
+    def close_globals_file(self, path):
+        """Close an open globals file, and the tabs of its groups, with no confirmation.
+
+        Its groups stop being active.
 
         Raises
         ------
         ValueError
-            For a legacy HDF5 globals file, or a name that is not a valid
-            Python variable name.
+            For a file that is not open, by the path ``get_groups`` gives.
+        """
+        return self.request('close_globals_file', path)
+
+    def new_group(self, globals_file, group_name):
+        """Add a group to an open globals file, as its click-to-add row does.
+
+        The group's tab is opened. The group is made active, as in the window,
+        unless a group of the same name is already active, when it is left
+        inactive: two active groups may not share a name.
+
+        Parameters
+        ----------
+        globals_file : str
+            A TOML globals file, open, by the path ``get_groups`` gives.
+        group_name : str
+            The new group's name.
+
+        Returns
+        -------
+        bool
+            Whether the new group is active.
+
+        Raises
+        ------
+        ValueError
+            For a file that is not open, a legacy HDF5 globals file, or a name
+            that is not a valid group name.
+        RuntimeError
+            When two active groups already share a name.
+        runmanager.globals_file.GlobalsFileError
+            For a name the file already has.
+        """
+        return self.request('new_group', globals_file, group_name)
+
+    def create_globals(self, globals_file, group_name, globals):
+        """Add globals to a group: all of them, or none if any is refused.
+
+        Only a TOML globals file is written; convert a legacy HDF5 one in the
+        window first. If the group is open in a tab, the globals show there.
+
+        Parameters
+        ----------
+        globals_file : str
+            Path of the globals file, as ``get_groups`` returns it. It need not
+            be open.
+        group_name : str
+            A group in that file.
+        globals : dict
+            ``{global_name: fields}``, each name a valid Python variable name
+            and each ``fields`` a dict of any of ``value``, ``units``, ``scan``
+            and ``expansion``, as strings, and ``scan_enabled`` and
+            ``jit_enabled``, as bools. A field left out is empty or False.
+
+        Returns
+        -------
+        dict
+            ``{global_name: fields}``, with every field, as the globals file
+            now holds it. A global with Scan? ticked and no expansion holds
+            ``'outer'``.
+
+        Raises
+        ------
+        ValueError
+            For a legacy HDF5 globals file, a name that is not a valid Python
+            variable name, a field not listed above, or both Scan? and JIT?
+            ticked.
         TypeError
-            For a ``value`` or ``units`` that is not a string.
+            For a field of the wrong type.
         runmanager.globals_file.GlobalsFileError
             For a name the group already has, or a group the file lacks.
+        FileNotFoundError
+            For a globals file that does not exist.
         """
-        return self.request(
-            'create_global', globals_file, group_name, global_name, value, units
-        )
+        return self.request('create_globals', globals_file, group_name, globals)
 
     def delete_global(self, global_name):
         """Delete an active global from its group, with no confirmation.
@@ -278,6 +373,11 @@ class RunmanagerClient(ZMQClient):
         ----------
         global_name : str
             A global of an active group.
+
+        Returns
+        -------
+        str
+            The name deleted.
 
         Raises
         ------

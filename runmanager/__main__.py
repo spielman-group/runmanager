@@ -1097,24 +1097,6 @@ class GroupTab(object):
             self.tabWidget.setTabIcon(index, icon)
 
     def populate_model(self):
-        globals_details = runmanager.globals_file.get_globals_details(
-            {self.group_name: self.globals_file}
-        )[self.group_name]
-        for name, details in globals_details.items():
-            row = self.make_global_row(
-                name,
-                default=details['default'],
-                units=details['units'],
-                scan_enabled=details['scan_enabled'],
-                jit_enabled=details['jit_enabled'],
-                scan=details['scan'],
-                expansion=details['expansion'],
-            )
-            self.globals_model.appendRow(row)
-            self.update_scan_controls(name)
-            self._update_boolean_state(name)
-            self.on_globals_model_expansion_changed(row[self.GLOBALS_COL_EXPANSION])
-
         dummy_scan_enabled_item = QtGui.QStandardItem()
         dummy_scan_enabled_item.setData(True, self.GLOBALS_ROLE_IS_DUMMY_ROW)
         dummy_scan_enabled_item.setFlags(QtCore.Qt.ItemIsEnabled)
@@ -1157,7 +1139,29 @@ class GroupTab(object):
                 dummy_expansion_item,
             ]
         )
+        self.add_global_rows(
+            runmanager.globals_file.get_globals_details(
+                {self.group_name: self.globals_file}
+            )[self.group_name]
+        )
         self.ui.treeView_globals.sortByColumn(self.GLOBALS_COL_NAME, QtCore.Qt.AscendingOrder)
+
+    def add_global_rows(self, globals_details):
+        """Show globals the file has, ``{name: record}``, above the dummy row."""
+        for name, details in globals_details.items():
+            row = self.make_global_row(
+                name,
+                default=details['default'],
+                units=details['units'],
+                scan_enabled=details['scan_enabled'],
+                jit_enabled=details['jit_enabled'],
+                scan=details['scan'],
+                expansion=details['expansion'],
+            )
+            self.globals_model.insertRow(self.globals_model.rowCount() - 1, row)
+            self.update_scan_controls(name)
+            self._update_boolean_state(name)
+            self.on_globals_model_expansion_changed(row[self.GLOBALS_COL_EXPANSION])
 
     def make_global_row(
         self,
@@ -4203,13 +4207,22 @@ class RunManager(LabscriptApplication):
             # If this changed the sort order, ensure the group item is still visible:
             scroll_view_to_row_if_current(self.ui.treeView_groups, name_item)
 
-    def new_group(self, globals_file, group_name):
-        item = self.get_group_item_by_name(globals_file, group_name, self.GROUPS_COL_NAME,
+    def new_group(self, globals_file, group_name, interactive=True):
+        # A GUI edit has typed the name into the dummy row, which is reset
+        # below. A remote one has not, so it finds the dummy row as it stands.
+        typed_name = group_name if interactive else self.GROUPS_DUMMY_ROW_TEXT
+        item = self.get_group_item_by_name(globals_file, typed_name, self.GROUPS_COL_NAME,
                                            previous_name=self.GROUPS_DUMMY_ROW_TEXT)
+        # Two active groups of one name make the preparse open a dialog. The
+        # operator can fix that; a remote caller could not even dismiss it, so
+        # its group is left inactive instead:
+        active = interactive or group_name not in self.get_active_groups(interactive=False)
         try:
             globals_file = self.ensure_editable_globals_file(globals_file)
             runmanager.new_group(globals_file, group_name)
         except Exception as e:
+            if not interactive:
+                raise
             error_dialog(str(e))
         else:
             # Insert the newly created globals group into the model, as a
@@ -4223,7 +4236,8 @@ class RunManager(LabscriptApplication):
             self.open_group(globals_file, group_name)
             active_item = group_row[self.GROUPS_COL_ACTIVE]
             name_item = group_row[self.GROUPS_COL_NAME]
-            active_item.setCheckState(QtCore.Qt.Checked)
+            if active:
+                active_item.setCheckState(QtCore.Qt.Checked)
             self.globals_changed()
             self.ui.treeView_groups.setCurrentIndex(name_item.index())
             # If this changed the sort order, ensure the group item is still visible:
@@ -5239,6 +5253,16 @@ class RunManager(LabscriptApplication):
 
 
 class RunmanagerServer(ZMQServer):
+    # A global's fields as a remote caller names them, and as its file does.
+    GLOBAL_FIELDS = {
+        'value': 'default',
+        'units': 'units',
+        'scan': 'scan',
+        'scan_enabled': 'scan_enabled',
+        'jit_enabled': 'jit_enabled',
+        'expansion': 'expansion',
+    }
+
     def __init__(self):
         port = app.exp_config.getint('ports', 'runmanager', fallback=DEFAULT_PORT)
         ZMQServer.__init__(self, port=port)
@@ -5516,31 +5540,68 @@ class RunmanagerServer(ZMQServer):
             item.setCheckState(QtCore.Qt.Checked if state else QtCore.Qt.Unchecked)
 
     @inmain_decorator()
-    def handle_create_global(
-        self, globals_file, group_name, global_name, value='', units=''
-    ):
-        value = self._coerce_remote_text(value, 'value')
-        units = self._coerce_remote_text(units, 'units')
+    def handle_new_globals_file(self, path):
+        path = os.path.abspath(self._coerce_remote_text(path, 'path'))
+        if os.path.exists(path):
+            raise FileExistsError(f'{path} already exists.')
+        runmanager.globals_file.new_globals_file(path)
+        return app.open_globals_file(path)
+
+    @inmain_decorator()
+    def handle_open_globals_file(self, path):
+        path = os.path.abspath(self._coerce_remote_text(path, 'path'))
+        if not os.path.isfile(path):
+            raise FileNotFoundError(f'No such file {path}.')
+        return app.open_globals_file(path)
+
+    @inmain_decorator()
+    def handle_close_globals_file(self, path):
+        if path not in self._group_active_items():
+            raise ValueError(f'{path} is not an open globals file.')
+        app.close_globals_file(path, confirm=False)
+
+    @inmain_decorator()
+    def handle_new_group(self, globals_file, group_name):
+        group_name = self._coerce_remote_text(group_name, 'group_name')
+        if globals_file not in self._group_active_items():
+            raise ValueError(f'{globals_file} is not an open globals file.')
         self._refuse_legacy_hdf5(globals_file)
-        try:
-            group_tab = app.currently_open_groups[globals_file, group_name]
-        except KeyError:
-            runmanager.new_global(globals_file, group_name, global_name)
-            if value:
-                runmanager.globals_file.set_field(
-                    globals_file, group_name, global_name, 'default', value
+        app.new_group(globals_file, group_name, interactive=False)
+        item = self._group_active_items()[globals_file][group_name]
+        return item.checkState() == QtCore.Qt.Checked
+
+    @inmain_decorator()
+    def handle_create_globals(self, globals_file, group_name, globals):
+        records = {}
+        for global_name, fields in globals.items():
+            record = records[global_name] = {}
+            for field, value in fields.items():
+                if field not in self.GLOBAL_FIELDS:
+                    raise ValueError(f'Global {global_name} has no field {field}.')
+                if field in ('scan_enabled', 'jit_enabled'):
+                    coerce = self._coerce_remote_boolean
+                else:
+                    coerce = self._coerce_remote_text
+                record[self.GLOBAL_FIELDS[field]] = coerce(
+                    value, f'{field} of global {global_name}'
                 )
-            if units:
-                runmanager.globals_file.set_field(
-                    globals_file, group_name, global_name, 'units', units
+            if record.get('scan_enabled') and record.get('jit_enabled'):
+                raise ValueError(
+                    f'Global {global_name} cannot have both Scan? and JIT? ticked.'
                 )
-            app.globals_changed()
-        else:
-            group_tab.new_global(global_name, interactive=False)
-            if value:
-                group_tab.change_global_default(global_name, '', value, interactive=False)
-            if units:
-                group_tab.change_global_units(global_name, '', units, interactive=False)
+        self._refuse_legacy_hdf5(globals_file)
+        runmanager.new_globals(globals_file, group_name, records)
+        stored = runmanager.globals_file.get_globals_details({group_name: globals_file})
+        created = {name: stored[group_name][name] for name in records}
+        group_tab = app.currently_open_groups.get((globals_file, group_name))
+        if group_tab is not None:
+            group_tab.add_global_rows(created)
+            group_tab.do_model_sort()
+        app.globals_changed()
+        return {
+            name: {field: record[key] for field, key in self.GLOBAL_FIELDS.items()}
+            for name, record in created.items()
+        }
 
     @inmain_decorator()
     def handle_delete_global(self, global_name):
@@ -5554,6 +5615,7 @@ class RunmanagerServer(ZMQServer):
             app.globals_changed()
         else:
             group_tab.delete_global(global_name, confirm=False)
+        return global_name
 
     def handle_engage(self, submission_mode=SUBMISSION_MODE_NEW_SEQUENCE):
         app.wait_until_preparse_complete()
