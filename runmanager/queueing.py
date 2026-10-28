@@ -1220,7 +1220,21 @@ class QueueManager(QtCore.QObject):
         return record
 
     def restore_state(self, state, restore_rows=True):
-        self.controller.restore_state(dict(state or {}), restore_rows)
+        state = dict(state or {})
+        # Only a hand-edited file holds a setting runmanager does not know. Its
+        # default replaces it, as the dropdowns can show no other:
+        for key, default, other in (
+            ('empty_queue_policy', EMPTY_QUEUE_NOTHING, EMPTY_QUEUE_DEFAULT_LABSCRIPT),
+            ('compile_mode', COMPILE_MODE_EAGER, COMPILE_MODE_LAZY),
+        ):
+            if state.get(key, default) not in (default, other):
+                self.output(
+                    f'The saved {key} {state[key]!r} is not one runmanager knows, '
+                    f'so it is {default!r}.\n',
+                    red=True,
+                )
+                state[key] = default
+        self.controller.restore_state(state, restore_rows)
         self.queueChanged.emit()
 
     def mainloop(self):

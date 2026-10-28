@@ -114,6 +114,27 @@ class QueueIdentityTests(unittest.TestCase):
         )
 
 
+class SavedQueueSettingsTests(unittest.TestCase):
+    def test_an_unknown_saved_setting_is_reported_and_its_default_used(self):
+        said = []
+        manager = QueueManager(
+            QueueController(),
+            lambda item, default_globals: None,
+            lambda labscript_file, path: (True, ''),
+            lambda path: None,
+            lambda text, red=False: said.append(text),
+        )
+        self.addCleanup(manager.shutdown)
+
+        manager.restore_state({'compile_mode': 'eagre', 'empty_queue_policy': 'default_shott'})
+
+        state = manager.controller.get_queue_state()
+        self.assertEqual(state['compile_mode'], COMPILE_MODE_EAGER)
+        self.assertEqual(state['empty_queue_policy'], EMPTY_QUEUE_NOTHING)
+        self.assertIn("'eagre'", ''.join(said))
+        self.assertIn("'default_shott'", ''.join(said))
+
+
 class QueuePauseTests(unittest.TestCase):
     """Pause is this runmanager's policy on its own queue."""
 
