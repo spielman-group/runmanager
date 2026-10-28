@@ -555,7 +555,7 @@ nothing of runmanager.
 4. **fix**. `LAZY_COMPILE.md:39-45` says a failed compile leaves its row red at
    the head, to be recompiled with *Compile again*. Since 5d5cf4d the shot
    leaves the queue, and there is no Compile again.
-5. **fix**, by blacs's owner. blacs `docs/source/shot-management.rst:112-119`
+5. **fix**, by blacs's owner; done in blacs 9528b18, on its `CodeHealth`. blacs `docs/source/shot-management.rst:112-119`
    and `:219-221` say the same of a shot that fails to compile. runmanager's
    `usage.rst`, `client.py` and labscript-agents (1cdb02d) already say it
    leaves the queue.
@@ -565,7 +565,7 @@ nothing of runmanager.
    moved: its mainloop, waiting list, `check/retry` signal and
    `update_waiting_files_message` are upstream's, under "Copyright 2013, Monash
    University", a notice the BSD licence requires kept.
-7. **document**, or refuse, Ian's decision. `globals_file.py:92-93` turns an
+7. **document**, Ian's decision; the docstrings say so in bb2a57f. `globals_file.py:92-93` turns an
    empty expansion on a global with Scan? ticked into `outer` on every save. So
    `set_expansions({'x': ''})` on such a global answers as though `''` were
    stored, against `client.py:176-177` ("`''` for none"), and clearing the
@@ -574,14 +574,15 @@ nothing of runmanager.
 ### Decided and applied
 
 Ian kept F, G and I, and had A–E and H cut as recommended. He had bugs 1–4 and 6
-fixed; bug 5 is with blacs's owner, and bug 7 waits on his reply. For bug 3 a
+fixed, bug 5 by blacs's owner (blacs 9528b18), and bug 7 documented, the
+behaviour left. For bug 3 a
 failed default shot now waits for its source, the globals or the default
 labscript file, to change, with a red ! beside the empty-queue policy meanwhile;
 for bug 6 the file has upstream BLACS's banner again.
 
-Range for review: `7ede9b5..1f96b72` on `CodeHealth`, one commit each: A
+Range for review: `7ede9b5..bb2a57f` on `CodeHealth`, one commit each: A
 29de04e, B fa97b78, C 7915026, D 319a7ab, E 6ab5242, H 2cebb82, bug 2 cd5b36d,
-bug 3 a1d5d85, bug 4 c8171f8, bug 6 1f96b72. Bug 1 is on `Development` as 07058b7,
+bug 3 a1d5d85, bug 4 c8171f8, bug 6 1f96b72, bug 7 bb2a57f. Bug 1 is on `Development` as 07058b7,
 with its test 52466dc, and on `Production` as d475d27, adapted to its helpers; it
 reached `CodeHealth` in the merge 7ede9b5, with `LabAgentFixes2`. Bug 2's meta
 issue is closed (meta 376dc32). The suite is 146 tests, with 27 subtests, and each
