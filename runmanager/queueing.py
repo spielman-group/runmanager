@@ -71,7 +71,6 @@ FAILED_ROW_BACKGROUND = QtGui.QColor('#ffcccc')
 ROW_BACKGROUNDS = {
     BLACS_FAILED: FAILED_ROW_BACKGROUND,
     BLACS_REJECTED: FAILED_ROW_BACKGROUND,
-    'compile_failed': FAILED_ROW_BACKGROUND,
 }
 # Set with either of them, and not left to the theme. Both fills are pale, so
 # on a dark theme the palette's own near-white text sits on them unreadably;
@@ -86,12 +85,8 @@ SESSION_ONLY_FIELDS = (
 )
 
 
-# The states a row reaches by being given to BLACS. Not every state is one:
-# 'compile_failed' is runmanager's own, reached without the row ever leaving
-# here, and reading it as a handover would put a file BLACS has never seen in
-# the row reserved for the shot BLACS was given, keep it there through a
-# replacement submission, and tell the operator BLACS is running it. A new
-# state that does mean a handover joins by being named here.
+# The states a row reaches by being given to BLACS. A new state that means a
+# handover joins by being named here.
 BLACS_STATES = (BLACS_RUNNING, BLACS_FAILED, BLACS_REJECTED, BLACS_CANCELLED)
 
 # The states the queue refuses to hand a row over in, each against whether a
@@ -106,11 +101,6 @@ REFUSED_STATES = {
     # it again would only be refused again, so it is held at the head until an
     # operator deletes it, and nothing behind it can be reached meanwhile.
     BLACS_REJECTED: True,
-    # claim_next_for_compile(): the compile failed and is not tried again by
-    # itself, which would recompile a persistently bad shot for ever. It is
-    # held the same way, until an operator deletes it or asks for another
-    # compile: see retry_compile().
-    'compile_failed': True,
     # offer_next(): the operator has said this shot is not to be sent. The
     # queue clears the row itself, at the next request from BLACS -- see
     # drop_cancelled_head() -- so the shots behind it are waiting their turn
@@ -149,7 +139,6 @@ class RunmanagerQueueWidget(ShotQueueWidget):
     """Shot queue widget configured for runmanager-owned shot records."""
 
     deleteRowsRequested = Signal(list)
-    retryCompileRequested = Signal(list)
 
     def __init__(self, parent=None):
         ShotQueueWidget.__init__(
@@ -241,14 +230,10 @@ class RunmanagerQueueWidget(ShotQueueWidget):
     def _show_row_menu(self, position):
         shot_ids = self.selected_ids()
         menu = QtWidgets.QMenu(self.queue_view)
-        retry = menu.addAction('Compile again')
         delete = menu.addAction('Delete selected rows')
-        retry.setEnabled(bool(shot_ids))
         delete.setEnabled(bool(shot_ids))
         chosen = menu.exec(self.queue_view.viewport().mapToGlobal(position))
-        if chosen is retry:
-            self.retryCompileRequested.emit(shot_ids)
-        elif chosen is delete:
+        if chosen is delete:
             self._emit_delete()
 
     def _emit_delete(self):
@@ -475,8 +460,6 @@ class QueueController(object):
         state = item['state']
         if item['compiling']:
             compile_step = COMPILE_COMPILING
-        elif state == 'compile_failed':
-            compile_step = COMPILE_FAILED
         elif item['compiled']:
             compile_step = COMPILE_COMPILED
         else:
@@ -905,11 +888,6 @@ class QueueController(object):
             item = self._items[0]
             if item['compiled']:
                 return None, False
-            if item['state'] in REFUSED_STATES:
-                # A row the queue will not hand over is not worth compiling.
-                # The one that gets here is compile_failed, which is not
-                # claimed again unless an operator asks: see retry_compile().
-                return None, False
             if item['compiling']:
                 return None, True
             item['compiling'] = True
@@ -920,15 +898,14 @@ class QueueController(object):
     def claim_next_to_compile_ahead(self):
         """Claim the first eager row still to be compiled, or return None.
 
-        Wherever it is in the queue: a row that failed to compile holds the
-        queue only once it is the head, so the rows after it go on compiling."""
+        Wherever it is in the queue, so that a batch compiles in order ahead of
+        BLACS."""
         with self._lock:
             for item in self._items:
                 if (
                     item['compile_mode'] == COMPILE_MODE_EAGER
                     and not item['compiled']
                     and not item['compiling']
-                    and item['state'] not in REFUSED_STATES
                 ):
                     item['compiling'] = True
                     item['since'] = time.time()
@@ -944,20 +921,12 @@ class QueueController(object):
     def finish_compile(self, item, success, message=''):
         """Record the outcome of a background compile.
 
-        A shot that failed to compile stays where it is and goes red with the
-        reason, like a shot that failed to run: only completion or an explicit
-        deletion takes a row out of the queue, and a shot that never compiled
-        did not complete. Dropping it would be quiet enough to be mistaken for
-        the queue draining normally — a queue emptying with no shot ever
-        running is what one broken labscript file would then produce.
-
-        It is not compiled again by itself, though: a shot that fails every
-        time would be recompiled for ever. An operator can ask for another
-        compile with retry_compile(), or delete the row.
+        A shot that failed to compile leaves the queue, since it would never
+        run, and the shots behind it carry on.
 
         Returns ``(changed, still_queued)``: whether the queue changed, and
-        whether the shot is still queued — it may have been deleted by the
-        operator while it was compiling."""
+        whether the shot is still queued. It is not if it failed, or if the
+        operator deleted it while it was compiling."""
         with self._lock:
             item['compiling'] = False
             item['since'] = time.time()
@@ -968,35 +937,13 @@ class QueueController(object):
                     break
             else:
                 return False, False
-            if success:
-                item['state'] = ''
-                item['message'] = ''
-            else:
-                # Its own state, and not the one BLACS's failures use: this row
-                # never left runmanager, so nothing that asks whether BLACS has
-                # it should say yes. It is still red and still at the head,
-                # until it is deleted or compiled again.
-                item['state'] = 'compile_failed'
-                item['message'] = str(message)
+            if not success:
+                self._items.remove(item)
+                self._leave(item, str(message), compile=COMPILE_FAILED)
+                return True, False
+            item['state'] = ''
+            item['message'] = ''
             return True, True
-
-    def retry_compile(self, shot_ids):
-        """Let the rows with these ids that failed to compile be claimed again.
-
-        Every compile rewrites its shot file from scratch, so a row that failed
-        once can succeed. Returns whether any row changed."""
-        wanted = set(shot_ids)
-        with self._lock:
-            failed = [
-                item
-                for item in self._items
-                if item['shot_id'] in wanted and item['state'] == 'compile_failed'
-            ]
-            for item in failed:
-                item['state'] = ''
-                item['message'] = ''
-                item['since'] = time.time()
-            return bool(failed)
 
 
 class QueueManager(QtCore.QObject):
@@ -1127,15 +1074,12 @@ class QueueManager(QtCore.QObject):
                 red=True,
             )
         changed, still_queued = self.controller.finish_compile(item, success, message)
-        if success and not still_queued:
-            # The shot was deleted from the queue while it was compiling, which
-            # deleted its file. Remove the one this compile just wrote.
+        if not still_queued:
+            # It failed, or was deleted while it compiled, so its file goes.
             self._delete_queue_files([item['path']])
-        elif not success and changed:
+        if not success and changed:
             self.output(
-                'Queued shot %s could not be compiled. It holds the queue once it '
-                'is at the head; delete it, or right-click it and choose Compile '
-                'again, to go on.\n'
+                'Queued shot %s could not be compiled, and has left the queue.\n'
                 % os.path.basename(item['path']),
                 red=True,
             )
@@ -1214,13 +1158,6 @@ class QueueManager(QtCore.QObject):
 
     def delete_rows(self, rows):
         return self._remove_from_queue(*self.controller.delete_rows(list(rows)))
-
-    def retry_compile(self, shot_ids):
-        if self.controller.retry_compile(shot_ids):
-            # A lazy row is compiled when BLACS next asks for it; the worker
-            # picks up an eager one:
-            self.compile_ahead()
-            self.queueChanged.emit()
 
     def clear(self):
         return self._remove_from_queue(*self.controller.clear())

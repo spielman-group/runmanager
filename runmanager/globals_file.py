@@ -20,7 +20,10 @@ wants to edit them.
 """
 
 import copy
+import functools
 import os
+import threading
+import uuid
 
 import labscript_utils.h5_lock
 import h5py
@@ -35,6 +38,18 @@ from labscript_profile.toml_config import load_toml_file
 CANONICAL_FORMAT = "runmanager_globals"
 CURRENT_VERSION = 1
 LEGACY_HDF5_EXTENSIONS = {".h5", ".hdf5"}
+# Held for each read and each load-modify-save. The GUI, remote calls and the
+# preparse edit globals files from different threads, and an edit that
+# interleaves with another loses one of them.
+_file_lock = threading.RLock()
+
+
+def _locked(function):
+    @functools.wraps(function)
+    def locked(*args, **kwargs):
+        with _file_lock:
+            return function(*args, **kwargs)
+    return locked
 
 
 class GlobalsFileError(Exception):
@@ -124,6 +139,7 @@ def default_toml_path(filename):
     return root + ".toml"
 
 
+@_locked
 def load_document(filename):
     backend = detect_backend(filename)
     if backend == "toml":
@@ -172,6 +188,7 @@ def load_legacy_hdf5_document(filename):
     return document
 
 
+@_locked
 def save_document(filename, document):
     if detect_backend(filename) != "toml":
         raise LegacyGlobalsFileError(
@@ -184,9 +201,10 @@ def save_document(filename, document):
     # Every edit to a single global rewrites the whole file, so write out of
     # place and replace: a save that is interrupted or that raises part way
     # through must not leave a truncated file where the globals used to be.
-    temp_filename = "%s.%d.tmp" % (filename, os.getpid())
+    # Unique per save, so that two threads saving at once never share one.
+    temp_filename = "%s.%s.tmp" % (filename, uuid.uuid4().hex)
     try:
-        with open(temp_filename, "wb") as f:
+        with open(temp_filename, "xb") as f:
             tomli_w.dump(document, f)
             f.flush()
             os.fsync(f.fileno())
@@ -242,6 +260,7 @@ def _get_group(document, groupname):
         raise GlobalsFileError('No such group "%s".' % groupname) from exc
 
 
+@_locked
 def new_group(filename, groupname):
     _require_editable(filename)
     document = load_document(filename)
@@ -251,6 +270,7 @@ def new_group(filename, groupname):
     save_document(filename, document)
 
 
+@_locked
 def copy_group(source_filename, source_groupname, dest_filename, delete_source_group=False):
     source_document = load_document(source_filename)
     if dest_filename is None:
@@ -278,6 +298,7 @@ def copy_group(source_filename, source_groupname, dest_filename, delete_source_g
     return dest_groupname
 
 
+@_locked
 def rename_group(filename, oldgroupname, newgroupname):
     _require_editable(filename)
     if oldgroupname == newgroupname:
@@ -292,6 +313,7 @@ def rename_group(filename, oldgroupname, newgroupname):
     save_document(filename, document)
 
 
+@_locked
 def delete_group(filename, groupname):
     _require_editable(filename)
     document = load_document(filename)
@@ -302,6 +324,7 @@ def delete_group(filename, groupname):
     save_document(filename, document)
 
 
+@_locked
 def new_global(filename, groupname, globalname):
     _require_editable(filename)
     document = load_document(filename)
@@ -312,6 +335,7 @@ def new_global(filename, groupname, globalname):
     save_document(filename, document)
 
 
+@_locked
 def rename_global(filename, groupname, oldglobalname, newglobalname):
     _require_editable(filename)
     if oldglobalname == newglobalname:
@@ -327,6 +351,7 @@ def rename_global(filename, groupname, oldglobalname, newglobalname):
     save_document(filename, document)
 
 
+@_locked
 def delete_global(filename, groupname, globalname):
     _require_editable(filename)
     document = load_document(filename)
@@ -347,6 +372,7 @@ def get_global_record(filename, groupname, globalname):
         raise GlobalsFileError('No such global "%s".' % globalname) from exc
 
 
+@_locked
 def set_global_record(filename, groupname, globalname, record):
     _require_editable(filename)
     document = load_document(filename)
@@ -361,6 +387,7 @@ def get_field(filename, groupname, globalname, field):
     return get_global_record(filename, groupname, globalname)[field]
 
 
+@_locked
 def set_field(filename, groupname, globalname, field, value):
     record = get_global_record(filename, groupname, globalname)
     # Disabling a scan (directly, or by enabling JIT) leaves the stored

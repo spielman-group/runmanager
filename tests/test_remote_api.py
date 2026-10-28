@@ -20,7 +20,7 @@ from unittest import mock
 
 import labscript_utils.h5_lock, h5py
 from labscript_utils.ls_zprocess import ZMQServer
-from qtutils.qt.QtCore import Qt
+from qtutils.qt.QtCore import QCoreApplication, QEvent, Qt
 from qtutils.qt.QtGui import QStandardItemModel
 from qtutils.qt.QtWidgets import QApplication
 import runmanager
@@ -34,9 +34,12 @@ from runmanager.client import (
 # application, once, for every test module. Importing
 # runmanager.__main__ here instead would show the startup banner.
 from fixtures import (
+    FingerTabWidget,
+    GroupTab,
     RunManager,
     RunmanagerServer,
     labconfig,
+    load_main_ui,
     main_module,
     wait_for,
 )
@@ -126,6 +129,7 @@ class SubmittingApp(object):
     AXES_COL_SHUFFLE = RunManager.AXES_COL_SHUFFLE
     AXES_ROLE_NAME = RunManager.AXES_ROLE_NAME
 
+    ensure_editable_globals_file = RunManager.ensure_editable_globals_file
     get_queue_append_filepath = RunManager.get_queue_append_filepath
     get_submission_anchor = RunManager.get_submission_anchor
     compile_and_queue_shots = RunManager.compile_and_queue_shots
@@ -553,12 +557,14 @@ def is_legal(record):
             )
         else:
             ok = lyse is None
+        if compile_step == 'failed':
+            ok = ok and blacs is None
         return ok and not pending
     return (
         queue in ('queued', 'blocked')
         and lyse == 'waiting'
         and (blacs == 'waiting' or compile_step == 'compiled')
-        and (compile_step != 'failed' or (blacs == 'waiting' and not pending))
+        and compile_step != 'failed'
         and (blacs != 'rejected' or not pending)
         and (blacs != 'cancelled' or pending)
         and (queue != 'blocked' or not pending)
@@ -569,7 +575,6 @@ def may_still_complete(record):
     """Whether BLACS can still complete the shot, going by runmanager's side only."""
     return (
         record['queue'] == 'queued'
-        and record['compile'] != 'failed'
         and record['blacs'] != 'rejected'
     )
 
@@ -585,7 +590,7 @@ class ShotStatusTests(RemoteCommandTestCase):
 
     # Every state a queue row can be in: whether a shot in it can still produce
     # a result, and whether it holds up the rows behind it. A cancelled row
-    # clears itself at BLACS's next request; rejected and compile_failed wait.
+    # clears itself at BLACS's next request; a rejected row waits.
     EXPECTED = {
         # state: (pending, holds up the rows behind it)
         '': (True, False),
@@ -593,7 +598,6 @@ class ShotStatusTests(RemoteCommandTestCase):
         'failed': (True, False),
         'rejected': (False, True),
         'cancelled': (True, False),
-        'compile_failed': (False, True),
     }
 
     def setUp(self):
@@ -1206,8 +1210,8 @@ class CompileOnlyEngageTests(RemoteCommandTestCase):
 class CompileErrorTests(RemoteCommandTestCase):
     """What a remote caller is told when a compile fails.
 
-    A queued shot's row carries the error, and test_compile, which queues
-    nothing, answers with it.
+    A queued shot that fails leaves the queue with the error as its message,
+    and test_compile, which queues nothing, answers with it.
     """
 
     ERROR = 'NameError: name "z" is not defined'
@@ -1224,17 +1228,20 @@ class CompileErrorTests(RemoteCommandTestCase):
         self.app.compile_result = (False, self.ERROR)
         self.app.compiling.set()
 
-    def test_a_shot_that_fails_to_compile_lists_its_error_in_the_queue(self):
+    def test_a_shot_that_fails_to_compile_leaves_the_queue_with_its_error(self):
         [receipt] = self.request(self.client.engage)
+        shot_id = receipt['shot_id']
         wait_for(
-            lambda: self.app.queue_controller.get_queue()[0]['compile'] == 'failed'
+            lambda: self.app.queue_controller.get_shot_statuses([shot_id])[shot_id][
+                'compile'
+            ] == 'failed'
         )
 
-        [row] = self.request(self.client.get_queue)
+        record = self.request(self.client.shot_status, [shot_id])[shot_id]
 
-        self.assertEqual(row['shot_id'], receipt['shot_id'])
-        self.assertEqual(row['compile'], 'failed')
-        self.assertIn(self.ERROR, row['message'])
+        self.assertEqual(record['queue'], 'left')
+        self.assertIn(self.ERROR, record['message'])
+        self.assertEqual(self.request(self.client.get_queue), [])
 
     def test_a_test_compile_answers_with_the_error_and_queues_nothing(self):
         globals_file.set_field(self.app.globals_file, 'group', 'x', 'scan', '[1, 2]')
@@ -1254,6 +1261,160 @@ class CompileErrorTests(RemoteCommandTestCase):
             sorted(os.listdir(self.directory)),
             stored,
             'and no sequence was claimed and no output folder touched',
+        )
+
+
+class DisabledScanTests(RemoteCommandTestCase):
+    """A scan disabled remotely no longer expands the shots compiled."""
+
+    def make_app(self):
+        return SubmittingApp(self.directory)
+
+    def setUp(self):
+        self.directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.directory, True)
+        super().setUp()
+        runmanager.new_global(self.app.globals_file, 'group', 'x')
+        for field, value in [
+            ('default', '0'), ('scan', '[1, 2]'), ('scan_enabled', True), ('expansion', 'outer')
+        ]:
+            globals_file.set_field(self.app.globals_file, 'group', 'x', field, value)
+        self.app.compiling.set()
+
+    def test_a_scan_disabled_remotely_then_compiled_runs_the_default(self):
+        self.app.wait_until_preparse_complete()
+        # The preparse that would drop the scan's axis failed, as a write
+        # collision once made it, so the axes still list it:
+        self.app.wait_until_preparse_complete = lambda: None
+        self.request(self.client.set_scan_enabled, {'x': False})
+
+        answer = self.request(self.client.test_compile)
+
+        self.assertTrue(answer['success'])
+        with h5py.File(answer['path'], 'r') as f:
+            self.assertEqual(f['globals'].attrs['x'], 0)
+
+
+class GlobalEditTests(RemoteCommandTestCase):
+    """Expansions, units, and adding and deleting globals, in the file and in a tab."""
+
+    def make_app(self):
+        return SubmittingApp(self.directory)
+
+    def setUp(self):
+        self.directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.directory, True)
+        super().setUp()
+        self.addCleanup(self.app.compiling.set)
+        runmanager.new_global(self.app.globals_file, 'group', 'x')
+        globals_file.set_field(self.app.globals_file, 'group', 'x', 'units', 'MHz')
+
+    def test_an_expansion_set_remotely_is_read_back(self):
+        self.request(self.client.set_expansions, {'x': 'outer'})
+
+        self.assertEqual(self.request(self.client.get_expansions), {'x': 'outer'})
+        with self.assertRaises(TypeError):
+            self.request(self.client.set_expansions, {'x': 1})
+
+    def test_units_are_read(self):
+        self.assertEqual(self.request(self.client.get_units), {'x': 'MHz'})
+
+    def test_a_global_created_remotely_has_its_value_and_units_and_is_not_made_twice(self):
+        path = self.app.globals_file
+        self.request(self.client.create_global, path, 'group', 'y', '2*3', 'm')
+
+        self.assertEqual(self.request(self.client.get_values, raw=True)['y'], '2*3')
+        self.assertEqual(self.request(self.client.get_units)['y'], 'm')
+        with self.assertRaises(globals_file.GlobalsFileError):
+            self.request(self.client.create_global, path, 'group', 'y')
+
+    def test_a_global_deleted_remotely_is_gone_and_an_unknown_one_is_refused(self):
+        self.request(self.client.delete_global, 'x')
+
+        self.assertEqual(self.request(self.client.get_values, raw=True), {})
+        with self.assertRaises(ValueError):
+            self.request(self.client.delete_global, 'x')
+
+    def test_edits_to_a_group_open_in_a_tab_show_in_the_tab(self):
+        tabs = FingerTabWidget(None)
+        # deleteLater needs an event loop, so its posted deletion is sent here:
+        self.addCleanup(
+            QCoreApplication.sendPostedEvents, None, QEvent.Type.DeferredDelete.value
+        )
+        self.addCleanup(tabs.deleteLater)
+        path = self.app.globals_file
+        tab = GroupTab(tabs, path, 'group')
+        self.app.currently_open_groups[path, 'group'] = tab
+
+        self.request(self.client.create_global, path, 'group', 'y', '2', 'm')
+        self.request(self.client.set_expansions, {'y': 'outer'})
+        self.request(self.client.delete_global, 'x')
+
+        shown = {
+            column: tab.get_global_item_by_name('y', column).text()
+            for column in (tab.GLOBALS_COL_UNITS, tab.GLOBALS_COL_EXPANSION)
+        }
+        self.assertEqual(
+            shown, {tab.GLOBALS_COL_UNITS: 'm', tab.GLOBALS_COL_EXPANSION: 'outer'}
+        )
+        with self.assertRaises(LookupError):
+            tab.get_global_item_by_name('x', tab.GLOBALS_COL_NAME)
+
+
+class GroupActivationTests(RemoteCommandTestCase):
+    """Groups of the same name in two open files are told apart by file."""
+
+    def make_app(self):
+        directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, directory, True)
+        self.files = [os.path.join(directory, name) for name in ('a.toml', 'b.toml')]
+        for path in self.files:
+            globals_file.new_globals_file(path)
+            runmanager.new_group(path, 'g')
+        # The window without its startup. Stood in for are the preparse queue
+        # that globals_changed feeds and the signal that connect_signals wires.
+        app = RunManager.__new__(RunManager)
+        app.ui = load_main_ui()
+        app.currently_open_groups = {}
+        app.globals_changes = 0
+        app.preparse_globals_required = queue.Queue()
+        app.on_groups_model_active_changed_recursion_depth = 0
+        app.queue_manager = FakeApp().queue_manager
+        app.setup_groups_tab()
+        app.groups_model.itemChanged.connect(app.on_groups_model_item_changed)
+        for path in self.files:
+            app.open_globals_file(path)
+        return app
+
+    def test_groups_are_listed_by_file_and_activated_by_file(self):
+        file_a, file_b = self.files
+        self.assertEqual(
+            self.request(self.client.get_groups),
+            {file_a: {'g': False}, file_b: {'g': False}},
+        )
+
+        self.request(self.client.set_groups_active, {file_a: {'g': True}})
+
+        self.assertEqual(
+            self.request(self.client.get_groups),
+            {file_a: {'g': True}, file_b: {'g': False}},
+        )
+        with self.assertRaises(ValueError):
+            self.request(
+                self.client.set_groups_active, {file_b: {'g': True}, file_a: {'h': True}}
+            )
+        self.assertFalse(self.request(self.client.get_groups)[file_b]['g'], 'none changed')
+
+    def test_two_active_groups_of_one_name_are_refused(self):
+        file_a, file_b = self.files
+        self.request(self.client.set_groups_active, {file_a: {'g': True}})
+
+        with self.assertRaises(ValueError):
+            self.request(self.client.set_groups_active, {file_b: {'g': True}})
+
+        self.assertEqual(
+            self.request(self.client.get_groups),
+            {file_a: {'g': True}, file_b: {'g': False}},
         )
 
 
