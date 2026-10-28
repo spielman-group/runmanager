@@ -25,6 +25,7 @@ COMPILE_FAILED = 'failed'
 QUEUE_QUEUED = 'queued'
 QUEUE_BLOCKED = 'blocked'
 QUEUE_LEFT = 'left'
+QUEUE_NOT_QUEUED = 'not queued'
 BLACS_WAITING = 'waiting'
 BLACS_RUNNING = 'running'
 BLACS_COMPLETED = 'completed'
@@ -397,9 +398,9 @@ class RunmanagerClient(ZMQClient):
         the batch is made, before its shots compile, so each ``path`` is where
         a file will be written and not a file that is there yet. With 'BLACS'
         unticked the shots are not queued, so ``get_queue`` does not list them,
-        ``shot_status`` answers ``None`` for them and a compile error
-        reaches only the output box. ``test_compile`` is how to check that a
-        script compiles.
+        and ``shot_status`` gives each a ``queue`` of ``'not queued'``, with a
+        compile error as its ``message``. ``test_compile`` is how to check
+        that a script compiles without writing a sequence.
 
         Parameters
         ----------
@@ -624,7 +625,8 @@ class RunmanagerClient(ZMQClient):
                 A shot that fails to compile leaves the queue at once, with the
                 compile's error as its ``message``, and the shots behind it carry
                 on. ``None`` for a shot that left the queue without having
-                compiled or failed to compile.
+                compiled or failed to compile, and for a shot not queued whose
+                batch stopped before it: at a shot that failed, or on Abort.
             ``queue``
                 ``'queued'`` while the shot is in the queue, including a shot
                 that itself holds the queue up. ``'blocked'`` when it is in the
@@ -632,6 +634,8 @@ class RunmanagerClient(ZMQClient):
                 ``blacs`` is ``'rejected'``, so that it is not offered to BLACS
                 until they do.
                 ``'left'`` once it is no longer in the queue.
+                ``'not queued'`` for a shot engaged or submitted with 'BLACS'
+                unticked, which is compiled and never queued.
             ``blacs``
                 ``'waiting'`` for a shot not yet offered to BLACS, and
                 ``'running'`` once it is offered and BLACS has reported no
@@ -642,11 +646,12 @@ class RunmanagerClient(ZMQClient):
                 deleted while BLACS had it is ``'cancelled'``: it is not
                 offered again, but BLACS may still complete it. A shot that
                 left keeps the last of these it had, and is ``None`` if it was
-                never offered.
+                never offered. ``None`` for a shot not queued.
             ``lyse``
                 What runmanager did with a completed shot's file; it never
                 hears back from lyse about the analysis. ``None`` for a shot
-                that left without BLACS completing it, which lyse never gets.
+                that left without BLACS completing it, or was not queued, which
+                lyse never gets.
                 Otherwise:
 
                 ``'waiting'``
@@ -666,8 +671,8 @@ class RunmanagerClient(ZMQClient):
                 far as runmanager can tell, and nothing about lyse. True for a
                 shot the queue would still hand over to BLACS, and for a
                 ``'cancelled'`` one, which BLACS may still complete. False for
-                a ``'blocked'`` shot, a shot waiting on an operator and every
-                shot that has left.
+                a ``'blocked'`` shot, a shot waiting on an operator, every
+                shot that has left and every shot not queued.
             ``since``
                 ``time.time()`` of the latest change to the shot's ``compile``,
                 ``blacs``, ``lyse`` or ``message``, or of its leaving the
@@ -681,23 +686,24 @@ class RunmanagerClient(ZMQClient):
         Notes
         -----
         Only some combinations of these values occur. A shot is in the queue
-        when ``queue`` is ``'queued'`` or ``'blocked'``, and has left when it
-        is ``'left'``:
+        when ``queue`` is ``'queued'`` or ``'blocked'``, has left when it is
+        ``'left'``, and was never queued when it is ``'not queued'``:
 
-        ========  ======================  =============================================
-        Where     When                    Then
-        ========  ======================  =============================================
-        in queue  always                  lyse 'waiting'
-        in queue  blacs not 'waiting'     compile 'compiled'
-        in queue  blacs 'rejected'        pending False
-        in queue  blacs 'cancelled'       pending True
-        in queue  queue 'blocked'         pending False
-        left      always                  pending False
-        left      blacs 'completed'       compile 'compiled'; lyse 'waiting', 'sent',
-                                          'rejected' or 'not sent'
-        left      blacs not 'completed'   lyse None
-        left      compile 'failed'        blacs None
-        ========  ======================  =============================================
+        ==========  ======================  =============================================
+        Where       When                    Then
+        ==========  ======================  =============================================
+        in queue    always                  lyse 'waiting'
+        in queue    blacs not 'waiting'     compile 'compiled'
+        in queue    blacs 'rejected'        pending False
+        in queue    blacs 'cancelled'       pending True
+        in queue    queue 'blocked'         pending False
+        left        always                  pending False
+        left        blacs 'completed'       compile 'compiled'; lyse 'waiting', 'sent',
+                                            'rejected' or 'not sent'
+        left        blacs not 'completed'   lyse None
+        left        compile 'failed'        blacs None
+        not queued  always                  blacs None; lyse None; pending False
+        ==========  ======================  =============================================
         """
         return self.request('shot_status', list(shot_ids))
 

@@ -684,6 +684,8 @@ class SubmittedShotTests(unittest.TestCase):
                     'labscript_file': os.path.join(self.directory, 'e.py'),
                     'compile_mode': COMPILE_MODE_EAGER,
                     'compiled': False,
+                    'sequence_attrs': {},
+                    'run_no': n,
                 }
                 for n in range(count)
             ],
@@ -748,15 +750,17 @@ class SubmittedShotTests(unittest.TestCase):
         self.assertIn(COMPILE_ERROR, record['message'])
 
     def test_a_batch_that_is_not_going_to_the_queue_is_not_taken_on(self):
-        # Compiling a batch for a look at it in runviewer queues nothing, so
-        # there is no queued shot for the queue to answer about.
+        # Compiling a batch for a look at it in runviewer queues nothing, but
+        # its shots still say how their compile is going.
         self.release.clear()
         [shot_id] = self.submit(send_to_BLACS=False)
         self.assertTrue(
             self.wait_until(self.compiling.is_set), 'the worker has the batch'
         )
 
-        self.assertIsNone(self.status([shot_id])[shot_id])
+        record = self.status([shot_id])[shot_id]
+        self.assertEqual((record['compile'], record['queue']), ('compiling', 'not queued'))
+        self.assertEqual(self.controller.get_queue(), [])
 
 
 class ContinuingSequenceAnchorTests(unittest.TestCase):

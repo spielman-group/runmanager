@@ -551,6 +551,8 @@ def steps(record):
 def is_legal(record):
     """Whether a record's values are a combination the table of shot_status allows."""
     compile_step, queue, blacs, lyse, pending = steps(record)
+    if queue == 'not queued':
+        return blacs is None and lyse is None and not pending
     if queue == 'left':
         if blacs == 'completed':
             ok = compile_step == 'compiled' and lyse in (
@@ -1206,6 +1208,12 @@ class CompileOnlyEngageTests(RemoteCommandTestCase):
         self.assertTrue(all(os.path.isfile(path) for path in self.app.compiled))
         self.assertEqual(self.app.queue_controller.get_queue_paths(), [])
         self.assertEqual(self.app.sent_to_runviewer, [])
+        [batch] = self.app.batches
+        records = self.request(self.client.shot_status, [r['shot_id'] for r in batch])
+        self.assertEqual(
+            [steps(record) for record in records.values()],
+            [('compiled', 'not queued', None, None, False)] * 2,
+        )
 
 
 class CompileErrorTests(RemoteCommandTestCase):
@@ -1243,6 +1251,25 @@ class CompileErrorTests(RemoteCommandTestCase):
         self.assertEqual(record['queue'], 'left')
         self.assertIn(self.ERROR, record['message'])
         self.assertEqual(self.request(self.client.get_queue), [])
+
+    def test_a_shot_compiled_but_not_queued_has_its_error(self):
+        globals_file.set_field(self.app.globals_file, 'group', 'x', 'scan', '[1, 2]')
+        globals_file.set_field(self.app.globals_file, 'group', 'x', 'scan_enabled', True)
+        self.app.ui.checkBox_run_shots.isChecked = lambda: False
+        receipts = self.request(self.client.engage)
+        shot_ids = [receipt['shot_id'] for receipt in receipts]
+        wait_for(
+            lambda: self.app.queue_controller.get_shot_statuses(shot_ids)[shot_ids[0]][
+                'compile'
+            ] == 'failed'
+        )
+
+        records = self.request(self.client.shot_status, shot_ids)
+
+        self.assertIn(self.ERROR, records[shot_ids[0]]['message'])
+        for record in records.values():
+            self.assertEqual(record['queue'], 'not queued')
+            self.assertTrue(is_legal(record), record)
 
     def test_a_test_compile_answers_with_the_error_and_queues_nothing(self):
         globals_file.set_field(self.app.globals_file, 'group', 'x', 'scan', '[1, 2]')

@@ -54,6 +54,7 @@ from runmanager.client import (
     PROVIDER_SHOT,
     QUEUE_BLOCKED,
     QUEUE_LEFT,
+    QUEUE_NOT_QUEUED,
     QUEUE_QUEUED,
     SHOT_OUTCOME_STATUSES,
 )
@@ -279,7 +280,7 @@ class QueueController(object):
         self.last_sent_sequence_attrs = None
         self._items = []
         # The record of each shot that left the queue this session, as it was
-        # when it left.
+        # when it left, and of each shot compiled without being queued.
         self._departed = {}
         # {local path: shot id} of each file handed to lyse and not yet settled.
         # BLACS may have run a fresh copy, so the path lyse is given is not
@@ -531,6 +532,28 @@ class QueueController(object):
                 yield self._status(item, QUEUE_BLOCKED)
             else:
                 yield self._status(item, QUEUE_QUEUED, True)
+
+    def track_unqueued(self, items):
+        """Keep a record of shots compiled without being queued, as not yet compiled."""
+        with self._lock:
+            for item in items:
+                self._departed[item['shot_id']] = dict(
+                    shot_receipt(item),
+                    compile=COMPILE_WAITING,
+                    queue=QUEUE_NOT_QUEUED,
+                    blacs=None,
+                    lyse=None,
+                    pending=False,
+                    since=time.time(),
+                    message='',
+                )
+
+    def set_unqueued_compile(self, item, compile_step, message=''):
+        """Record how far the compile of a shot that is not queued got."""
+        with self._lock:
+            self._departed[item['shot_id']].update(
+                compile=compile_step, message=message, since=time.time()
+            )
 
     def expect_lyse(self, shot_id, path):
         """Note that this shot's file is being handed to lyse as ``path``."""
@@ -1024,6 +1047,7 @@ class QueueManager(QtCore.QObject):
             self.enqueue(records)
             self.compile_ahead()
             return records
+        self.controller.track_unqueued(records)
         self.command_queue.put(('compile_shots', (records, self._compile_shots_stop)))
         return records
 
@@ -1073,21 +1097,24 @@ class QueueManager(QtCore.QObject):
             thread.start()
         return pending
 
-    def _background_compile(self, item):
-        success = False
-        # What the row will say it went red for: the traceback compile_shot
-        # returns for a failure in the user's script, or the exception of a
-        # failure to get even that far.
+    def _compile_saying_why(self, item):
+        """compile_shot, and the message a shot's record gives if it failed.
+
+        That is the traceback compile_shot returns for a failure in the user's
+        script, or the exception of a failure to get even that far."""
         try:
             success, error = self.compile_shot(item)
-            message = f'Could not be compiled:\n{error}'
+            return success, f'Could not be compiled:\n{error}'
         except Exception as exc:
-            message = 'Could not be compiled: %s' % str(exc)
             self.output(
-                'Could not compile queued shot %s: %s\n'
+                'Could not compile shot %s: %s\n'
                 % (os.path.basename(item['path']), str(exc)),
                 red=True,
             )
+            return False, 'Could not be compiled: %s' % str(exc)
+
+    def _background_compile(self, item):
+        success, message = self._compile_saying_why(item)
         changed, still_queued = self.controller.finish_compile(item, success, message)
         if not still_queued:
             # It failed, or was deleted while it compiled, so its file goes.
@@ -1243,10 +1270,23 @@ class QueueManager(QtCore.QObject):
                     self.output('Ready.\n\n')
                 elif command == 'compile_shots':
                     records, stop = args
+                    aborted = False
                     for item in records:
-                        if stop.is_set() or not self.compile_shot(item)[0]:
-                            self.output('Compilation aborted.\n\n', red=True)
-                            break
+                        if aborted or stop.is_set():
+                            aborted = True
+                            self.controller.set_unqueued_compile(
+                                item, None, 'Not compiled: compilation was aborted.'
+                            )
+                            continue
+                        self.controller.set_unqueued_compile(item, COMPILE_COMPILING)
+                        success, message = self._compile_saying_why(item)
+                        if success:
+                            self.controller.set_unqueued_compile(item, COMPILE_COMPILED)
+                        else:
+                            self.controller.set_unqueued_compile(item, COMPILE_FAILED, message)
+                            aborted = True
+                    if aborted:
+                        self.output('Compilation aborted.\n\n', red=True)
                     else:
                         self.output('Ready.\n\n')
                 else:
