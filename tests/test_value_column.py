@@ -40,9 +40,8 @@ def send_click(view, pos, modifiers=QtCore.Qt.KeyboardModifier.NoModifier):
         QtWidgets.QApplication.sendEvent(view.viewport(), event)
 
 
-def send_key(widget, key, text=''):
+def send_key(widget, key, text='', modifiers=QtCore.Qt.KeyboardModifier.NoModifier):
     for event_type in (QtCore.QEvent.Type.KeyPress, QtCore.QEvent.Type.KeyRelease):
-        modifiers = QtCore.Qt.KeyboardModifier.NoModifier
         event = QtGui.QKeyEvent(event_type, key, modifiers, text)
         QtWidgets.QApplication.sendEvent(widget, event)
 
@@ -225,7 +224,12 @@ class ValueColumnTests(unittest.TestCase):
         self.commit('7')
         self.assertEqual(self.record('time')['scan'], '7')
         self.view.setCurrentIndex(self.expression_item('time', 'default').index())
-        self.tab.on_globals_copy()
+        self.qapplication.clipboard().setText('')
+        # Control is the Command key on macOS, so this is Copy everywhere. Qt
+        # takes Control as held until Control itself is let go:
+        control = QtCore.Qt.KeyboardModifier.ControlModifier
+        send_key(self.view, QtCore.Qt.Key.Key_C, modifiers=control)
+        send_key(self.view, QtCore.Qt.Key.Key_Control, modifiers=control)
         self.assertEqual(self.qapplication.clipboard().text(), '5')
 
     def test_a_click_in_a_checkbox_cell_toggles_it_and_a_shift_click_does_not(self):

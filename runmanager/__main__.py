@@ -1018,13 +1018,6 @@ class GroupTab(object):
         self.globals_model_item_changed_disconnected = DisconnectContextManager(
             self.globals_model.itemChanged, self.on_globals_model_item_changed
         )
-        # Copy takes the expression at the selected index.
-        QtGui.QShortcut(
-            QtGui.QKeySequence.StandardKey.Copy,
-            self.ui.treeView_globals,
-            self.on_globals_copy,
-            context=QtCore.Qt.ShortcutContext.WidgetShortcut,
-        )
 
     def set_file_and_group_name(self, globals_file, group_name):
         self.globals_file = globals_file
@@ -1219,12 +1212,6 @@ class GroupTab(object):
     def edit_cell(self, index):
         self.ui.treeView_globals.setCurrentIndex(index)
         self.ui.treeView_globals.edit(index)
-
-    def on_globals_copy(self):
-        index = self.ui.treeView_globals.currentIndex()
-        text = index.data()
-        if text is not None:
-            QtWidgets.QApplication.clipboard().setText(str(text))
 
     def on_globals_model_item_changed(self, item):
         if item.column() == self.GLOBALS_COL_NAME:
