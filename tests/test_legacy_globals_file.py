@@ -32,13 +32,17 @@ class LegacyGlobalsFileTests(unittest.TestCase):
         self.path = os.path.join(directory, 'globals.h5')
 
     def test_opening_a_legacy_file_with_a_list_global_stores_nothing(self):
-        # Preparsing guesses an expansion for every list-valued global, and a
-        # legacy HDF5 file is read-only until the user converts it, so opening
-        # one must not try to store a guess in it.
+        # Preparsing guesses an expansion for every list-valued global, and
+        # takes a zip group from a global that is not a list. A legacy HDF5
+        # file is read-only until the user converts it, so opening one must
+        # store neither in it.
         with h5py.File(self.path, 'w') as f:
             group = f.create_group('globals/scans')
             group.attrs['x'] = '[1, 2, 3]'
+            group.attrs['z'] = '3'
             group.create_group('units').attrs['x'] = ''
+            group['units'].attrs['z'] = ''
+            group.create_group('expansion').attrs['z'] = 'pair'
         preparse_state = types.SimpleNamespace(
             previous_evaled_globals={},
             previous_global_hierarchy={},
@@ -49,9 +53,9 @@ class LegacyGlobalsFileTests(unittest.TestCase):
         changed = RunManager.guess_expansion_modes(
             preparse_state,
             {'scans': self.path},
-            {'scans': {'x': [1, 2, 3]}},
+            {'scans': {'x': [1, 2, 3], 'z': 3}},
             {},
-            {'x': ''},
+            {'x': '', 'z': 'pair'},
         )
 
         self.assertFalse(changed)

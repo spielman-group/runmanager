@@ -139,9 +139,18 @@ def rename_group(filename, oldgroupname, newgroupname):
 
 
 def new_global(filename, groupname, globalname):
-    if not is_valid_python_identifier(globalname):
-        raise ValueError('%s is not a valid Python variable name'%globalname)
-    globals_file.new_global(filename, groupname, globalname)
+    new_globals(filename, groupname, {globalname: {}})
+
+
+def new_globals(filename, groupname, records):
+    """Add globals to a group, ``{name: record}``, all of them or none.
+
+    Each record holds the fields of a globals file's record that are not to
+    be blank."""
+    for globalname in records:
+        if not is_valid_python_identifier(globalname):
+            raise ValueError('%s is not a valid Python variable name'%globalname)
+    globals_file.new_globals(filename, groupname, records)
 
 
 def rename_global(filename, groupname, oldglobalname, newglobalname):

@@ -70,14 +70,18 @@ class ValueColumnTests(unittest.TestCase):
         self.path = str(Path(directory.name, 'globals.toml'))
         globals_file.new_globals_file(self.path)
         globals_file.new_group(self.path, 'group')
-        for name, default, scan_enabled, scan in [
-            ('freq', '10', False, 'linspace(0, 1, 3)'),
-            ('power', '2', False, ''),
-            ('time', '5', True, '[1, 2]'),
-        ]:
-            globals_file.new_global(self.path, 'group', name)
-            record = dict(default=default, scan_enabled=scan_enabled, scan=scan)
-            globals_file.set_global_record(self.path, 'group', name, record)
+        globals_file.new_globals(
+            self.path,
+            'group',
+            {
+                name: dict(default=default, scan_enabled=scan_enabled, scan=scan)
+                for name, default, scan_enabled, scan in [
+                    ('freq', '10', False, 'linspace(0, 1, 3)'),
+                    ('power', '2', False, ''),
+                    ('time', '5', True, '[1, 2]'),
+                ]
+            },
+        )
         for name, value in [('app', App()), ('qapplication', self.qapplication)]:
             patcher = mock.patch.object(main_module, name, value, create=True)
             patcher.start()

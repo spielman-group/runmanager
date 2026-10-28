@@ -28,8 +28,7 @@ class ConcurrentEditTests(unittest.TestCase):
         path = os.path.join(directory, 'globals.toml')
         globals_file.new_globals_file(path)
         globals_file.new_group(path, 'group')
-        for name in ('x', 'y'):
-            globals_file.new_global(path, 'group', name)
+        globals_file.new_globals(path, 'group', {'x': {}, 'y': {}})
         errors = []
 
         def edit(name):

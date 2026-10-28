@@ -25,6 +25,7 @@ COMPILE_FAILED = 'failed'
 QUEUE_QUEUED = 'queued'
 QUEUE_BLOCKED = 'blocked'
 QUEUE_LEFT = 'left'
+QUEUE_NOT_QUEUED = 'not queued'
 BLACS_WAITING = 'waiting'
 BLACS_RUNNING = 'running'
 BLACS_COMPLETED = 'completed'
@@ -241,35 +242,130 @@ class RunmanagerClient(ZMQClient):
         """
         return self.request('set_groups_active', groups)
 
-    def create_global(self, globals_file, group_name, global_name, value='', units=''):
-        """Add a global to a group, as the window's click-to-add row does.
+    def new_globals_file(self, path):
+        """Create an empty TOML globals file and open it, as New globals file does.
 
         Parameters
         ----------
-        globals_file : str
-            Path of the globals file, as ``get_groups`` returns it.
-        group_name : str
-            A group in that file.
-        global_name : str
-            The new global's name, a valid Python variable name.
-        value : str
-            The Default expression, as text. Left empty if not given.
-        units : str
-            The Units text. Left empty if not given.
+        path : str
+            Path of the new file, ending in ``.toml``. A relative path is taken
+            from runmanager's working directory.
+
+        Returns
+        -------
+        str
+            The absolute path of the file, as ``get_groups`` names it.
+
+        Raises
+        ------
+        FileExistsError
+            For a path that exists.
+        runmanager.globals_file.GlobalsFileError
+            For a path not ending in ``.toml``.
+        """
+        return self.request('new_globals_file', path)
+
+    def open_globals_file(self, path):
+        """Open a globals file, with none of its groups active.
+
+        Opening one already open changes nothing. A legacy HDF5 globals file
+        can be opened and read, but not written remotely.
+
+        Returns
+        -------
+        str
+            The absolute path of the file, as ``get_groups`` names it.
+
+        Raises
+        ------
+        FileNotFoundError
+            For a path that is not a file.
+        """
+        return self.request('open_globals_file', path)
+
+    def close_globals_file(self, path):
+        """Close an open globals file, and the tabs of its groups, with no confirmation.
+
+        Its groups stop being active.
 
         Raises
         ------
         ValueError
-            For a legacy HDF5 globals file, or a name that is not a valid
-            Python variable name.
+            For a file that is not open, by the path ``get_groups`` gives.
+        """
+        return self.request('close_globals_file', path)
+
+    def new_group(self, globals_file, group_name):
+        """Add a group to an open globals file, as its click-to-add row does.
+
+        The group's tab is opened. The group is made active, as in the window,
+        unless a group of the same name is already active, when it is left
+        inactive: two active groups may not share a name.
+
+        Parameters
+        ----------
+        globals_file : str
+            A TOML globals file, open, by the path ``get_groups`` gives.
+        group_name : str
+            The new group's name.
+
+        Returns
+        -------
+        bool
+            Whether the new group is active.
+
+        Raises
+        ------
+        ValueError
+            For a file that is not open, a legacy HDF5 globals file, or a name
+            that is not a valid group name.
+        RuntimeError
+            When two active groups already share a name.
+        runmanager.globals_file.GlobalsFileError
+            For a name the file already has.
+        """
+        return self.request('new_group', globals_file, group_name)
+
+    def new_globals(self, globals_file, group_name, globals):
+        """Add globals to a group: all of them, or none if any is refused.
+
+        Only a TOML globals file is written; convert a legacy HDF5 one in the
+        window first. If the group is open in a tab, the globals show there.
+
+        Parameters
+        ----------
+        globals_file : str
+            Path of the globals file, as ``get_groups`` returns it. It need not
+            be open.
+        group_name : str
+            A group in that file.
+        globals : dict
+            ``{global_name: fields}``, each name a valid Python variable name
+            and each ``fields`` a dict of any of ``value``, ``units``, ``scan``
+            and ``expansion``, as strings, and ``scan_enabled`` and
+            ``jit_enabled``, as bools. A field left out is empty or False.
+
+        Returns
+        -------
+        dict
+            ``{global_name: fields}``, with every field, as the globals file
+            now holds it. A global with Scan? ticked and no expansion holds
+            ``'outer'``.
+
+        Raises
+        ------
+        ValueError
+            For a legacy HDF5 globals file, a name that is not a valid Python
+            variable name, a field not listed above, or both Scan? and JIT?
+            ticked.
         TypeError
-            For a ``value`` or ``units`` that is not a string.
+            For a field of the wrong type.
         runmanager.globals_file.GlobalsFileError
             For a name the group already has, or a group the file lacks.
+        FileNotFoundError
+            For a globals file that does not exist.
         """
-        return self.request(
-            'create_global', globals_file, group_name, global_name, value, units
-        )
+        return self.request('new_globals', globals_file, group_name, globals)
 
     def delete_global(self, global_name):
         """Delete an active global from its group, with no confirmation.
@@ -278,6 +374,11 @@ class RunmanagerClient(ZMQClient):
         ----------
         global_name : str
             A global of an active group.
+
+        Returns
+        -------
+        str
+            The name deleted.
 
         Raises
         ------
@@ -297,9 +398,12 @@ class RunmanagerClient(ZMQClient):
         the batch is made, before its shots compile, so each ``path`` is where
         a file will be written and not a file that is there yet. With 'BLACS'
         unticked the shots are not queued, so ``get_queue`` does not list them,
-        ``shot_status`` answers ``None`` for them and a compile error
-        reaches only the output box. ``test_compile`` is how to check that a
-        script compiles.
+        and ``shot_status`` gives each a ``queue`` of ``'not queued'``, with a
+        compile error as its ``message``. Nor are they a sequence: they claim
+        no sequence index, no later batch can join them, and their files are
+        written not to the shot output folder but to a temporary folder that
+        runmanager removes when it exits. ``test_compile`` is how to check
+        that a script compiles.
 
         Parameters
         ----------
@@ -337,8 +441,9 @@ class RunmanagerClient(ZMQClient):
         ValueError
             For a ``submission_mode`` that is not one of these, for any but the
             first while 'BLACS' is unticked, since the others are about the
-            queue, and when there is no labscript file or output folder, or the
-            globals cannot be evaluated or expand into no shots.
+            queue, and when there is no labscript file, or no output folder with
+            'BLACS' ticked, or the globals cannot be evaluated or expand into
+            no shots.
         SequenceRefused
             For a last sequence runmanager has no record of, or one of another
             labscript file.
@@ -524,7 +629,9 @@ class RunmanagerClient(ZMQClient):
                 A shot that fails to compile leaves the queue at once, with the
                 compile's error as its ``message``, and the shots behind it carry
                 on. ``None`` for a shot that left the queue without having
-                compiled or failed to compile.
+                compiled or failed to compile, and for a shot not queued whose
+                batch was aborted before it. A shot not queued that fails to
+                compile does not stop the rest of its batch either.
             ``queue``
                 ``'queued'`` while the shot is in the queue, including a shot
                 that itself holds the queue up. ``'blocked'`` when it is in the
@@ -532,6 +639,8 @@ class RunmanagerClient(ZMQClient):
                 ``blacs`` is ``'rejected'``, so that it is not offered to BLACS
                 until they do.
                 ``'left'`` once it is no longer in the queue.
+                ``'not queued'`` for a shot engaged or submitted with 'BLACS'
+                unticked, which is compiled and never queued.
             ``blacs``
                 ``'waiting'`` for a shot not yet offered to BLACS, and
                 ``'running'`` once it is offered and BLACS has reported no
@@ -542,11 +651,12 @@ class RunmanagerClient(ZMQClient):
                 deleted while BLACS had it is ``'cancelled'``: it is not
                 offered again, but BLACS may still complete it. A shot that
                 left keeps the last of these it had, and is ``None`` if it was
-                never offered.
+                never offered. ``None`` for a shot not queued.
             ``lyse``
                 What runmanager did with a completed shot's file; it never
                 hears back from lyse about the analysis. ``None`` for a shot
-                that left without BLACS completing it, which lyse never gets.
+                that left without BLACS completing it, or was not queued, which
+                lyse never gets.
                 Otherwise:
 
                 ``'waiting'``
@@ -566,8 +676,8 @@ class RunmanagerClient(ZMQClient):
                 far as runmanager can tell, and nothing about lyse. True for a
                 shot the queue would still hand over to BLACS, and for a
                 ``'cancelled'`` one, which BLACS may still complete. False for
-                a ``'blocked'`` shot, a shot waiting on an operator and every
-                shot that has left.
+                a ``'blocked'`` shot, a shot waiting on an operator, every
+                shot that has left and every shot not queued.
             ``since``
                 ``time.time()`` of the latest change to the shot's ``compile``,
                 ``blacs``, ``lyse`` or ``message``, or of its leaving the
@@ -581,23 +691,24 @@ class RunmanagerClient(ZMQClient):
         Notes
         -----
         Only some combinations of these values occur. A shot is in the queue
-        when ``queue`` is ``'queued'`` or ``'blocked'``, and has left when it
-        is ``'left'``:
+        when ``queue`` is ``'queued'`` or ``'blocked'``, has left when it is
+        ``'left'``, and was never queued when it is ``'not queued'``:
 
-        ========  ======================  =============================================
-        Where     When                    Then
-        ========  ======================  =============================================
-        in queue  always                  lyse 'waiting'
-        in queue  blacs not 'waiting'     compile 'compiled'
-        in queue  blacs 'rejected'        pending False
-        in queue  blacs 'cancelled'       pending True
-        in queue  queue 'blocked'         pending False
-        left      always                  pending False
-        left      blacs 'completed'       compile 'compiled'; lyse 'waiting', 'sent',
-                                          'rejected' or 'not sent'
-        left      blacs not 'completed'   lyse None
-        left      compile 'failed'        blacs None
-        ========  ======================  =============================================
+        ==========  ======================  =============================================
+        Where       When                    Then
+        ==========  ======================  =============================================
+        in queue    always                  lyse 'waiting'
+        in queue    blacs not 'waiting'     compile 'compiled'
+        in queue    blacs 'rejected'        pending False
+        in queue    blacs 'cancelled'       pending True
+        in queue    queue 'blocked'         pending False
+        left        always                  pending False
+        left        blacs 'completed'       compile 'compiled'; lyse 'waiting', 'sent',
+                                            'rejected' or 'not sent'
+        left        blacs not 'completed'   lyse None
+        left        compile 'failed'        blacs None
+        not queued  always                  blacs None; lyse None; pending False
+        ==========  ======================  =============================================
         """
         return self.request('shot_status', list(shot_ids))
 
