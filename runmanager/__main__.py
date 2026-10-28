@@ -4813,6 +4813,8 @@ class RunManager(LabscriptApplication):
                         iter(evaled_globals[group_name][global_name])
                     except Exception:
                         filename = active_groups[group_name]
+                        if runmanager.globals_file.is_legacy_hdf5(filename):
+                            continue
                         runmanager.globals_file.set_field(
                             filename, group_name, global_name, 'expansion', ''
                         )
