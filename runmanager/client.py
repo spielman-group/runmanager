@@ -626,7 +626,8 @@ class RunmanagerClient(ZMQClient):
                 compile's error as its ``message``, and the shots behind it carry
                 on. ``None`` for a shot that left the queue without having
                 compiled or failed to compile, and for a shot not queued whose
-                batch stopped before it: at a shot that failed, or on Abort.
+                batch was aborted before it. A shot not queued that fails to
+                compile does not stop the rest of its batch either.
             ``queue``
                 ``'queued'`` while the shot is in the queue, including a shot
                 that itself holds the queue up. ``'blocked'`` when it is in the

@@ -1252,21 +1252,30 @@ class CompileErrorTests(RemoteCommandTestCase):
         self.assertIn(self.ERROR, record['message'])
         self.assertEqual(self.request(self.client.get_queue), [])
 
-    def test_a_shot_compiled_but_not_queued_has_its_error(self):
+    def test_a_batch_not_queued_compiles_past_a_shot_that_fails(self):
         globals_file.set_field(self.app.globals_file, 'group', 'x', 'scan', '[1, 2]')
         globals_file.set_field(self.app.globals_file, 'group', 'x', 'scan_enabled', True)
         self.app.ui.checkBox_run_shots.isChecked = lambda: False
-        receipts = self.request(self.client.engage)
-        shot_ids = [receipt['shot_id'] for receipt in receipts]
+
+        def compile_run_file(labscript_file, path):
+            self.app.compiled.append(path)
+            if len(self.app.compiled) == 1:
+                return False, self.ERROR
+            return True, ''
+
+        self.app.queue_manager.compile_run_file_callback = compile_run_file
+        failed, compiled = [receipt['shot_id'] for receipt in self.request(self.client.engage)]
         wait_for(
-            lambda: self.app.queue_controller.get_shot_statuses(shot_ids)[shot_ids[0]][
+            lambda: self.app.queue_controller.get_shot_statuses([compiled])[compiled][
                 'compile'
-            ] == 'failed'
+            ] == 'compiled'
         )
 
-        records = self.request(self.client.shot_status, shot_ids)
+        records = self.request(self.client.shot_status, [failed, compiled])
 
-        self.assertIn(self.ERROR, records[shot_ids[0]]['message'])
+        self.assertEqual(records[failed]['compile'], 'failed')
+        self.assertIn(self.ERROR, records[failed]['message'])
+        self.assertTrue(os.path.isfile(records[compiled]['path']))
         for record in records.values():
             self.assertEqual(record['queue'], 'not queued')
             self.assertTrue(is_legal(record), record)

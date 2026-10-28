@@ -1271,6 +1271,7 @@ class QueueManager(QtCore.QObject):
                 elif command == 'compile_shots':
                     records, stop = args
                     aborted = False
+                    # A shot that fails does not stop the rest, as in the queue.
                     for item in records:
                         if aborted or stop.is_set():
                             aborted = True
@@ -1284,7 +1285,11 @@ class QueueManager(QtCore.QObject):
                             self.controller.set_unqueued_compile(item, COMPILE_COMPILED)
                         else:
                             self.controller.set_unqueued_compile(item, COMPILE_FAILED, message)
-                            aborted = True
+                            self.output(
+                                'Shot %s could not be compiled.\n'
+                                % os.path.basename(item['path']),
+                                red=True,
+                            )
                     if aborted:
                         self.output('Compilation aborted.\n\n', red=True)
                     else:
