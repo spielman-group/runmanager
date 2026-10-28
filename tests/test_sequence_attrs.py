@@ -88,6 +88,20 @@ class DefaultSequenceTests(unittest.TestCase):
         self.addCleanup(app.queue_manager.shutdown)
         return app
 
+    def test_closing_runmanager_deletes_a_default_shot_not_handed_over(self):
+        app = self.default_shot_app()
+        row = self.default_shot(app)
+        # What the window starts and closing shuts down, which a test does not start:
+        app.offer_to_save_changes = lambda *args, **kwargs: True
+        for name in ('analysis_submission', 'blacs_link', 'runviewer_link'):
+            setattr(app, name, types.SimpleNamespace(shutdown=lambda: None))
+        app.to_child = types.SimpleNamespace(put=lambda message: None)
+        app.output_box.shutdown = lambda: None
+
+        self.assertTrue(app.on_close_event())
+
+        self.assertFalse(os.path.exists(row['path']))
+
     def test_default_shots_named_by_a_global_are_numbered_through_a_restart(self):
         # Named after a global, the day's default files differ in more than
         # their number, and a restart forgets the count; the run number is

@@ -2435,6 +2435,8 @@ class RunManager(LabscriptGuiApplication):
     def on_close_event(self):
         if not self.offer_to_save_changes('Quit runmanager', quitting=True):
             return False
+        # Prepared for BLACS and never handed over, it would stay a shot no one ran:
+        self.discard_default_shot()
         self.analysis_submission.shutdown()
         self.blacs_link.shutdown()
         self.runviewer_link.shutdown()
