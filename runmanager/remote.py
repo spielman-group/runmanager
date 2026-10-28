@@ -34,7 +34,6 @@ is_output_folder_default = _default_client.is_output_folder_default
 reset_shot_output_folder = _default_client.reset_shot_output_folder
 shot_status = _default_client.shot_status
 submit_shots = _default_client.submit_shots
-queue_exchange = _default_client.queue_exchange
 
 if __name__ == '__main__':
     # Test
