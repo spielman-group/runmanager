@@ -118,7 +118,7 @@ class ValueColumnTests(unittest.TestCase):
     def record(self, name):
         return globals_file.get_global_record(self.path, 'group', name)
 
-    def test_native_fold_shows_two_distinct_editable_expressions(self):
+    def test_the_second_expression_unfolds_under_its_global_and_each_expression_edits_on_its_own(self):
         _, rect = self.value_rect('freq')
         scan = self.expression_item('freq', 'scan').index()
         self.assertFalse(self.view.visualRect(scan).isValid())
@@ -162,7 +162,7 @@ class ValueColumnTests(unittest.TestCase):
         )
 
     def test_toggling_scan_commits_editor_and_swaps_active_expression(self):
-        parent, rect = self.value_rect('freq')
+        _, rect = self.value_rect('freq')
         send_click(self.view, rect.center())
         self.editor().setPlainText('12')
         checkbox = self.tab.get_global_item_by_name('freq', self.tab.GLOBALS_COL_SCAN_ENABLED)
@@ -224,7 +224,7 @@ class ValueColumnTests(unittest.TestCase):
         self.tab.on_globals_copy()
         self.assertEqual(self.qapplication.clipboard().text(), '5')
 
-    def test_checkbox_cells_toggle_and_shift_click_preserves_selection(self):
+    def test_a_click_in_a_checkbox_cell_toggles_it_and_a_shift_click_does_not(self):
         scan = self.tab.get_global_item_by_name('freq', self.tab.GLOBALS_COL_SCAN_ENABLED)
         rect = self.view.visualRect(scan.index())
         point = QtCore.QPoint(rect.right() - 5, rect.center().y())

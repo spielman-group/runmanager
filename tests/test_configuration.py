@@ -62,7 +62,7 @@ class QueueInConfigurationTests(unittest.TestCase):
         app.queue_manager.enqueue([{'path': shot, 'compiled': True} for shot in shots])
         return app
 
-    def test_queued_shots_come_back_at_startup_and_a_later_load_leaves_them(self):
+    def test_queued_shots_return_only_at_startup_but_queue_settings_load_every_time(self):
         a, b, c = (os.path.join(self.directory, f'{name}.h5') for name in 'abc')
         path = os.path.join(self.directory, 'runmanager.toml')
         closing = self.session(a, b)

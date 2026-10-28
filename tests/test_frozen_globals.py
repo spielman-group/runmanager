@@ -43,6 +43,7 @@ class FrozenGlobalsTests(unittest.TestCase):
             globals_file.get_globals_details(groups)
         )
 
+        self.assertEqual(len(pending), 2)
         for shot, frozen in pending:
             _, compiled = runmanager.get_queue_compile_globals(groups, frozen)
             np.testing.assert_array_equal(compiled['x'], shot['x'])

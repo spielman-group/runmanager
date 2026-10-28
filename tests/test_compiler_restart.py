@@ -34,7 +34,7 @@ _qapplication = None
 
 
 class FakeChild:
-    """A compiler subprocess that finishes the compile in hand before it reads on."""
+    """A compiler subprocess that answers each compile only once `release` is set."""
 
     def __init__(self, release=None):
         context = zmq.Context.instance()
@@ -56,7 +56,7 @@ class FakeChild:
                     return
                 self.compiled.append(data[1])
                 if release:
-                    release.wait(10)
+                    release.wait()
                 replies.send_pyobj(['done', True, ''])
 
         threading.Thread(target=mainloop, daemon=True).start()
@@ -64,13 +64,19 @@ class FakeChild:
     def poll(self):
         return self.returncode
 
+    def terminate(self):
+        self.returncode = -15
+
 
 class RestartDuringCompileTests(unittest.TestCase):
     def test_a_restart_during_a_compile_does_not_wedge_later_compiles(self):
         global _qapplication
         if QApplication.instance() is None:
             _qapplication = QApplication([])
+        # The old child stays hung until the test is over, as one that has
+        # stopped answering does:
         release = threading.Event()
+        self.addCleanup(release.set)
         old, new = FakeChild(release), FakeChild()
         app = RunManager.__new__(RunManager)
         app.compiler_lock = threading.Lock()
@@ -91,8 +97,9 @@ class RestartDuringCompileTests(unittest.TestCase):
         faulthandler.dump_traceback_later(30, exit=True)
         self.addCleanup(faulthandler.cancel_dump_traceback_later)
 
+        first = []
         threading.Thread(
-            target=app.compile_run_file, args=('e.py', 'first.h5'), daemon=True
+            target=lambda: first.append(app.compile_run_file('e.py', 'first.h5')), daemon=True
         ).start()
         wait_for(lambda: old.compiled)
         # Waiting on compiler_lock when the restart frees the first compile, so
@@ -101,9 +108,9 @@ class RestartDuringCompileTests(unittest.TestCase):
             target=app.compile_run_file, args=('e.py', 'later.h5'), daemon=True
         ).start()
         app.on_restart_subprocess_clicked()
-        release.set()
 
-        wait_for(lambda: new.compiled, timeout=5)
+        wait_for(lambda: new.compiled)
+        self.assertEqual([success for success, _ in first], [False])
         self.assertEqual(old.compiled, ['first.h5'])
         self.assertEqual(new.compiled, ['later.h5'])
 
