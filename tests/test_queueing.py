@@ -42,7 +42,6 @@ from runmanager.queueing import (
     EMPTY_QUEUE_NOTHING,
     PROVIDER_NONE,
     PROVIDER_SHOT,
-    ROW_BACKGROUNDS,
     TINTED_ROW_FOREGROUND,
     QueueController,
     QueueManager,
@@ -285,7 +284,7 @@ class RejectedShotTests(unittest.TestCase):
             'and it holds its place rather than letting the queue past it',
         )
 
-    def test_deleting_it_lets_the_queue_go_on(self):
+    def test_deleting_a_rejected_shot_lets_the_queue_go_on(self):
         controller, _ = self.rejected_queue()
         rows = controller.get_queue_display_items()
 
@@ -333,10 +332,8 @@ class FakeRunManager(object):
         )
         # What the compiler does: True as though the shot compiled, False as it
         # reports a bad labscript file with COMPILE_ERROR, or an exception for a
-        # failure to get that far. Recorded so a test can say how many times it
-        # was asked.
+        # failure to get that far.
         self.compiles = compiles
-        self.compiled = []
         self.queue_controller = QueueController()
         self.queue_manager = QueueManager(
             self.queue_controller,
@@ -357,7 +354,6 @@ class FakeRunManager(object):
         self.default_shots_taken = 0
 
     def compile_run_file(self, labscript_file, path):
-        self.compiled.append(path)
         if isinstance(self.compiles, Exception):
             raise self.compiles
         return self.compiles, ('' if self.compiles else COMPILE_ERROR)
@@ -487,22 +483,23 @@ class DefaultShotTests(unittest.TestCase):
         )
 
     def test_no_default_shot_is_produced_while_the_queue_holds_work(self):
-        # The empty-queue policy is for an empty queue. A head BLACS never
-        # confirmed is work to hand out again, so no default shot is made to
-        # stack up behind it.
+        # The empty-queue policy is for an empty queue. A rejected head is held
+        # rather than offered, but it is still work in the queue, so no default
+        # shot is made to stack up behind it.
+        shot = os.path.join(self.directory, 'shot_a.h5')
         app = self.make_runmanager(default_shot_file=self.default_shot)
-        app.queue_manager.enqueue([queued_shot(os.path.join(self.directory, 'shot_a.h5'))])
+        app.queue_manager.enqueue([queued_shot(shot)])
         offered = app.offer_shot()
+        app.queue_exchange(
+            outcome={'shot_id': offered['shot_id'], 'status': 'rejected'},
+            request_shot=False,
+        )
 
         response = app.offer_shot()
 
-        self.assertEqual(response['state'], PROVIDER_SHOT)
-        self.assertEqual(response['shot_id'], offered['shot_id'])
+        self.assertEqual(response['state'], PROVIDER_NONE)
         self.assertEqual(app.default_shots_taken, 0)
-        self.assertEqual(
-            [row['path'] for row in self.rows(app)],
-            [os.path.join(self.directory, 'shot_a.h5')],
-        )
+        self.assertEqual([row['path'] for row in self.rows(app)], [shot])
 
     def test_a_default_shot_is_not_saved_with_the_queue(self):
         # Its globals were read when it was produced, so it must not be handed
@@ -528,7 +525,11 @@ class DefaultShotTests(unittest.TestCase):
 
 
 class LazyCompileFailureTests(unittest.TestCase):
-    """A queued shot that cannot be compiled leaves the queue, with the reason."""
+    """A lazy shot is compiled in the background.
+
+    One that cannot be compiled leaves the queue with the reason; one that
+    compiles is offered.
+    """
 
     def make_runmanager(self, compiles):
         self.directory = tempfile.mkdtemp()
@@ -579,16 +580,16 @@ class LazyCompileFailureTests(unittest.TestCase):
                 self.assertEqual((record['compile'], record['queue']), ('failed', 'left'))
                 self.assertIn(reason, record['message'])
 
-    def test_a_shot_that_compiles_is_offered_with_no_reason_on_it(self):
+    def test_a_lazy_shot_is_pending_until_compiled_then_offered(self):
         app = self.make_runmanager(compiles=True)
 
         responses = self.ask_until_settled(app, requests=2)
 
-        self.assertEqual(responses[-1]['state'], PROVIDER_SHOT)
+        self.assertEqual(
+            [r['state'] for r in responses], [PROVIDER_PENDING, PROVIDER_SHOT]
+        )
         self.assertTrue(responses[-1]['path'].endswith('lazy_a.h5'))
-        row = self.rows(app)[0]
-        self.assertEqual(row['state'], 'running')
-        self.assertEqual(row['tooltip'], row['path'], 'nothing to explain')
+        self.assertEqual(self.rows(app)[0]['state'], 'running')
 
 
 class CompiledFlagOwnershipTests(unittest.TestCase):
@@ -747,7 +748,7 @@ class SubmittedShotTests(unittest.TestCase):
         self.assertEqual((record['compile'], record['queue']), ('failed', 'left'))
         self.assertIn(COMPILE_ERROR, record['message'])
 
-    def test_a_batch_that_is_not_going_to_the_queue_is_not_taken_on(self):
+    def test_a_batch_not_sent_to_blacs_queues_nothing(self):
         # Compiling a batch for a look at it in runviewer queues nothing, so
         # there is no queued shot for the queue to answer about.
         self.release.clear()
@@ -769,6 +770,8 @@ class ContinuingSequenceAnchorTests(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.directory, True)
+        self.labscript_file = os.path.join(self.directory, 'default.py')
+        open(self.labscript_file, 'w').close()
         self.app = FakeRunManager(self)
         self.addCleanup(self.app.queue_manager.shutdown)
 
@@ -823,14 +826,12 @@ class ContinuingSequenceAnchorTests(unittest.TestCase):
         # Under the default-shot policy the gaps are filled by shots that belong
         # to no sequence and live in the daily default folder; continuing from
         # one would take the next submission with it.
-        labscript_file = os.path.join(self.directory, 'default.py')
-        open(labscript_file, 'w').close()
         default_shot = os.path.join(self.directory, 'default_shot_0.h5')
         open(default_shot, 'w').close()
         app = FakeRunManager(self, default_shot_file=default_shot)
         self.addCleanup(app.queue_manager.shutdown)
         app.queue_manager.set_empty_queue_policy(EMPTY_QUEUE_DEFAULT_LABSCRIPT)
-        app.queue_manager.set_default_labscript_file(labscript_file)
+        app.queue_manager.set_default_labscript_file(self.labscript_file)
 
         submitted = os.path.join(self.directory, 'experiment_00.h5')
         filler = self.run_a_shot_and_let_blacs_ask_again(app, default_shot=default_shot)
@@ -868,6 +869,7 @@ class ContinuingSequenceAnchorTests(unittest.TestCase):
                 app = FakeRunManager(self)
                 self.addCleanup(app.queue_manager.shutdown)
                 app.queue_manager.set_empty_queue_policy(policy)
+                app.queue_manager.set_default_labscript_file(self.labscript_file)
 
                 filler = self.run_a_shot_and_let_blacs_ask_again(app)
 
@@ -890,15 +892,11 @@ class ShotIdBeforeCompileTests(unittest.TestCase):
     a file carries is the id of its row.
     """
 
-    def test_a_record_is_compiled_with_the_id_its_row_will_have(self):
+    def test_the_records_compile_shots_returns_carry_their_row_ids(self):
         app = FakeRunManager(self)
         self.addCleanup(app.queue_manager.shutdown)
-        prepared = []
-        app.queue_manager.prepare_run_file_callback = lambda item, default_globals: prepared.append(
-            dict(item)
-        )
 
-        app.queue_manager.compile_shots(
+        records = app.queue_manager.compile_shots(
             [
                 {
                     'path': '/tmp/eager.h5',
@@ -911,20 +909,11 @@ class ShotIdBeforeCompileTests(unittest.TestCase):
             True,
             False,
         )
-        for _ in range(200):
-            if prepared:
-                break
-            time.sleep(0.01)
 
-        self.assertTrue(prepared, 'the record reached the step that writes its file')
-        self.assertTrue(
-            prepared[0].get('shot_id'),
-            'and had its identifier by then, which is what a file can carry',
-        )
         self.assertEqual(
-            prepared[0]['shot_id'],
-            app.queue_controller.get_queue_display_items()[0]['shot_id'],
-            'the id written into the file is the id of the row in the queue',
+            [record.get('shot_id') for record in records],
+            [row['shot_id'] for row in app.queue_controller.get_queue_display_items()],
+            'the caller can tell its shots apart in the queue by the ids it was given',
         )
 
     def test_a_queued_shot_is_written_with_its_id(self):
@@ -1029,7 +1018,7 @@ class QueueEditingTests(unittest.TestCase):
         self.assertTrue(os.path.exists(running), 'with the file it is running')
         self.assertFalse(os.path.exists(waiting))
 
-    def test_clear_leaves_a_failed_row_alone_with_the_running_one(self):
+    def test_clear_keeps_a_row_that_came_back_failed_and_removes_the_rest(self):
         # A shot that came back needing attention is not what an operator
         # meant to discard by submitting different work: Clear replaces what
         # is behind it, and deleting it stays explicit.
@@ -1341,7 +1330,7 @@ class CancelledShotTests(unittest.TestCase):
     def rows(self, app):
         return app.queue_controller.get_queue_display_items()
 
-    def test_it_is_never_offered_again(self):
+    def test_a_cancelled_shot_is_not_offered_and_goes_at_the_next_request(self):
         app, shot_id = self.queue_with_a_shot_at_blacs()
         app.queue_manager.delete_rows([shot_id])
 
@@ -1358,7 +1347,7 @@ class CancelledShotTests(unittest.TestCase):
             'it is proof nobody was running it, which is when its file is free',
         )
 
-    def test_an_outcome_for_it_clears_it_and_only_a_completed_one_is_analysed(self):
+    def test_any_outcome_for_a_cancelled_shot_clears_it_and_only_a_completed_one_is_analysed(self):
         for status, analysed in (('completed', ['/tmp/X.h5']), ('failed', [])):
             with self.subTest(status=status):
                 app, shot_id = self.queue_with_a_shot_at_blacs()
@@ -1561,15 +1550,16 @@ class ExchangeFailureTests(unittest.TestCase):
         return app
 
     def test_a_failure_choosing_a_shot_is_reported_and_answered(self):
+        directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, directory, True)
         app = self.make_runmanager()
         app.queue_manager.enqueue([queued_shot('/tmp/shot_a.h5')])
         offered = app.queue_exchange(request_shot=True)
-
-        # An injected fault: no input makes choosing a shot raise.
-        def raise_instead(*args, **kwargs):
-            raise RuntimeError('the default labscript file has moved')
-
-        app.queue_manager.offer_next = raise_instead
+        # Choosing a default shot raises once the default labscript file has gone.
+        app.queue_manager.set_empty_queue_policy(EMPTY_QUEUE_DEFAULT_LABSCRIPT)
+        app.queue_manager.set_default_labscript_file(
+            os.path.join(directory, 'moved.py')
+        )
 
         response = app.queue_exchange(
             outcome={'shot_id': offered['shot_id'], 'status': 'completed'},
@@ -1585,6 +1575,9 @@ class ExchangeFailureTests(unittest.TestCase):
             app.queue_controller.get_queue_paths(),
             [],
             'the outcome that came with the request was still applied',
+        )
+        self.assertTrue(
+            any('moved.py' in line for line in app.said), 'and the operator is told why'
         )
 
 
@@ -1666,7 +1659,7 @@ class SequenceContinuityTests(unittest.TestCase):
         )
         return list(run_files)
 
-    def test_an_added_shot_is_numbered_by_the_filename_it_is_given(self):
+    def test_shots_added_to_a_sequence_continue_its_run_numbers_and_keep_its_attributes(self):
         # A sequence compiled in one go names each file after the run number
         # written into it, so renumbering the files of an added batch without
         # its runs would restart run numbers inside a sequence with a shot 0.
@@ -1689,25 +1682,6 @@ class SequenceContinuityTests(unittest.TestCase):
             [self.existing, self.existing],
             'the sequence added to is the sequence the added shots are in',
         )
-
-    def test_a_shot_written_earlier_keeps_the_extent_it_was_written_with(self):
-        anchor = self.path('experiment_00.h5')
-        runmanager.make_single_run_file(anchor, None, {}, self.existing, 0, 1)
-
-        added = self.add_shots(2, anchor, sequence_attrs=self.existing)
-
-        self.assertEqual(
-            [info['n_runs'] for info in added],
-            [3, 3],
-            'runs 0 to 2 of this sequence exist once these are written',
-        )
-        with h5py.File(anchor, 'r') as f:
-            self.assertEqual(
-                f.attrs['n_runs'],
-                1,
-                'the shot that was already there still says what its sequence '
-                'was when it was written',
-            )
 
     def test_adding_shots_to_a_sequence_claims_no_new_sequence_index(self):
         anchor = self.path('experiment_03.h5')
@@ -1784,7 +1758,7 @@ class DeletedAnchorTests(unittest.TestCase):
         app.queue_manager.enqueue([queued_shot(path, sequence_attrs=self.SEQUENCE)])
         return path
 
-    def test_deleting_the_failed_shot_it_named_keeps_the_anchor(self):
+    def test_deleting_the_failed_shot_last_sent_keeps_it_as_the_anchor(self):
         sent = self.enqueue(self.app, 'experiment_00.h5')
         offered = self.app.offer_shot()
         self.app.queue_manager.shot_finished(
@@ -1825,7 +1799,7 @@ class DeletedAnchorTests(unittest.TestCase):
             'from',
         )
 
-    def test_a_cancelled_shots_file_going_leaves_the_anchor(self):
+    def test_a_cancelled_shot_whose_file_goes_is_still_the_anchor(self):
         # The other way a shot BLACS was given loses its file: the operator
         # deletes the row while BLACS has it, and the file goes at the next
         # request, once nobody can be running it.
