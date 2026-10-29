@@ -278,7 +278,7 @@ class GroupTab:
         loader.registerCustomWidget(GlobalsTreeView)
         self.ui = loader.load(os.path.join(runmanager_dir, 'group.ui'))
         self.ui.gridLayout.setColumnStretch(1, 1)
-        self.tabWidget.addTab(self.ui, group_name, closable=True)
+        self.tabWidget.addTab(self.ui, group_name, closable=True, icon_on_right=True)
 
         self.set_colors()
         # The globals of this group that are scanned over, for the tab's tooltip:
