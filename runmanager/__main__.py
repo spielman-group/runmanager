@@ -2068,9 +2068,11 @@ class RunManager(LabscriptGuiApplication):
         self._default_shot_lock = threading.Lock()
         self._default_shot_preparing = False
         self._default_shot_ready = None
-        # The source of the one made last, which is the default labscript file
-        # and the active globals by content, and whether it failed. One that
-        # failed is not tried again until its source changes.
+        # How many times the globals have changed. A default shot is made from
+        # the default labscript file as it stands and the globals: the source
+        # of the one made last, and whether it failed. One that failed is not
+        # tried again until its source changes.
+        self.globals_changes = 0
         self._default_shot_source = None
         self._default_shot_failed = False
 
@@ -2430,7 +2432,8 @@ class RunManager(LabscriptGuiApplication):
     def on_theme_changed(self):
         for tab in self.currently_open_groups.values():
             tab.redraw_colors()
-        # Parsing recolours the expression cells:
+        # Parsing recolours the expression cells. Not globals_changed(), which
+        # would discard a prepared default shot:
         self.preparse_globals_required.put(None)
 
     def on_close_event(self):
@@ -2463,7 +2466,6 @@ class RunManager(LabscriptGuiApplication):
         if empty_queue_policy is None:
             return
         self.queue_manager.set_empty_queue_policy(empty_queue_policy)
-        self.forget_default_shot_failure()
 
     def on_queue_compile_mode_changed(self, index):
         compile_mode = self.queue_compile_mode_combo.itemData(index)
@@ -2564,7 +2566,6 @@ class RunManager(LabscriptGuiApplication):
         self.ui.toolButton_edit_default_labscript_file.setEnabled(bool(text))
         self.ui.lineEdit_default_labscript_file.setToolTip(text)
         self.queue_manager.set_default_labscript_file(text)
-        self.forget_default_shot_failure()
 
     def on_shot_output_folder_text_changed(self, text):
         # Blank out the 'reset default output folder' button if the user is
@@ -3538,6 +3539,7 @@ class RunManager(LabscriptGuiApplication):
         """Called from either self, a GroupTab, or the RunmanagerServer to inform
         runmanager that something about globals has changed, and that they need
         parsing again."""
+        self.globals_changes += 1
         self.ui.pushButton_engage.setEnabled(False)
         self.preparse_globals_required.put(None)
 
@@ -4652,7 +4654,7 @@ class RunManager(LabscriptGuiApplication):
         Its globals were read when it was produced, so it must not be handed to
         BLACS later as though they were current. This happens when the queue
         has taken over, the empty-queue policy no longer calls for one, or the
-        globals or the default labscript file have changed since."""
+        globals have changed since."""
         with self._default_shot_lock:
             row = self._default_shot_ready
             self._default_shot_ready = None
@@ -4668,32 +4670,17 @@ class RunManager(LabscriptGuiApplication):
         self.ui.label_default_shot_failed.setVisible(message is not None)
         self.ui.label_default_shot_failed.setToolTip(message or '')
 
-    def forget_default_shot_failure(self):
-        """Let the next request try a default shot again, and hide the "!"."""
-        with self._default_shot_lock:
-            self._default_shot_failed = False
-        self.show_default_shot_failure(None)
-
     def take_default_shot(self, labscript_file):
         """Return a compiled default shot's queue row, or None while one is
         being produced, or while one that failed has the same source.
 
-        The source is the default labscript file and the active globals, by
-        content, so that a change made outside runmanager counts and one that
-        changes nothing does not. At most one shot is produced at a time,
-        however often BLACS asks. It is collected by a later request once it is
-        ready."""
+        At most one is produced at a time, however often BLACS asks. The shot
+        is collected by a later request once it is ready."""
         try:
-            script = Path(labscript_file).read_bytes()
+            mtime = os.path.getmtime(labscript_file)
         except OSError:
-            script = None
-        try:
-            active_groups = inmain(self.get_active_groups, interactive=False)
-            globals_details = runmanager.globals_file.get_globals_details(active_groups)
-        except Exception as e:
-            # The same fault reads the same, and is not retried until it changes:
-            globals_details = repr(e)
-        source = (labscript_file, script, globals_details)
+            mtime = None
+        source = (labscript_file, mtime, self.globals_changes)
         # A default shot started before the latest change to its source is
         # stale. Drop it now if it is ready; one still compiling is dropped by
         # the request that finds it ready:
