@@ -1431,6 +1431,15 @@ def groups_window(paths):
     return app
 
 
+class WindowFieldTests(RemoteCommandTestCase):
+    def make_app(self):
+        return groups_window([])
+
+    def test_an_empty_file_or_folder_field_reads_as_empty(self):
+        self.assertEqual(self.request(self.client.get_labscript_file), '')
+        self.assertEqual(self.request(self.client.get_shot_output_folder), '')
+
+
 class GroupActivationTests(RemoteCommandTestCase):
     """Groups of the same name in two open files are told apart by file."""
 

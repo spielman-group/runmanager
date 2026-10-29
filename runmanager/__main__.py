@@ -5080,7 +5080,7 @@ class RunmanagerServer(ZMQServer):
     @inmain_decorator()
     def handle_get_shot_output_folder(self):
         shot_output_folder = app.ui.lineEdit_shot_output_folder.text()
-        return os.path.abspath(shot_output_folder)
+        return os.path.abspath(shot_output_folder) if shot_output_folder else ''
 
     @inmain_decorator()
     def handle_set_shot_output_folder(self, value):
