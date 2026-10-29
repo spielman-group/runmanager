@@ -106,9 +106,14 @@ def _normalise_document(data):
     document["version"] = int(data.get("version", CURRENT_VERSION))
     groups = data.get("groups", {})
     for group_name, group_data in groups.items():
-        group_data = group_data if isinstance(group_data, dict) else {}
+        if not isinstance(group_data, dict):
+            raise GlobalsFileError(f'Group "{group_name}" is not a table.')
         document["groups"][ensure_str(group_name)] = {**group_data, "globals": {}}
         for global_name, record in group_data.get("globals", {}).items():
+            if not isinstance(record, dict):
+                raise GlobalsFileError(
+                    f'Global "{global_name}" in group "{group_name}" is not a table.'
+                )
             document["groups"][ensure_str(group_name)]["globals"][ensure_str(global_name)] = (
                 _normalise_record(record)
             )

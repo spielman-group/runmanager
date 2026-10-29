@@ -52,6 +52,20 @@ class ConcurrentEditTests(unittest.TestCase):
         )
 
 
+class MalformedFileTests(unittest.TestCase):
+    def test_a_group_or_global_that_is_not_a_table_is_refused(self):
+        directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, directory, True)
+        path = os.path.join(directory, 'globals.toml')
+        header = 'format = "runmanager_globals"\nversion = 1\n\n'
+        for entry in ('[groups]\nnote = "kept"\n', '[groups.group.globals]\nx = "1"\n'):
+            with self.subTest(entry=entry):
+                with open(path, 'w') as f:
+                    f.write(header + entry)
+                with self.assertRaises(globals_file.GlobalsFileError):
+                    runmanager.get_all_groups([path])
+
+
 class GlobalNameTests(unittest.TestCase):
     def test_a_global_is_named_only_as_an_expression_can_name_it(self):
         directory = tempfile.mkdtemp()
