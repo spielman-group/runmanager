@@ -895,9 +895,11 @@ def compile_labscript_async(labscript_file, run_file,
             If None, callback is skipped. Default is None.
     """
     to_child, from_child, child = start_compiler(stream_port)
-    success, _ = compile_with(to_child, from_child, labscript_file, run_file)
-    to_child.put(['quit', None])
-    child.communicate()
+    try:
+        success, _ = compile_with(to_child, from_child, labscript_file, run_file)
+    finally:
+        to_child.put(['quit', None])
+        child.communicate()
     if done_callback is not None:
         done_callback(success)
 
@@ -936,12 +938,14 @@ def compile_multishot_async(labscript_file, run_files,
                 break
     except Exception:
         error = traceback.format_exc()
-        zmq_push_multipart(stream_port, data=[b'stderr', error.encode('utf-8')])
+        if stream_port is None:
+            sys.stderr.write(error)
+        else:
+            zmq_push_multipart(stream_port, data=[b'stderr', error.encode('utf-8')])
+        raise
+    finally:
         to_child.put(['quit', None])
         child.communicate()
-        raise
-    to_child.put(['quit', None])
-    child.communicate()
 
 
 def compile_labscript_with_globals_files_async(labscript_file, globals_files, output_path,
