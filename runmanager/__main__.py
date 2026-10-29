@@ -62,6 +62,8 @@ from labscript_utils.labconfig import (
 from labscript_utils.qtwidgets.application import (
     LabscriptGuiApplication,
     exec_qapplication,
+    monospace_font,
+    setup_application,
 )
 from labscript_utils.file_utils import next_available_indexed_filepath
 from labscript_utils.lookup_format import unescape_braces
@@ -130,7 +132,6 @@ from labscript_utils.qtwidgets.outputbox import OutputBox
 import labscript_utils.qtwidgets.file_dialogs as file_dialogs
 import qtutils.icons
 
-GLOBAL_MONOSPACE_FONT = "Consolas" if os.name == 'nt' else "Ubuntu Mono"
 
 runmanager_dir = RUNMANAGER_DIR
 
@@ -396,7 +397,7 @@ class GroupTab:
         dummy_scan_enabled_item.setToolTip('Click to add global')
 
         dummy_name_item = QtGui.QStandardItem(self.GLOBALS_DUMMY_ROW_TEXT)
-        dummy_name_item.setFont(QtGui.QFont(GLOBAL_MONOSPACE_FONT))
+        dummy_name_item.setFont(monospace_font())
         dummy_name_item.setToolTip('Click to add global')
         dummy_name_item.setData(True, self.GLOBALS_ROLE_IS_DUMMY_ROW)
         dummy_name_item.setData(self.GLOBALS_DUMMY_ROW_TEXT, self.GLOBALS_ROLE_PREVIOUS_TEXT)
@@ -472,13 +473,13 @@ class GroupTab:
         name_item.setData(name, self.GLOBALS_ROLE_SORT_DATA)
         name_item.setData(name, self.GLOBALS_ROLE_PREVIOUS_TEXT)
         name_item.setToolTip(name)
-        name_item.setFont(QtGui.QFont(GLOBAL_MONOSPACE_FONT))
+        name_item.setFont(monospace_font())
 
         default_item = QtGui.QStandardItem(default)
         default_item.setData(default, self.GLOBALS_ROLE_SORT_DATA)
         default_item.setData(str(default), self.GLOBALS_ROLE_PREVIOUS_TEXT)
         default_item.setData('default', self.GLOBALS_ROLE_EXPRESSION)
-        default_item.setFont(QtGui.QFont(GLOBAL_MONOSPACE_FONT))
+        default_item.setFont(monospace_font())
         self.update_expression_item_metadata(default_item, 'Evaluating...')
 
         scan_enabled_item = QtGui.QStandardItem()
@@ -505,7 +506,7 @@ class GroupTab:
         scan_item.setData(scan, self.GLOBALS_ROLE_SORT_DATA)
         scan_item.setData(scan, self.GLOBALS_ROLE_PREVIOUS_TEXT)
         scan_item.setData('scan', self.GLOBALS_ROLE_EXPRESSION)
-        scan_item.setFont(QtGui.QFont(GLOBAL_MONOSPACE_FONT))
+        scan_item.setFont(monospace_font())
         self.update_expression_item_metadata(scan_item, 'Used when Scan? is checked.')
 
         units_item = QtGui.QStandardItem(units)
@@ -4543,6 +4544,7 @@ if __name__ == "__main__":
     labscript_utils.excepthook.set_logger(logger)
     logger.info('\n\n===============starting===============\n')
     qapplication = splash.qapplication
+    setup_application(qapplication)
     app = RunManager()
     splash.update_text('Starting remote server')
     runmanager_server = RunmanagerServer(app)
