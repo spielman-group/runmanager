@@ -122,17 +122,28 @@ class SavedQueueSettingsTests(unittest.TestCase):
             lambda item, default_globals: None,
             lambda labscript_file, path: (True, ''),
             lambda path: None,
-            lambda text, red=False: said.append(text),
+            lambda text, red=False: said.append((text, red)),
         )
         self.addCleanup(manager.shutdown)
 
-        manager.restore_state({'compile_mode': 'eagre', 'empty_queue_policy': 'default_shott'})
+        manager.restore_state(
+            {
+                'compile_mode': 'eagre',
+                'empty_queue_policy': 'default_shott',
+                'items': [queued_shot('/tmp/shot_a.h5', compile_mode='lazzy', compiled=False)],
+            }
+        )
 
         state = manager.controller.get_queue_state()
         self.assertEqual(state['compile_mode'], COMPILE_MODE_EAGER)
         self.assertEqual(state['empty_queue_policy'], EMPTY_QUEUE_NOTHING)
-        self.assertIn("'eagre'", ''.join(said))
-        self.assertIn("'default_shott'", ''.join(said))
+        self.assertEqual(
+            manager.controller.claim_next_to_compile_ahead()['path'],
+            os.path.abspath('/tmp/shot_a.h5'),
+            'the row is eager, and compiled ahead',
+        )
+        for value in ('eagre', 'default_shott', 'lazzy'):
+            self.assertIn((True, True), [(repr(value) in text, red) for text, red in said])
 
 
 class QueuePauseTests(unittest.TestCase):

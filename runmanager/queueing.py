@@ -1221,19 +1221,31 @@ class QueueManager(QtCore.QObject):
 
     def restore_state(self, state, restore_rows=True):
         state = dict(state or {})
+        state['items'] = [
+            dict(item) if isinstance(item, dict) else item
+            for item in state.get('items', [])
+        ]
+        owners = [(state, 'The queue')]
+        if restore_rows:
+            owners += [
+                (item, os.path.basename(str(item.get('path', ''))))
+                for item in state['items']
+                if isinstance(item, dict)
+            ]
         # Only a hand-edited file holds a setting runmanager does not know. Its
-        # default replaces it, as the dropdowns can show no other:
-        for key, default, other in (
-            ('empty_queue_policy', EMPTY_QUEUE_NOTHING, EMPTY_QUEUE_DEFAULT_LABSCRIPT),
-            ('compile_mode', COMPILE_MODE_EAGER, COMPILE_MODE_LAZY),
-        ):
-            if state.get(key, default) not in (default, other):
-                self.output(
-                    f'The saved {key} {state[key]!r} is not one runmanager knows, '
-                    f'so it is {default!r}.\n',
-                    red=True,
-                )
-                state[key] = default
+        # default replaces it, as the dropdowns and the rows can show no other:
+        for record, owner in owners:
+            for key, default, other in (
+                ('empty_queue_policy', EMPTY_QUEUE_NOTHING, EMPTY_QUEUE_DEFAULT_LABSCRIPT),
+                ('compile_mode', COMPILE_MODE_EAGER, COMPILE_MODE_LAZY),
+            ):
+                if record.get(key, default) not in (default, other):
+                    self.output(
+                        f'{owner} was saved with {key} {record[key]!r}, which '
+                        f'runmanager does not know, so it is {default!r}.\n',
+                        red=True,
+                    )
+                    record[key] = default
         self.controller.restore_state(state, restore_rows)
         self.queueChanged.emit()
 
