@@ -712,13 +712,16 @@ globals before checking the values of the rest; 1 3c42c11 keeps a Boolean global
 units as the units cell's text, where any change to the cell wrote `Bool` over them,
 and `UnitsDelegate` draws `Bool`. A global that stops being Boolean now shows its
 units again, not a blank, and a Boolean's units in the file are no longer replaced
-by `Bool`, as upstream does.
+by `Bool`, as upstream does. The re-check's findings 5 and 8 are fixed as
+`c411689..bee15b7`: 5 b65afff sorts a global that stops being Boolean by its units
+again, not by `!0` or `!1`; 8 bee15b7 jumps to the units cell after a new value
+only when the cell is editable, as a Boolean's is not.
 
 D2 changes two things a user can see: a change of units now marks the globals
 changed, as every other field does, so a preparse follows it; and the units
-cell's Bool state is refreshed after any field changes. The suite is 153 tests,
-with 30 subtests. B1, B2, B3, B5 and review findings 1, 2 and 5 each have a test
-that fails without its fix.
+cell's Bool state is refreshed after any field changes. The suite is 154 tests,
+with 30 subtests. B1, B2, B3, B5, review findings 1, 2 and 5 and re-check finding 5
+each have a test that fails without its fix.
 
 Other repos change with this: labscript-optimization passes `sequence_id` to
 `submit_shots` (N5) and calls `bound_for_lyse` (X4), as does labscript-agents;
