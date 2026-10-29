@@ -306,7 +306,7 @@ def make_single_run_file(
                 value = h5py.Reference()
             try:
                 f['globals'].attrs[name] = value
-            except Exception as e:
+            except Exception as e: # noqa: BLE001 all global exceptions are value errors
                 message = (f'Global {name} cannot be saved as an hdf5 attribute. ' +
                            'Globals can only have relatively simple datatypes, with no nested structures. ' +
                            'Original error was:\n' +

@@ -1362,7 +1362,7 @@ class RunManager(LabscriptGuiApplication):
                 try:
                     self.load_configuration(autoload_config_file, at_startup=True)
                     self.output_box.output('done.\n')
-                except Exception as e:
+                except Exception as e: # noqa: BLE001 send all errors to output box
                     self.output_box.output(f'\nCould not load config file: {e.__class__.__name__}: {e!s}\n\n', red=True)
                 else:
                     self.output_box.output('Ready.\n\n')
@@ -2824,7 +2824,7 @@ class RunManager(LabscriptGuiApplication):
                     # forever:
                     for _ in range(n_requests):
                         self.preparse_globals_required.task_done()
-            except Exception:
+            except Exception: # noqa: BLE001
                 # Raise the error, but keep going so we don't take down the
                 # whole thread if there is a bug.
                 exc_info = sys.exc_info()
@@ -3308,7 +3308,7 @@ class RunManager(LabscriptGuiApplication):
                     opened_globals_file = self.open_globals_file(globals_file)
                     opened_globals_files[globals_file] = opened_globals_file
                     self.last_opened_globals_folder = os.path.dirname(opened_globals_file)
-                except Exception:
+                except Exception: # noqa: BLE001 redirect all exceptions to appropriate thread
                     raise_exception_in_thread(sys.exc_info())
                     continue
             else:
