@@ -869,7 +869,7 @@ def compile_labscript_with_globals_files_async(labscript_file, globals_files, ou
         labscript_file (str): Path to labscript file to be compiled
         globals_files (list of str): Paths to h5 file where globals values to be used are stored.
             See :func:`make_run_file_from_globals_files` for details.
-        output_path (str): Folder to save compiled h5 files to.
+        output_path (str): Path of the shot file to write and compile into.
         stream_port (zmq.socket): ZMQ socket to push stdout and stderr.
         done_callback (function): Callback function run when compilation finishes.
             Takes a single boolean argument marking compilation success or failure.
