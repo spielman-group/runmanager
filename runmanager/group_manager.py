@@ -88,9 +88,9 @@ def rename_global(filename, groupname, oldglobalname, newglobalname):
 
 def guess_expansion_type(value):
     if isinstance(value, np.ndarray) or isinstance(value, list):
-        return u'outer'
+        return 'outer'
     else:
-        return u''
+        return ''
 
 
 def get_all_groups(h5_files):

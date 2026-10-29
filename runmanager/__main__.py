@@ -2703,7 +2703,7 @@ class RunManager(LabscriptGuiApplication):
             else:
                 length_item = self.axes_model.item(i, self.AXES_COL_LENGTH)
                 if name in dimensions:
-                    length_item.setText("{}".format(dimensions[name]))
+                    length_item.setText(f"{dimensions[name]}")
                 else:
                     length_item.setText('Unknown')
                 
@@ -2734,7 +2734,7 @@ class RunManager(LabscriptGuiApplication):
         
         length = 'Unknown'
         if expansion_name in dimensions:
-            length = "{}".format(dimensions[expansion_name])
+            length = f"{dimensions[expansion_name]}"
         length_item = QtGui.QStandardItem(length)
         items.append(length_item)
         
@@ -2758,8 +2758,8 @@ class RunManager(LabscriptGuiApplication):
         if n_shots == 1:
             n_shots_string = '(1 shot)'
         else:
-            n_shots_string = '({} shots)'.format(n_shots)
-        self.ui.pushButton_engage.setText('Engage {}'.format(n_shots_string))
+            n_shots_string = f'({n_shots} shots)'
+        self.ui.pushButton_engage.setText(f'Engage {n_shots_string}')
 
     def preparse_globals(self):
         active_groups = self.get_active_groups()
