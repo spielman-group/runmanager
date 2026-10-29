@@ -580,7 +580,7 @@ failure remembered until its source changed, was reverted after two review
 rounds found faults in that memory. For bug 6 the file has upstream BLACS's
 banner again.
 
-Range for review: `7ede9b5..c8f01c8` on `CodeHealth`, one commit each: A
+Range for review: `7ede9b5..86de3e4` on `CodeHealth`, one commit each: A
 29de04e, B fa97b78, C 7915026, D 319a7ab, E 6ab5242, H 2cebb82, bug 2 cd5b36d,
 bug 4 c8171f8, bug 6 1f96b72, bug 7 bb2a57f. Bug 1 is on `Development` as 07058b7,
 with its test 52466dc, and on `Production` as d475d27, adapted to its helpers; it
