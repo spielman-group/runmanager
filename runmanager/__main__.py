@@ -1869,9 +1869,8 @@ class RunManager(LabscriptGuiApplication):
 
         splash.update_text('starting compiler subprocess')
         # Start the compiler subprocess:
-        self.to_child, self.from_child, self.child = process_tree.subprocess(
-            os.path.join(runmanager_dir, 'batch_compiler.py'),
-            output_redirection_port=self.output_box.port,
+        self.to_child, self.from_child, self.child = runmanager.start_compiler(
+            self.output_box.port
         )
         logger.info('compiler subprocess started')
         # Set while the subprocess can be sent work. Restarting it clears this
@@ -2769,9 +2768,8 @@ class RunManager(LabscriptGuiApplication):
             self.output_box.output('done.\n')
         self.output_box.output('Spawning new compiler subprocess...')
         try:
-            self.to_child, self.from_child, self.child = process_tree.subprocess(
-                os.path.join(runmanager_dir, 'batch_compiler.py'),
-                output_redirection_port=self.output_box.port,
+            self.to_child, self.from_child, self.child = runmanager.start_compiler(
+                self.output_box.port
             )
             self.child_ready.set()
             self.output_box.output('done.\n')
@@ -4054,12 +4052,9 @@ class RunManager(LabscriptGuiApplication):
         """Return ``(success, error)``: whether the file compiled and, if not, its traceback."""
         with self.compiler_lock:
             self.child_ready.wait()
-            self.to_child.put(['compile', [labscript_file, run_file]])
-            # compile_labscript_async and compile_multishot_async read this reply too
-            # (BLACS compile-and-restart, labscript-utils profiles): change all three.
-            signal, success, error = self.from_child.get()
-        assert signal == 'done'
-        return success, error
+            return runmanager.compile_with(
+                self.to_child, self.from_child, labscript_file, run_file
+            )
 
     def test_compile(self):
         """Compile the window's first shot into a scratch file, queueing nothing."""

@@ -808,6 +808,27 @@ def make_run_file_from_globals_files(labscript_file, globals_files, output_path,
     make_single_run_file(output_path, sequence_globals, shots[0], sequence_attrs, 1, 1)
 
 
+def start_compiler(stream_port=None):
+    """Start a compiler subprocess, its output sent to ``stream_port``.
+
+    Returns its ``(to_child, from_child, child)``, as
+    :meth:`labscript_utils.ls_zprocess.ProcessTree.subprocess` does.
+    """
+    compiler_path = os.path.join(os.path.dirname(__file__), 'batch_compiler.py')
+    return process_tree.subprocess(compiler_path, output_redirection_port=stream_port)
+
+
+def compile_with(to_child, from_child, labscript_file, run_file):
+    """Compile ``labscript_file`` into ``run_file`` in a compiler subprocess.
+
+    Returns ``(success, error)``, ``error`` being the traceback if it failed.
+    """
+    to_child.put(['compile', [labscript_file, run_file]])
+    signal, success, error = from_child.get()
+    assert signal == 'done'
+    return success, error
+
+
 def compile_labscript_async(labscript_file, run_file,
                             stream_port=None, done_callback=None):
     """Compiles labscript_file with run_file.
@@ -833,21 +854,12 @@ def compile_labscript_async(labscript_file, run_file,
             Takes a single boolean argument marking compilation success or failure.
             If None, callback is skipped. Default is None.
     """
-    compiler_path = os.path.join(os.path.dirname(__file__), 'batch_compiler.py')
-    to_child, from_child, child = process_tree.subprocess(
-        compiler_path, output_redirection_port=stream_port
-    )
-    to_child.put(['compile', [labscript_file, run_file]])
-    while True:
-        signal, success, error = from_child.get()
-        if signal == 'done':
-            to_child.put(['quit', None])
-            child.communicate()
-            if done_callback is not None:
-                done_callback(success)
-            break
-        else:
-            raise RuntimeError((signal, success, error))
+    to_child, from_child, child = start_compiler(stream_port)
+    success, _ = compile_with(to_child, from_child, labscript_file, run_file)
+    to_child.put(['quit', None])
+    child.communicate()
+    if done_callback is not None:
+        done_callback(success)
 
 
 def compile_multishot_async(labscript_file, run_files,
@@ -874,19 +886,12 @@ def compile_multishot_async(labscript_file, run_files,
             Takes a single boolean argument marking compilation success or failure.
             If None, callback is skipped. Default is None.
     """
-    compiler_path = os.path.join(os.path.dirname(__file__), 'batch_compiler.py')
-    to_child, from_child, child = process_tree.subprocess(
-        compiler_path, output_redirection_port=stream_port
-    )
+    to_child, from_child, child = start_compiler(stream_port)
     try:
         for run_file in run_files:
-            to_child.put(['compile', [labscript_file, run_file]])
-            while True:
-                signal, success, _ = from_child.get()
-                if signal == 'done':
-                    if done_callback is not None:
-                        done_callback(success)
-                    break
+            success, _ = compile_with(to_child, from_child, labscript_file, run_file)
+            if done_callback is not None:
+                done_callback(success)
             if not success:
                 break
     except Exception:
