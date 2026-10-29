@@ -52,7 +52,7 @@ class SendToRunviewerTests(unittest.TestCase):
 
     def serve(self):
         server = runviewer_main.RunviewerServer(
-            self.port, self.shots, bind_address='tcp://127.0.0.1'
+            self.shots, self.port, bind_address='tcp://127.0.0.1'
         )
         self.addCleanup(server.shutdown)
 
