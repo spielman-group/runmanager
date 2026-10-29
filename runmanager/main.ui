@@ -944,7 +944,7 @@ is, so resuming offers the same shot at its head.</string>
         <string>Groups</string>
        </attribute>
        <attribute name="toolTip">
-        <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Select files and groups of globals to view and edit in runviewer.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+        <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Select files and groups of globals to view and edit.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
        </attribute>
        <layout class="QVBoxLayout" name="verticalLayout_8">
         <property name="spacing">
@@ -967,7 +967,7 @@ is, so resuming offers the same shot at its head.</string>
              <enum>Qt::FocusPolicy::NoFocus</enum>
             </property>
             <property name="toolTip">
-             <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Load an HDF file containing globals into runviewer.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+             <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Load an HDF file containing globals into runmanager.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
             </property>
             <property name="text">
              <string>Open globals file</string>
