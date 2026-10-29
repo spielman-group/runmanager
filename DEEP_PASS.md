@@ -1006,6 +1006,8 @@ and the rest are from reading only. **conflict** marks a clash with the fork's d
 
 ### Not wanted, or already in the fork
 
+Ian overruled this list: see "Upstream revisit" below.
+
 - The module split and its fixes (7729dc8, e06872f, 7363f89, 9fb1358, 99cc405,
   35355ea, 4c20a38, 7c50b46). The fork has its own modules (`globals_file`,
   `queueing`, `client`), and upstream's `group_manager` is its HDF5 globals API.
@@ -1062,3 +1064,78 @@ expansion, whatever its class.
 Listed for Ian later, not in this stage: d053c40 (interrupting the compile), the
 evaluator rewrite (2d8129d, 872a36d), cd77801 and bd805b0, e5ecbd8, and every row
 of "Ian decides: features".
+
+### Upstream revisit
+
+Ian's rule is to stay as close to upstream as reasonably possible: take upstream's fixes
+in upstream's form, with no "not wanted" rulings by an owner. In `fff4f32..fca653f`, each
+commit names the upstream commit it comes from. `master` is fast-forwarded to
+`upstream/master` (`d5842a2`) and pushed. The suite is 170 tests, with 55 subtests.
+
+Taken:
+- The fixes and features Ian approved:
+  - d053c40: Empty queue and Restart interrupt the running compile; the compile
+    reply and `test_compiler_restart.py` are adapted;
+  - cd77801 and bd805b0;
+  - e5ecbd8;
+  - the tab scan icons (4bae40c and 0784bbd);
+  - the theme items (61c1a94's Engage and selection parts, and e4f30e1);
+  - 2309c7e, through labscript-utils' `setup_application` and `monospace_font`;
+  - #163 (45baf1f) with 0a0ceb7;
+  - ac679f8.
+- The module split: 7729dc8 and its fixes, giving `exceptions`, `tokenizer`,
+  `evaluator`, `group_manager`, `expander`, `compiler`, `differ` and `widgets`, with
+  re-exports. 9fb1358's `RunmanagerServer(app)` comes with it.
+- Upstream's style and lint commits, on the lines the fork shares with upstream. Their
+  import-cleanup commits are reverted, because applying them hunk by hunk dropped
+  imports still in use. The fork's modules have no unused imports.
+- 5431bb8, with the fork's own logging calls made lazy in the same way.
+- The release workflow, the dependency floors and the ruff settings.
+- 2fdcc78 with 9912fd0, dea3566, bf55903, 6ba78d2, d8311b0, 8d2f78f, bc71818, and the
+  rest of 03b54f9.
+
+#163 rests on 1006d75. Frozen globals and remote values were numpy reprs (`array(...)`),
+which need pylab. They are now written as `np.array(..., dtype=...)` and
+`np.<type>(...)`, by `expander.value_expression`.
+
+Designed, for Ian: the evaluator rewrite (2d8129d and 872a36d), in
+`issues/evaluator_rewrite_design.md`. The librarian found nothing in the suite it
+duplicates.
+
+Deferred by Ian: the custom and automatic expansion settings (a658642 and its
+follow-ups, 7528a82), the value history (9c5d2bc) and the Bool toggle (076fbf8).
+
+Not possible:
+- 9ff38d5 repacks HDF5 globals files. The fork writes no HDF5 globals file, as its
+  globals are TOML.
+- b42e389 discards queued sequences on Abort. The fork's queue empties them with Empty
+  queue.
+- dc0d18f is upstream's screenshots. By Ian's P12 decision, the fork's are taken from
+  the running app after the coupled merge.
+- 8ae14c0 names numpy in a compile error. It needs labscript to drop
+  `from pylab import *`, which labscript `CodeHealth` still has.
+- The style-commit hunks on lines the fork has changed. The same changes are left to
+  step 2.6.
+- Already in the fork, in a shared form:
+  - 57370ec, through labscript-utils' `open_in_editor`, which calls upstream's
+    `open_file` (Ian's EditFile decision);
+  - 057b251 and ce80ab0, through labscript-utils' `exec_qapplication`;
+  - 176acd9, where the globals dialog appends `.toml` and configurations save through
+    labscript-utils;
+  - 9005b03, and the rest of da0fd6b.
+
+One fork cleanup stands in the way of upstream's form: the fork starts runviewer
+with zprocess's `start_daemon` (9d5e084), where upstream calls `Popen` per platform.
+It is offered upstream as a9cf986 on `UpstreamBugFixes`, made on upstream's code.
+The branch's PR draft:
+
+> runmanager: fix remote-API docstrings, the output folder reset, tab close buttons and
+> the runviewer launch
+>
+> - `is_output_folder_default`'s docstring said the opposite of what it returns.
+> - `get_labscript_file`'s docstring now says it returns `''` when no file is selected.
+> - The output folder was set to `''` when no labscript file was selected, as
+>   `get_default_output_folder` returns `''` and its callers tested for `None`.
+> - `FingerTabWidget.setTabClosable(index, False)` raised, as `setTabButton` refused
+>   `None`.
+> - runviewer is started with zprocess's `start_daemon`, not a `Popen` per platform.
