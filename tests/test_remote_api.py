@@ -1523,7 +1523,7 @@ class GlobalsFileCopyTests(RemoteCommandTestCase):
         'two': {
             'c': {'default': '0', 'scan': '[3, 4]', 'scan_enabled': True, 'expansion': 'pair'},
             'd': {'default': '0', 'scan': '[5, 6]', 'scan_enabled': True},
-            # As a tab leaves a boolean:
+            # As upstream runmanager leaves a boolean:
             'e': {'default': 'True', 'units': 'Bool', 'jit_enabled': True},
         },
     }

@@ -247,6 +247,16 @@ class ValueColumnTests(unittest.TestCase):
         self.qapplication.processEvents()
         self.assertTrue(self.record('power')['jit_enabled'])
 
+    def test_a_boolean_global_keeps_its_units(self):
+        self.tab.change_global('power', 'units', '', 'Hz', interactive=False)
+        self.tab.change_global('power', 'default', '2', 'True', interactive=False)
+        jit = self.tab.get_global_item_by_name('power', self.tab.GLOBALS_COL_JIT_ENABLED)
+        rect = self.view.visualRect(jit.index())
+        send_click(self.view, QtCore.QPoint(rect.right() - 5, rect.center().y()))
+        self.qapplication.processEvents()
+        self.assertTrue(self.record('power')['jit_enabled'])
+        self.assertEqual(self.record('power')['units'], 'Hz')
+
     def test_child_selection_targets_the_global_for_bulk_changes(self):
         active, _ = self.value_rect('time')
         self.view.expand(active)

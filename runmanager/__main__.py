@@ -906,6 +906,15 @@ class ExpressionDelegate(ItemDelegate):
             editor.document().setModified(False)
 
 
+class UnitsDelegate(ItemDelegate):
+    """Show a Boolean global's units as Bool; the cell's text stays its stored units."""
+
+    def initStyleOption(self, option, index):
+        super().initStyleOption(option, index)
+        if index.data(GroupTab.GLOBALS_ROLE_IS_BOOL):
+            option.text = 'Bool'
+
+
 class GroupTab(object):
     GLOBALS_COL_SCAN_ENABLED = 0
     GLOBALS_COL_JIT_ENABLED = 1
@@ -967,6 +976,10 @@ class GroupTab(object):
         self.value_delegate = ExpressionDelegate(self.ui.treeView_globals)
         self.ui.treeView_globals.setItemDelegateForColumn(
             self.GLOBALS_COL_VALUE, self.value_delegate
+        )
+        self.units_delegate = UnitsDelegate(self.ui.treeView_globals)
+        self.ui.treeView_globals.setItemDelegateForColumn(
+            self.GLOBALS_COL_UNITS, self.units_delegate
         )
         self.check_delegate = CenteredCheckDelegate(self.ui.treeView_globals)
         for column in (self.GLOBALS_COL_SCAN_ENABLED, self.GLOBALS_COL_JIT_ENABLED):
@@ -1373,26 +1386,21 @@ class GroupTab(object):
         value = active_item.text()
         if value == 'True':
             units_item.setData(True, self.GLOBALS_ROLE_IS_BOOL)
-            units_item.setText('Bool')
             units_item.setData('!1', self.GLOBALS_ROLE_SORT_DATA)
             units_item.setEditable(False)
             units_item.setCheckState(QtCore.Qt.Checked)
             units_item.setBackground(QtGui.QBrush(QtGui.QColor(self.color_bool_on)))
         elif value == 'False':
             units_item.setData(True, self.GLOBALS_ROLE_IS_BOOL)
-            units_item.setText('Bool')
             units_item.setData('!0', self.GLOBALS_ROLE_SORT_DATA)
             units_item.setEditable(False)
             units_item.setCheckState(QtCore.Qt.Unchecked)
             units_item.setBackground(QtGui.QBrush(QtGui.QColor(self.color_bool_off)))
         else:
-            was_bool = units_item.data(self.GLOBALS_ROLE_IS_BOOL)
             units_item.setData(False, self.GLOBALS_ROLE_IS_BOOL)
             units_item.setEditable(True)
             units_item.setData(None, QtCore.Qt.CheckStateRole)
             units_item.setData(None, QtCore.Qt.BackgroundRole)
-            if was_bool and units_item.text() == 'Bool':
-                units_item.setText('')
 
     def set_colors(self):
         colors = expression_cell_colors()
