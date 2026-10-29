@@ -127,7 +127,6 @@ from qtutils import (
 )
 from labscript_utils.qtwidgets.outputbox import OutputBox
 import labscript_utils.qtwidgets.file_dialogs as file_dialogs
-import qtutils.icons
 
 GLOBAL_MONOSPACE_FONT = "Consolas" if os.name == 'nt' else "Ubuntu Mono"
 
