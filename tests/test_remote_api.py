@@ -546,6 +546,19 @@ class SubmitShotsTests(RemoteCommandTestCase):
             self.expressions(), {'x': '1 # metres', 'y': '3', 'depth': '4'}
         )
 
+    def test_skip_missing_ignores_the_values_of_the_globals_it_skips(self):
+        skipped = self.request(
+            self.client.set_values,
+            {'y': '7', 'nope': None},
+            raw=True,
+            skip_missing=True,
+        )
+
+        self.assertEqual(skipped, ['nope'])
+        self.assertEqual(
+            self.expressions(), {'x': '0 # metres', 'y': '7', 'depth': '4'}
+        )
+
 
 def steps(record):
     """The values of a shot's record that say how far it has got."""

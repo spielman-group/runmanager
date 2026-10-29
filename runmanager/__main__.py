@@ -4788,9 +4788,6 @@ class RunmanagerServer(ZMQServer):
 
     @inmain_decorator()
     def _set_field_values(self, field, globals, coerce, skip_missing=False):
-        globals = {
-            name: coerce(value, 'global %s' % name) for name, value in globals.items()
-        }
         _, _, locations = self._get_active_global_locations(globals)
         skipped = []
         if skip_missing:
@@ -4798,6 +4795,9 @@ class RunmanagerServer(ZMQServer):
             globals = {
                 name: value for name, value in globals.items() if name in locations
             }
+        globals = {
+            name: coerce(value, 'global %s' % name) for name, value in globals.items()
+        }
         self._check_before_writing(locations, globals)
         try:
             for global_name, new_value in globals.items():
