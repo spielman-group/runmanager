@@ -56,7 +56,7 @@ def next_sequence_index(shot_basedir, dt, increment=True):
                 if datestr != dt.strftime(DATE_FORMAT):
                     # New day, start from zero again:
                     sequence_index = 0
-        except (OSError, IOError) as exc:
+        except OSError as exc:
             if exc.errno != errno.ENOENT:
                 raise
             # File doesn't exist yet, start from zero
