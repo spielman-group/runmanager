@@ -73,7 +73,7 @@ def new_globals(filename, groupname, records):
     be blank."""
     for globalname in records:
         if not is_valid_python_identifier(globalname):
-            raise ValueError('{globalname} is not a valid Python variable name')
+            raise ValueError(f'{globalname} is not a valid Python variable name')
     globals_file.new_globals(filename, groupname, records)
 
 
