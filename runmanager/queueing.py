@@ -1032,6 +1032,8 @@ class QueueManager(QtCore.QObject):
         Returns ``(success, error)``: whether it compiled and, if not, the
         compile's traceback.
         """
+        # A header, so that the output of one compile does not run into the last:
+        self.output(f"Compiling {os.path.basename(item['path'])}\n")
         self.prepare_run_file_callback(item, default_globals=default_globals)
         success, error = self.compile_run_file_callback(
             item['labscript_file'], item['path']
