@@ -64,7 +64,7 @@ def is_valid_hdf5_group_name(name):
     return name.isascii() and '.' not in name and '/' not in name
 
 
-class ExpansionError(Exception):
+class ExpansionError(ValueError):
 
     """An exception class so that error handling code can tell when a
     parsing exception was caused by a mismatch with the expansion mode"""
@@ -394,7 +394,7 @@ def evaluate_globals(sequence_globals, raise_exceptions=True):
             zip_groups.setdefault(expansions[global_name], {})[global_name] = len(value)
     for zip_key, lengths in zip_groups.items():
         if len(set(lengths.values())) > 1:
-            exception = ValueError(
+            exception = ExpansionError(
                 f"Globals in zip group '{zip_key}' have unequal lengths: "
                 + ', '.join(f'{name} ({length})' for name, length in lengths.items())
             )
@@ -423,7 +423,7 @@ def evaluate_globals(sequence_globals, raise_exceptions=True):
             if expansions[name] != zip_key
         ]
         if other_axes:
-            exception = ValueError(
+            exception = ExpansionError(
                 f"Global '{global_name}' in zip group '{zip_key}' depends on globals "
                 + 'on other axes: '
                 + ', '.join(

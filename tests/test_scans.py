@@ -71,25 +71,51 @@ class ZipGroupTests(unittest.TestCase):
 
 
 class ExpansionGuessTests(unittest.TestCase):
-    def test_loading_a_group_keeps_the_zip_group_of_a_global_not_scanned(self):
-        # A zip group is kept while Scan? is off, for when it is ticked again.
+    def setUp(self):
         directory = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, directory, True)
-        path = os.path.join(directory, 'globals.toml')
-        globals_file.new_globals_file(path)
-        globals_file.new_group(path, 'group')
-        globals_file.new_globals(
-            path, 'group', {'x': {'default': '[1, 2, 3]', 'expansion': 'pair'}}
+        self.path = os.path.join(directory, 'globals.toml')
+        globals_file.new_globals_file(self.path)
+        globals_file.new_group(self.path, 'group')
+
+    def guess(self, previous_values):
+        """Guess expansions from a parse of the file, after one that gave ``previous_values``."""
+        evaled_globals, global_hierarchy, expansions = runmanager.evaluate_globals(
+            runmanager.get_globals({'group': self.path}), raise_exceptions=False
         )
-        just_started = types.SimpleNamespace(
-            previous_evaled_globals={},
+        state = types.SimpleNamespace(
+            previous_evaled_globals=previous_values,
             previous_global_hierarchy={},
             previous_expansion_types={},
             previous_expansions={},
         )
-
         RunManager.guess_expansion_modes(
-            just_started, {'group': path}, {'group': {'x': [1, 2, 3]}}, {}, {'x': ''}
+            state, {'group': self.path}, evaled_globals, global_hierarchy, expansions
         )
 
-        self.assertEqual(globals_file.get_field(path, 'group', 'x', 'expansion'), 'pair')
+    def expansion(self, name):
+        return globals_file.get_field(self.path, 'group', name, 'expansion')
+
+    def test_a_global_not_scanned_keeps_its_zip_group(self):
+        # A zip group is kept while Scan? is off, for when it is ticked again.
+        globals_file.new_globals(
+            self.path, 'group', {'x': {'default': '[1, 2, 3]', 'expansion': 'pair'}}
+        )
+        for previous_values in [{}, {'group': {'x': 5}}]:
+            with self.subTest(previous_values=previous_values):
+                self.guess(previous_values)
+                self.assertEqual(self.expansion('x'), 'pair')
+
+    def test_a_refused_zip_group_keeps_its_expansion(self):
+        globals_file.new_globals(
+            self.path,
+            'group',
+            {
+                name: {'scan': scan, 'scan_enabled': True, 'expansion': 'z'}
+                for name, scan in [('a', '[1, 2, 3]'), ('b', '[4, 5]')]
+            },
+        )
+
+        self.guess({'group': {'a': [1, 2, 3], 'b': [4, 5, 6]}})
+
+        self.assertEqual([self.expansion('a'), self.expansion('b')], ['z', 'z'])

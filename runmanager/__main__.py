@@ -4065,16 +4065,11 @@ class RunManager(LabscriptGuiApplication):
         self.previous_expansion_types and self.previous_expansions. This is
         neccesary so that it can detect changes."""
 
-        # Do nothing if there were exceptions:
+        # An error is not a value to guess from, and can hide what a global
+        # depends on, so an error never changes a stored expansion:
         for group_name in evaled_globals:
             for global_name in evaled_globals[group_name]:
-                value = evaled_globals[group_name][global_name]
-                if isinstance(value, Exception):
-                    # Let ExpansionErrors through through, as they occur
-                    # when the user has changed the value without changing
-                    # the expansion type:
-                    if isinstance(value, runmanager.ExpansionError):
-                        continue
+                if isinstance(evaled_globals[group_name][global_name], Exception):
                     return False
         def store_guess(group_name, global_name, guess):
             # A legacy HDF5 globals file is read-only until the user converts it,
@@ -4097,6 +4092,9 @@ class RunManager(LabscriptGuiApplication):
         expansion_types = {}
         for group_name in evaled_globals:
             for global_name in evaled_globals[group_name]:
+                if not expansions[global_name]:
+                    # Not scanned: its stored expansion is kept for when it is.
+                    continue
                 new_value = evaled_globals[group_name][global_name]
                 try:
                     previous_value = self.previous_evaled_globals[group_name][global_name]
@@ -4117,9 +4115,7 @@ class RunManager(LabscriptGuiApplication):
                 if new_guess == 'outer':
                     expansion_types[global_name] = {'previous_guess': previous_guess,
                                                     'new_guess': new_guess,
-                                                    'group_name': group_name,
-                                                    'value': new_value
-                                                    }
+                                                    'group_name': group_name}
                 elif new_guess != previous_guess:
                     if store_guess(group_name, global_name, new_guess):
                         expansions[global_name] = new_guess
@@ -4159,8 +4155,7 @@ class RunManager(LabscriptGuiApplication):
         for global_name in sorted(expansion_types):
             # we have a global that does not depend on anything that has an
             # expansion type of 'outer'
-            if (not global_depends_on_global_with_outer_product(global_name, global_hierarchy, expansions)
-                    and not isinstance(expansion_types[global_name]['value'], runmanager.ExpansionError)):
+            if not global_depends_on_global_with_outer_product(global_name, global_hierarchy, expansions):
                 current_dependencies = find_dependencies(global_name, global_hierarchy, expansion_types)
 
                 # if this global has other globals that use it, then add them
@@ -4172,9 +4167,9 @@ class RunManager(LabscriptGuiApplication):
                     set_expansion_type_guess(expansion_types, expansions, global_name,  str(global_name))
 
         for global_name in sorted(self.previous_expansion_types):
-            if (not global_depends_on_global_with_outer_product(
-                global_name, self.previous_global_hierarchy, self.previous_expansions)
-                    and not isinstance(self.previous_expansion_types[global_name]['value'], runmanager.ExpansionError)):
+            if not global_depends_on_global_with_outer_product(
+                global_name, self.previous_global_hierarchy, self.previous_expansions
+            ):
                 old_dependencies = find_dependencies(global_name, self.previous_global_hierarchy, self.previous_expansion_types)
                 # if this global has other globals that use it, then add them
                 # all to a zip group with the name of this global
@@ -4190,17 +4185,6 @@ class RunManager(LabscriptGuiApplication):
                 if store_guess(guesses['group_name'], global_name, str(guesses['new_guess'])):
                     expansions[global_name] = guesses['new_guess']
                     expansion_types_changed = True
-
-        # Now check everything that has an expansion type not equal to outer.
-        # If it has one, but is not iteratble, remove it from teh zip group
-        for group_name in evaled_globals:
-            for global_name in evaled_globals[group_name]:
-                if expansions[global_name] and expansions[global_name] != 'outer':
-                    try:
-                        iter(evaled_globals[group_name][global_name])
-                    except Exception:
-                        if store_guess(group_name, global_name, ''):
-                            expansion_types_changed = True
 
         self.previous_evaled_globals = evaled_globals
         self.previous_global_hierarchy = global_hierarchy
