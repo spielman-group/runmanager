@@ -5018,6 +5018,10 @@ class RunmanagerServer(ZMQServer):
         raise TypeError('%s must be a str, not %s' % (name, value.__class__.__name__))
 
     @staticmethod
+    def _coerce_remote_expression(value, name):
+        return repr(value)
+
+    @staticmethod
     def _with_trailing_comment(expression, previous):
         """``expression``, with the comment ``previous`` ends with if it has none."""
         comments = runmanager.find_comments(previous)
@@ -5028,13 +5032,10 @@ class RunmanagerServer(ZMQServer):
         return expression
 
     @staticmethod
-    def _check_before_writing(locations, globals, raw=False):
+    def _check_before_writing(locations, globals):
         # Refused before any write: a batch must not be half applied, and the
         # Convert dialog would stop the server answering.
-        for global_name, new_value in globals.items():
-            if raw and not isinstance(new_value, str):
-                msg = "global %s must be a str if raw=True, not %s"
-                raise TypeError(msg % (global_name, new_value.__class__.__name__))
+        for global_name in globals:
             if global_name not in locations:
                 raise ValueError(
                     "Global %s not found in any active group" % global_name
@@ -5064,41 +5065,6 @@ class RunmanagerServer(ZMQServer):
         return files
 
     @inmain_decorator()
-    def _set_expression_field_values(
-        self, field, changer, globals, raw=False, skip_missing=False
-    ):
-        _, _, locations = self._get_active_global_locations(globals)
-        skipped = []
-        if skip_missing:
-            skipped = [name for name in globals if name not in locations]
-            globals = {
-                name: value for name, value in globals.items() if name in locations
-            }
-        self._check_before_writing(locations, globals, raw)
-        try:
-            for global_name, new_value in globals.items():
-                if not raw:
-                    new_value = repr(new_value)
-                globals_file, group_name = locations[global_name]
-                previous_value = runmanager.globals_file.get_field(
-                    globals_file, group_name, global_name, field
-                )
-                new_value = self._with_trailing_comment(new_value, previous_value)
-                try:
-                    group_tab = app.currently_open_groups[globals_file, group_name]
-                except KeyError:
-                    runmanager.globals_file.set_field(
-                        globals_file, group_name, global_name, field, new_value
-                    )
-                else:
-                    changer(
-                        group_tab, global_name, previous_value, new_value, interactive=False
-                    )
-        finally:
-            app.globals_changed()
-        return skipped
-
-    @inmain_decorator()
     def _set_field_values(self, field, changer, globals, coerce, skip_missing=False):
         globals = {
             name: coerce(value, 'global %s' % name) for name, value in globals.items()
@@ -5117,6 +5083,8 @@ class RunmanagerServer(ZMQServer):
                 previous_value = runmanager.globals_file.get_field(
                     globals_file, group_name, global_name, field
                 )
+                if field in ('default', 'scan'):
+                    new_value = self._with_trailing_comment(new_value, previous_value)
                 try:
                     group_tab = app.currently_open_groups[globals_file, group_name]
                 except KeyError:
@@ -5166,13 +5134,21 @@ class RunmanagerServer(ZMQServer):
         }
 
     def handle_set_values(self, globals, raw=False, skip_missing=False):
-        return self._set_expression_field_values(
-            'default', GroupTab.change_global_default, globals, raw, skip_missing
+        return self._set_field_values(
+            'default',
+            GroupTab.change_global_default,
+            globals,
+            self._coerce_remote_text if raw else self._coerce_remote_expression,
+            skip_missing,
         )
 
     def handle_set_scans(self, globals, raw=False, skip_missing=False):
-        return self._set_expression_field_values(
-            'scan', GroupTab.change_global_scan, globals, raw, skip_missing
+        return self._set_field_values(
+            'scan',
+            GroupTab.change_global_scan,
+            globals,
+            self._coerce_remote_text if raw else self._coerce_remote_expression,
+            skip_missing,
         )
 
     def handle_set_scan_enabled(self, globals):
