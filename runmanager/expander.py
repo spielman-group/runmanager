@@ -54,8 +54,8 @@ def _make_axes(sequence_globals, evaled_globals, expansion_config=None):
     for zip_key in zip_keys:
         axis = []
         zip_global_names = []
-        for global_name in expansions:
-            if expansions[global_name] == zip_key:
+        for global_name, expansion in expansions.items():
+            if expansion == zip_key:
                 value = values[global_name]
                 if isinstance(value, Exception):
                     continue
@@ -73,8 +73,8 @@ def _make_axes(sequence_globals, evaled_globals, expansion_config=None):
     # wrapped up in a list and zipped with itself so that it is in the
     # same format as the zipped globals, ready for outer-producting
     # together:
-    for global_name in expansions:
-        if expansions[global_name] == 'outer':
+    for global_name, expansion in expansions.items():
+        if expansion == 'outer':
             value = values[global_name]
             if isinstance(value, Exception):
                 continue
