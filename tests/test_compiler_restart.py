@@ -18,6 +18,7 @@ queues, which are what process_tree.subprocess hands over. The rest is
 runmanager's own.
 """
 import faulthandler
+import queue
 import threading
 import types
 import unittest
@@ -50,22 +51,28 @@ class FakeChild:
 
         def mainloop():
             while True:
-                signal, data = commands.recv_pyobj()
-                if signal == 'quit':
+                request, data = commands.recv_pyobj()
+                if request == 'quit':
+                    # Heard during a compile, as the compiler's own thread hears it:
                     self.returncode = 0
                     return
-                self.compiled.append(data[1])
+                compiles.put(data[1])
+
+        def compile_loop():
+            while True:
+                run_file = compiles.get()
+                self.compiled.append(run_file)
                 if release:
                     release.wait()
-                replies.send_pyobj(['done', True, ''])
+                if self.returncode is None:
+                    replies.send_pyobj(['done', True, ''])
 
+        compiles = queue.Queue()
         threading.Thread(target=mainloop, daemon=True).start()
+        threading.Thread(target=compile_loop, daemon=True).start()
 
     def poll(self):
         return self.returncode
-
-    def terminate(self):
-        self.returncode = -15
 
 
 class RestartDuringCompileTests(unittest.TestCase):
@@ -73,8 +80,8 @@ class RestartDuringCompileTests(unittest.TestCase):
         global _qapplication
         if QApplication.instance() is None:
             _qapplication = QApplication([])
-        # The old child stays hung until the test is over, as one that has
-        # stopped answering does:
+        # The old child's compile stays hung until the test is over, as one that
+        # ignores the interrupt does, though the child still hears the quit:
         release = threading.Event()
         self.addCleanup(release.set)
         old, new = FakeChild(release), FakeChild()

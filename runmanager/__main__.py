@@ -1767,6 +1767,11 @@ class RunManager(LabscriptGuiApplication):
     default_config_filename = 'runmanager.toml'
     config_description = 'which groups are active/open and other GUI state'
 
+    # How long Restart subprocess waits for the compiler to exit before killing it,
+    # in seconds. The compiler exits within batch_compiler.ABORT_TIMEOUT +
+    # batch_compiler.KILL_LOCK_TIMEOUT = 65 s unless it has stopped answering:
+    QUIT_TIMEOUT = 70
+
     # Constants for the model in the axes tab:
     AXES_COL_NAME = 0
     AXES_COL_LENGTH = 1
@@ -2691,12 +2696,15 @@ class RunManager(LabscriptGuiApplication):
     def on_abort_clicked(self):
         """Empty the queue, as the replacement modes' Clear does.
 
-        Every waiting row goes, and a row still compiling has its file deleted
-        once its compile finishes. Running, failed, rejected and cancelled rows
-        are kept. A batch being compiled for runviewer alone stops after the
-        shot it is on."""
+        Every waiting row goes, and the compile in progress, whatever it is for,
+        is interrupted and fails. Running, failed, rejected and cancelled rows
+        are kept. A batch being compiled for runviewer alone stops there."""
         self.queue_manager.stop_compile_shots()
         self.queue_manager.clear()
+        # During a restart there is no compile to interrupt, and the old
+        # compiler may be gone:
+        if self.child_ready.is_set():
+            self.to_child.put(['abort', None])
 
     def on_restart_subprocess_clicked(self):
         # Kill and restart the compilation subprocess
@@ -2709,28 +2717,19 @@ class RunManager(LabscriptGuiApplication):
         self.from_child.put(
             ['done', False, 'The compiler subprocess was restarted during the compile.']
         )
-        time.sleep(0.1)
         self.output_box.output('Asking subprocess to quit...')
-        timeout_time = time.time() + 2
-        QtCore.QTimer.singleShot(50, lambda: self.check_child_exited(timeout_time, kill=False))
+        # It interrupts any compile, and exits once no HDF5 file is open for writing:
+        timeout_time = time.time() + self.QUIT_TIMEOUT
+        QtCore.QTimer.singleShot(50, lambda: self.check_child_exited(timeout_time))
 
-    def check_child_exited(self, timeout_time, kill=False):
+    def check_child_exited(self, timeout_time):
         self.child.poll()
         if self.child.returncode is None and time.time() < timeout_time:
-            QtCore.QTimer.singleShot(50, lambda: self.check_child_exited(timeout_time, kill))
+            QtCore.QTimer.singleShot(50, lambda: self.check_child_exited(timeout_time))
             return
         elif self.child.returncode is None:
-            if not kill:
-                self.child.terminate()
-                self.output_box.output('not responding.\n')
-                timeout_time = time.time() + 2
-                QtCore.QTimer.singleShot(50, lambda: self.check_child_exited(timeout_time, kill=True))
-                return
-            else:
-                self.child.kill()
-                self.output_box.output('Killed\n', red=True)
-        elif kill:
-            self.output_box.output('Terminated\n', red=True)
+            self.child.kill()
+            self.output_box.output('Killed\n', red=True)
         else:
             self.output_box.output('done.\n')
         self.output_box.output('Spawning new compiler subprocess...')

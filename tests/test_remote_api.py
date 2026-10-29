@@ -160,6 +160,8 @@ class SubmittingApp(object):
         self.currently_open_groups = {}
         self.n_shots = None
         self.compiling = threading.Event()
+        # Compiles are stood in for here, so there is no compiler to interrupt:
+        self.child_ready = threading.Event()
         # What a compile answers: whether it worked and, if not, why.
         self.compile_result = (True, '')
         self.scratch_dir = tempfile.TemporaryDirectory(prefix='runmanager_scratch_')

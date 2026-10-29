@@ -27,15 +27,17 @@ located in a always visible toolbar at the top of the runmanager interface. Thes
     text so that any mistakes made when defining the parameter space scan can be quickly
     corrected prior to beginning shot generation. This button can also be ‘clicked’ via the
     F5 key on a keyboard.
-#.  The empty queue button: This removes every shot waiting in the queue, including
-    one still compiling. A shot BLACS has is kept.
-    It also stops a batch compiled for runviewer alone, after the shot it is on.
+#.  The empty queue button: This removes every shot waiting in the queue, and interrupts
+    the compile in progress, which fails with "Compilation interrupted". A shot BLACS has
+    is kept. It also stops a batch compiled for runviewer alone.
 #.  The restart subprocess button: Primarily for debugging and for use during labscript
     development, this button restarts the subprocess that manages the execution of the
     labscript experiment logic file, which in turn generates and stores hardware instructions
     inside the hdf5 file (see :ref:`usage:Shot creation`).
-    A restart fails the compile in flight. The button is disabled while the subprocess
-    restarts, and compiles wait until the new subprocess is up. If it cannot start, the
+    A restart interrupts the compile in progress, which fails. A subprocess that does not
+    exit once it has no HDF5 file open for writing is killed after 70 s. The button is
+    disabled while the subprocess restarts, and compiles wait until the new subprocess is
+    up. If it cannot start, the
     output tab says so.
 #.  The shuffle checkbox: This checkbox controls the global setting for whether parameter
     space scans are shuffled or not. This is a tri-state checkbox (all-some-none) displaying
