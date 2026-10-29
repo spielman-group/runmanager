@@ -20,6 +20,7 @@ import os
 import random
 import sys
 import labscript_utils.excepthook
+labscript_utils.excepthook.install()
 
 APPLICATION_NAME = 'runmanager'
 RUNMANAGER_DIR = os.path.dirname(__file__)
