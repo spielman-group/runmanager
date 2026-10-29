@@ -36,7 +36,7 @@ class DefaultSequenceTests(unittest.TestCase):
             now=lambda: datetime.datetime(2026, 9, 23, hour, 1, 2)
         )
         return mock.patch.object(
-            runmanager, 'datetime', types.SimpleNamespace(datetime=clock)
+            runmanager.compiler, 'datetime', types.SimpleNamespace(datetime=clock)
         )
 
     def test_every_default_shot_of_a_day_is_in_one_sequence(self):

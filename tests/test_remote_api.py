@@ -357,7 +357,7 @@ class SubmitShotsTests(RemoteCommandTestCase):
         clock = types.SimpleNamespace(
             datetime=types.SimpleNamespace(now=lambda: datetime.datetime(2026, 9, 24, 12))
         )
-        with mock.patch.object(runmanager, 'datetime', clock):
+        with mock.patch.object(runmanager.compiler, 'datetime', clock):
             first = self.submit({'x': 1})
             # Engage waits on the preparse the submission's window change starts.
             self.app.wait_until_preparse_complete()
@@ -1111,7 +1111,7 @@ class ShuffledEngageTests(RemoteCommandTestCase):
         # permutation of three shots like any other, and the only one whose
         # result can be written down.
         patcher = mock.patch.object(
-            runmanager.random, 'shuffle', lambda sequence: sequence.reverse()
+            runmanager.expander.random, 'shuffle', lambda sequence: sequence.reverse()
         )
         patcher.start()
         self.addCleanup(patcher.stop)
