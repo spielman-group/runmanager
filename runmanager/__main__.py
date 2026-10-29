@@ -1688,6 +1688,10 @@ class GroupTab(object):
                 scan_enabled_item = self.globals_model.item(i, self.GLOBALS_COL_SCAN_ENABLED)
                 expansion_item = self.globals_model.item(i, self.GLOBALS_COL_EXPANSION)
                 global_name = name_item.text()
+                if global_name not in evaled_globals[self.group_name]:
+                    # Created or renamed after this parse started; the parse that
+                    # follows that change updates it.
+                    continue
                 default_item = self.get_global_expression_item(global_name, 'default')
                 scan_item = self.get_global_expression_item(global_name, 'scan')
                 value = evaled_globals[self.group_name][global_name]
