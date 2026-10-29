@@ -11,9 +11,16 @@
 # the project for the full license.                                 #
 #                                                                   #
 #####################################################################
+import os
+import shutil
+import tempfile
+import types
 import unittest
 
 import runmanager
+import runmanager.globals_file as globals_file
+# fixtures stubs the splash and does the guarded import of the application.
+from fixtures import RunManager
 
 
 def evaluate(expressions):
@@ -61,3 +68,28 @@ class ZipGroupTests(unittest.TestCase):
         })
         self.assertIsInstance(results['group']['b'], ValueError)
         self.assertEqual(results['group']['c'], [8, 10])
+
+
+class ExpansionGuessTests(unittest.TestCase):
+    def test_loading_a_group_keeps_the_zip_group_of_a_global_not_scanned(self):
+        # A zip group is kept while Scan? is off, for when it is ticked again.
+        directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, directory, True)
+        path = os.path.join(directory, 'globals.toml')
+        globals_file.new_globals_file(path)
+        globals_file.new_group(path, 'group')
+        globals_file.new_globals(
+            path, 'group', {'x': {'default': '[1, 2, 3]', 'expansion': 'pair'}}
+        )
+        just_started = types.SimpleNamespace(
+            previous_evaled_globals={},
+            previous_global_hierarchy={},
+            previous_expansion_types={},
+            previous_expansions={},
+        )
+
+        RunManager.guess_expansion_modes(
+            just_started, {'group': path}, {'group': {'x': [1, 2, 3]}}, {}, {'x': ''}
+        )
+
+        self.assertEqual(globals_file.get_field(path, 'group', 'x', 'expansion'), 'pair')
