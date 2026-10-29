@@ -27,9 +27,8 @@ class TraceDictionary(dict):
         self.trace_data = []
 
     def __getitem__(self, key):
-        if self.trace_data is not None:
-            if key not in self.trace_data:
-                self.trace_data.append(key)
+        if self.trace_data is not None and key not in self.trace_data:
+            self.trace_data.append(key)
         return dict.__getitem__(self, key)
 
     def stop_trace(self):
