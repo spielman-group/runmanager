@@ -343,6 +343,12 @@ def evaluate_globals(sequence_globals, raise_exceptions=True):
                         iter(value)
                     except Exception as e:
                         raise ExpansionError(str(e))
+            except ExpansionError as e:
+                # The expression evaluated, so other globals can refer to the value:
+                sandbox[global_name] = value
+                errors.append((global_name, e))
+                sandbox.stop_trace()
+                continue
             except Exception as e:
                 # Don't raise, just append the error to a list, we'll display them all later.
                 errors.append((global_name, e))

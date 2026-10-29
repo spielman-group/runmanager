@@ -33,3 +33,8 @@ class ZipGroupTests(unittest.TestCase):
         sequence_globals, results = evaluate({'a': ('[1, 2]', 'z'), 'b': ('3', 'z')})
         self.assertIsInstance(results['group']['b'], runmanager.ExpansionError)
         self.assertEqual(runmanager.expand_globals(sequence_globals, results), [{'a': 1}, {'a': 2}])
+
+    def test_a_global_scanned_over_a_value_that_is_not_a_list_still_gives_its_value(self):
+        _, results = evaluate({'x': ('5', 'outer'), 'y': ('2*x', '')})
+        self.assertIsInstance(results['group']['x'], runmanager.ExpansionError)
+        self.assertEqual(results['group']['y'], 10)
