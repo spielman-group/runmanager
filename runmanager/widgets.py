@@ -13,6 +13,7 @@
 """Widgets for the runmanager GUI."""
 
 import unicodedata
+import weakref
 
 from qtutils.qt import QtCore, QtGui, QtWidgets
 from qtutils.qt.QtCore import Qt
@@ -383,21 +384,136 @@ def set_selection_palette(widget):
     widget.setPalette(palette)
 
 
+class ClickOffFilter(QtCore.QObject):
+    """Application event filter that clears the current index and selection of each
+    registered ItemView when the mouse is pressed elsewhere in the view's window"""
+
+    _instance = None
+
+    def __init__(self):
+        super().__init__()
+        self.views = weakref.WeakSet()
+
+    @classmethod
+    def register(cls, view):
+        if cls._instance is None:
+            cls._instance = cls()
+            QtWidgets.QApplication.instance().installEventFilter(cls._instance)
+        cls._instance.views.add(view)
+
+    def eventFilter(self, obj, event):
+        if (
+            event.type() == QtCore.QEvent.Type.MouseButtonPress
+            and isinstance(obj, QtWidgets.QWidget)
+        ):
+            # The event filter also receives the event when it propagates to the
+            # parents of the widget under the mouse, so we use the widget under the
+            # mouse and not obj:
+            target = (
+                QtWidgets.QApplication.widgetAt(event.globalPosition().toPoint()) or obj
+            )
+            for view in list(self.views):
+                if view.isVisible() and view.is_click_off(target):
+                    view.clear_current()
+        return False
+
+
 class ItemView(LeftClickMixin):
     """Mixin for QTableView and QTreeView that adds modified tab and arrow key
-    behaviour and custom selection highlighting to LeftClickMixin."""
+    behaviour and custom selection highlighting to LeftClickMixin. The current index
+    and selection are cleared when the user tabs out of the view or clicks elsewhere in
+    its window, including on an empty area of the view, except on the widgets passed to
+    set_selection_controls()."""
 
     def __init__(self, *args):
         super().__init__(*args)
+        self._selection_controls = []
+        self._clearing = False
+        # Whether the last edit was committed while the editor had the keyboard focus,
+        # that is, with the keyboard:
+        self._keyboard_commit = False
+        self._pending_edit = None
         self.setAutoScroll(False)
         set_selection_palette(self)
+        ClickOffFilter.register(self)
+
+    def set_selection_controls(self, widgets):
+        """Set the widgets that act on the selection, clicks on which do not clear it"""
+        self._selection_controls = list(widgets)
+
+    def is_click_off(self, widget):
+        """Whether a mouse press on the widget clears the current index and selection"""
+        if widget.window() is not self.window():
+            return False
+        for w in [self] + self._selection_controls:
+            if w is widget or w.isAncestorOf(widget):
+                return False
+        return True
+
+    def clear_current(self):
+        """Commit any edit in progress and clear the current index and selection"""
+        if not self.currentIndex().isValid() and not self.selectionModel().hasSelection():
+            return
+        self._clearing = True
+        try:
+            self.selectionModel().clear()
+        finally:
+            self._clearing = False
+
+    def edit_after_commit(self, index):
+        """Edit the index if the last edit was committed with the Enter key. If that
+        edit is still open, edit the index once it is closed."""
+        if not self._keyboard_commit:
+            return
+        if self.state() == QtWidgets.QAbstractItemView.State.EditingState:
+            self._pending_edit = QtCore.QPersistentModelIndex(index)
+        else:
+            self._keyboard_commit = False
+            self.setCurrentIndex(index)
+            self.edit(index)
+
+    def commitData(self, editor):
+        focus = QtWidgets.QApplication.focusWidget()
+        self._keyboard_commit = (
+            not self._clearing
+            and focus is not None
+            and (focus is editor or editor.isAncestorOf(focus))
+        )
+        super().commitData(editor)
+
+    def closeEditor(self, editor, hint):
+        pending_edit, self._pending_edit = self._pending_edit, None
+        if hint in [
+            QtWidgets.QAbstractItemDelegate.EndEditHint.EditNextItem,
+            QtWidgets.QAbstractItemDelegate.EndEditHint.EditPreviousItem,
+            QtWidgets.QAbstractItemDelegate.EndEditHint.RevertModelCache,
+        ]:
+            self._keyboard_commit = False
+        super().closeEditor(editor, hint)
+        if pending_edit is not None and pending_edit.isValid() and self._keyboard_commit:
+            self.edit_after_commit(QtCore.QModelIndex(pending_edit))
+
+    def focusOutEvent(self, event):
+        if event.reason() in [
+            QtCore.Qt.FocusReason.TabFocusReason,
+            QtCore.Qt.FocusReason.BacktabFocusReason,
+        ]:
+            self.clear_current()
+        return super().focusOutEvent(event)
 
     def changeEvent(self, event):
         if event.type() == QtCore.QEvent.Type.PaletteChange:
             set_selection_palette(self)
         super().changeEvent(event)
 
+    def mousePressEvent(self, event):
+        self._keyboard_commit = False
+        if not self.indexAt(event.position().toPoint()).isValid():
+            self.clear_current()
+        return super().mousePressEvent(event)
+
     def keyPressEvent(self, event):
+        self._keyboard_commit = False
         index = self.currentIndex()
         if (
             event.key() in [

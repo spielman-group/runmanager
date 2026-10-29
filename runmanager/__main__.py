@@ -903,8 +903,7 @@ class GroupTab:
                 default_item = self.get_global_expression_item(
                     global_name, 'default', previous_name=global_name
                 )
-                self.ui.treeView_globals.setCurrentIndex(default_item.index())
-                self.ui.treeView_globals.edit(default_item.index())
+                self.ui.treeView_globals.edit_after_commit(default_item.index())
             app.globals_changed()
         finally:
             item.setText(self.GLOBALS_DUMMY_ROW_TEXT)
@@ -935,14 +934,12 @@ class GroupTab:
             item.setToolTip(new_global_name)
             app.globals_changed()
             default_item = self.get_global_expression_item(new_global_name, 'default')
-            if (
-                not default_item.text()
-                and self.ui.treeView_globals.state() != QtWidgets.QAbstractItemView.State.EditingState
-            ):
+            if not default_item.text():
                 if default_item.index().parent().isValid():
                     self.ui.treeView_globals.expand(default_item.index().parent())
-                self.edit_cell(default_item.index())
+                self.ui.treeView_globals.edit_after_commit(default_item.index())
             else:
+                # If this changed the sort order, ensure the item is still visible:
                 scroll_view_to_row_if_current(self.ui.treeView_globals, item)
 
     def show_global_field(self, item, field, value):
@@ -1030,16 +1027,16 @@ class GroupTab:
                 next_item = self.get_active_value_item(global_name)
             else:
                 next_item = None
-            if (
-                next_item is not None
-                and next_item.isEditable()
-                and not next_item.text()
-                and self.ui.treeView_globals.state()
+            if next_item is None or not next_item.isEditable() or next_item.text():
+                # If this changed the sort order, ensure the item is still visible:
+                scroll_view_to_row_if_current(self.ui.treeView_globals, item)
+            elif field == 'default':
+                self.ui.treeView_globals.edit_after_commit(next_item.index())
+            elif (
+                self.ui.treeView_globals.state()
                 != QtWidgets.QAbstractItemView.State.EditingState
             ):
                 self.edit_cell(next_item.index())
-            else:
-                scroll_view_to_row_if_current(self.ui.treeView_globals, item)
 
         # The hourglass is drawn before a write the operator waits on:
         if field == 'default' and interactive:
@@ -1561,6 +1558,12 @@ class RunManager(LabscriptGuiApplication):
         self.ui.toolButton_axis_to_bottom.clicked.connect(
             lambda: axes.move_selected_rows('bottom')
         )
+        axes.set_selection_controls([
+            self.ui.toolButton_axis_to_top,
+            self.ui.toolButton_axis_up,
+            self.ui.toolButton_axis_down,
+            self.ui.toolButton_axis_to_bottom,
+        ])
         axes.rowsReordered.connect(lambda order: self.update_axes_indentation())
         # axes tab item changed handler
         self.axes_model.itemChanged.connect(self.on_axes_item_changed)
