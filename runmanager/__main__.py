@@ -2887,32 +2887,29 @@ class RunManager(LabscriptGuiApplication):
 
         menu.exec(QtGui.QCursor.pos())
 
+    def selected_group_items(self, column):
+        """The selected groups' items in ``column``, leaving out the files' rows."""
+        selected_items = (
+            self.groups_model.itemFromIndex(index)
+            for index in self.ui.treeView_groups.selectedIndexes()
+        )
+        return [
+            item
+            for item in selected_items
+            if item.column() == column and item.parent() is not None
+        ]
+
     def on_groups_copy_selected_groups_triggered(self, dest_globals_file=None, delete_source_group=False):
-        selected_indexes = self.ui.treeView_groups.selectedIndexes()
-        selected_items = (self.groups_model.itemFromIndex(index) for index in selected_indexes)
-        name_items = [item for item in selected_items
-                      if item.column() == self.GROUPS_COL_NAME
-                      and item.parent() is not None]
-        for item in name_items:
+        for item in self.selected_group_items(self.GROUPS_COL_NAME):
             source_globals_file = item.parent().text()
             self.copy_group(source_globals_file, item.text(), dest_globals_file, delete_source_group)
 
     def on_groups_set_selection_active_triggered(self, checked_state):
-        selected_indexes = self.ui.treeView_groups.selectedIndexes()
-        # Filter to only include the 'active' column:
-        selected_items = (self.groups_model.itemFromIndex(index) for index in selected_indexes)
-        active_items = (item for item in selected_items
-                        if item.column() == self.GROUPS_COL_ACTIVE
-                        and item.parent() is not None)
-        for item in active_items:
+        for item in self.selected_group_items(self.GROUPS_COL_ACTIVE):
             item.setCheckState(checked_state)
 
     def on_groups_delete_selected_triggered(self):
-        selected_indexes = self.ui.treeView_groups.selectedIndexes()
-        selected_items = (self.groups_model.itemFromIndex(index) for index in selected_indexes)
-        name_items = [item for item in selected_items
-                      if item.column() == self.GROUPS_COL_NAME
-                      and item.parent() is not None]
+        name_items = self.selected_group_items(self.GROUPS_COL_NAME)
         # If multiple selected, show 'delete n groups?' message. Otherwise,
         # pass confirm=True to self.delete_group so it can show the regular
         # message.
@@ -2928,9 +2925,7 @@ class RunManager(LabscriptGuiApplication):
     def on_groups_open_selected_triggered(self):
         selected_indexes = self.ui.treeView_groups.selectedIndexes()
         selected_items = [self.groups_model.itemFromIndex(index) for index in selected_indexes]
-        name_items = [item for item in selected_items
-                      if item.column() == self.GROUPS_COL_NAME
-                      and item.parent() is not None]
+        name_items = self.selected_group_items(self.GROUPS_COL_NAME)
 
         # Include all grous of selected globals files:
         for item in selected_items:
@@ -2948,12 +2943,7 @@ class RunManager(LabscriptGuiApplication):
             self.globals_changed()
 
     def on_groups_close_selected_groups_triggered(self):
-        selected_indexes = self.ui.treeView_groups.selectedIndexes()
-        selected_items = (self.groups_model.itemFromIndex(index) for index in selected_indexes)
-        name_items = [item for item in selected_items
-                      if item.column() == self.GROUPS_COL_NAME
-                      and item.parent() is not None]
-        for item in name_items:
+        for item in self.selected_group_items(self.GROUPS_COL_NAME):
             globals_file = item.parent().text()
             group_name = item.text()
             if (globals_file, group_name) in self.currently_open_groups:
@@ -3534,14 +3524,9 @@ class RunManager(LabscriptGuiApplication):
         same name are selected, this is invalid - selected groups must be
         uniquely named. If interactive=False, raises the exception instead."""
         active_groups = {}
-        for i in range(self.groups_model.rowCount()):
-            file_name_item = self.groups_model.item(i, self.GROUPS_COL_NAME)
-            for j in range(file_name_item.rowCount()):
-                group_name_item = file_name_item.child(j, self.GROUPS_COL_NAME)
-                group_active_item = file_name_item.child(j, self.GROUPS_COL_ACTIVE)
-                if group_active_item.checkState() == QtCore.Qt.Checked:
-                    group_name = group_name_item.text()
-                    globals_file = file_name_item.text()
+        for globals_file, groups in self.group_active_items().items():
+            for group_name, active_item in groups.items():
+                if active_item.checkState() == QtCore.Qt.Checked:
                     if group_name in active_groups:
                         msg = (
                             'There are two active groups named %s. ' % group_name
@@ -3553,6 +3538,18 @@ class RunManager(LabscriptGuiApplication):
                         raise RuntimeError(msg)
                     active_groups[group_name] = globals_file
         return active_groups
+
+    def group_active_items(self):
+        """``{globals_file: {group_name: Active item}}`` for every open file."""
+        files = {}
+        for i in range(self.groups_model.rowCount()):
+            file_item = self.groups_model.item(i, self.GROUPS_COL_NAME)
+            groups = files[file_item.text()] = {}
+            for j in range(file_item.rowCount()):
+                name_item = file_item.child(j, self.GROUPS_COL_NAME)
+                if not name_item.data(self.GROUPS_ROLE_IS_DUMMY_ROW):
+                    groups[name_item.text()] = file_item.child(j, self.GROUPS_COL_ACTIVE)
+        return files
 
     def replace_globals_file_path(self, old_path, new_path):
         if old_path == new_path:
@@ -3753,19 +3750,10 @@ class RunManager(LabscriptGuiApplication):
         except Exception as e:
             self.error_dialog(str(e))
         else:
-            # Insert the newly created globals group into the model, as a
-            # child row of the new globals file.
-            # find the new groups parent row by filepath
-            for index in range(self.groups_model.rowCount()):
-                if self.groups_model.item(index, self.GROUPS_COL_NAME).text() == dest_globals_file:
-                    parent_row = self.groups_model.item(index)
-                    break
-
-            last_index = parent_row.rowCount()
-            # Insert it as the row before the last (dummy) row:
-            group_row = self.make_group_row(dest_group_name)
-            parent_row.insertRow(last_index - 1, group_row)
-            self.do_model_sort()
+            (file_item,) = self.groups_model.findItems(
+                dest_globals_file, column=self.GROUPS_COL_NAME
+            )
+            group_row = self.insert_group_row(file_item, dest_group_name)
 
             # Open the group
             self.open_group(dest_globals_file, dest_group_name)
@@ -3779,6 +3767,13 @@ class RunManager(LabscriptGuiApplication):
 
             # If this changed the sort order, ensure the group item is still visible:
             scroll_view_to_row_if_current(self.ui.treeView_groups, name_item)
+
+    def insert_group_row(self, file_item, group_name):
+        """Add a group's row under its file's, above the dummy row, and return it."""
+        group_row = self.make_group_row(group_name)
+        file_item.insertRow(file_item.rowCount() - 1, group_row)
+        self.do_model_sort()
+        return group_row
 
     def new_group(self, globals_file, group_name, interactive=True):
         # A GUI edit has typed the name into the dummy row, which is reset
@@ -3798,13 +3793,7 @@ class RunManager(LabscriptGuiApplication):
                 raise
             self.error_dialog(str(e))
         else:
-            # Insert the newly created globals group into the model, as a
-            # child row of the globals file it belong to.
-            group_row = self.make_group_row(group_name)
-            last_index = item.parent().rowCount()
-            # Insert it as the row before the last (dummy) row:
-            item.parent().insertRow(last_index - 1, group_row)
-            self.do_model_sort()
+            group_row = self.insert_group_row(item.parent(), group_name)
             # Open the group and mark it active:
             self.open_group(globals_file, group_name)
             active_item = group_row[self.GROUPS_COL_ACTIVE]
@@ -3883,18 +3872,14 @@ class RunManager(LabscriptGuiApplication):
 
     def get_save_data(self):
         # Get the currently open files and active groups:
-        h5_files_open = []
-        active_groups = []
-        for i in range(self.groups_model.rowCount()):
-            file_name_item = self.groups_model.item(i, self.GROUPS_COL_NAME)
-            globals_file_name = file_name_item.text()
-            h5_files_open.append(globals_file_name)
-            for j in range(file_name_item.rowCount()):
-                group_name_item = file_name_item.child(j, self.GROUPS_COL_NAME)
-                group_name = group_name_item.text()
-                group_active_item = file_name_item.child(j, self.GROUPS_COL_ACTIVE)
-                if group_active_item.checkState() == QtCore.Qt.Checked:
-                    active_groups.append((globals_file_name, group_name))
+        files = self.group_active_items()
+        h5_files_open = list(files)
+        active_groups = [
+            (globals_file, group_name)
+            for globals_file, groups in files.items()
+            for group_name, active_item in groups.items()
+            if active_item.checkState() == QtCore.Qt.Checked
+        ]
         # Get the currently open groups:
         groups_open = []
         for i in range(self.ui.tabWidget.count()):
@@ -4846,19 +4831,6 @@ class RunmanagerServer(ZMQServer):
                 'runmanager first.'
             )
 
-    @staticmethod
-    def _group_active_items():
-        """``{globals_file: {group_name: Active item}}`` for every open file."""
-        files = {}
-        for i in range(app.groups_model.rowCount()):
-            file_item = app.groups_model.item(i, app.GROUPS_COL_NAME)
-            groups = files[file_item.text()] = {}
-            for j in range(file_item.rowCount()):
-                name_item = file_item.child(j, app.GROUPS_COL_NAME)
-                if not name_item.data(app.GROUPS_ROLE_IS_DUMMY_ROW):
-                    groups[name_item.text()] = file_item.child(j, app.GROUPS_COL_ACTIVE)
-        return files
-
     @inmain_decorator()
     def _set_field_values(self, field, globals, coerce, skip_missing=False):
         globals = {
@@ -4925,7 +4897,7 @@ class RunmanagerServer(ZMQServer):
                 group_name: item.checkState() == QtCore.Qt.Checked
                 for group_name, item in groups.items()
             }
-            for globals_file, groups in self._group_active_items().items()
+            for globals_file, groups in app.group_active_items().items()
         }
 
     def handle_set_values(self, globals, raw=False, skip_missing=False):
@@ -4968,7 +4940,7 @@ class RunmanagerServer(ZMQServer):
 
     @inmain_decorator()
     def handle_set_groups_active(self, groups):
-        items = self._group_active_items()
+        items = app.group_active_items()
         active = {
             (globals_file, group_name): item.checkState() == QtCore.Qt.Checked
             for globals_file, file_items in items.items()
@@ -5015,18 +4987,18 @@ class RunmanagerServer(ZMQServer):
 
     @inmain_decorator()
     def handle_close_globals_file(self, path):
-        if path not in self._group_active_items():
+        if path not in app.group_active_items():
             raise ValueError(f'{path} is not an open globals file.')
         app.close_globals_file(path, confirm=False)
 
     @inmain_decorator()
     def handle_new_group(self, globals_file, group_name):
         group_name = self._coerce_remote_text(group_name, 'group_name')
-        if globals_file not in self._group_active_items():
+        if globals_file not in app.group_active_items():
             raise ValueError(f'{globals_file} is not an open globals file.')
         self._refuse_legacy_hdf5(globals_file)
         app.new_group(globals_file, group_name, interactive=False)
-        item = self._group_active_items()[globals_file][group_name]
+        item = app.group_active_items()[globals_file][group_name]
         return item.checkState() == QtCore.Qt.Checked
 
     @inmain_decorator()
