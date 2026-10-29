@@ -8,7 +8,6 @@ import functools
 import os
 import queue
 import socket
-import subprocess
 import types
 import unittest
 from unittest import mock
@@ -31,13 +30,9 @@ class SendToRunviewerTests(unittest.TestCase):
 
     def setUp(self):
         self.launched = []
-        # runmanager's own name for the module, so that the launch reaches the
-        # fake and nothing else in the process, such as a real server, does:
-        patcher = mock.patch.object(
-            main_module,
-            'subprocess',
-            types.SimpleNamespace(Popen=self.popen, DEVNULL=subprocess.DEVNULL),
-        )
+        # runmanager's own name for it, so that the launch reaches the fake and
+        # nothing else in the process, such as a real server, does:
+        patcher = mock.patch.object(main_module, 'start_daemon', self.start_daemon)
         patcher.start()
         self.addCleanup(patcher.stop)
 
@@ -64,11 +59,10 @@ class SendToRunviewerTests(unittest.TestCase):
         )
         self.addCleanup(server.shutdown)
 
-    def popen(self, command, **kwargs):
+    def start_daemon(self, command):
         self.launched.append(list(command))
         # What the started runviewer does first:
         self.serve()
-        return types.SimpleNamespace(pid=1234)
 
     def send(self):
         self.app.send_to_runviewer('/tmp/a_shot.h5')

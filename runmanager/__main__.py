@@ -38,7 +38,6 @@ splash.show()
 splash.update_text('importing standard library modules')
 import time
 import contextlib
-import subprocess
 import threading
 import ast
 import pprint
@@ -83,7 +82,7 @@ from labscript_utils.qtwidgets.themed_window import (
 from labscript_utils.text_editor import open_in_editor
 from blacs.client import BlacsClient
 from runviewer.client import RunviewerClient
-from zprocess import raise_exception_in_thread
+from zprocess import raise_exception_in_thread, start_daemon
 import runmanager
 from runmanager.client import (
     BLACS_COMPLETED,
@@ -4389,30 +4388,10 @@ class RunManager(LabscriptGuiApplication):
             logger.info('runviewer not running, attempting to start...')
             # Runviewer not running, start it:
             if os.name == 'nt':
-                creationflags = 0x00000008  # DETACHED_PROCESS from the win32 API
                 scripts_dir = desktop_app.environment.get_scripts_dir('runviewer')
-                subprocess.Popen([str(scripts_dir / 'runviewer-gui')],
-                                 creationflags=creationflags, stdout=None, stderr=None,
-                                 close_fds=True)
+                start_daemon([str(scripts_dir / 'runviewer-gui')])
             else:
-                # start_new_session reaches the setsid a fork would be used
-                # for, and reaches it without running Python in a forked child.
-                # os.fork() here is unsafe: runmanager runs half a dozen
-                # threads, so the child gets only this one, holding whatever
-                # locks the others hold at the instant of the fork -- including
-                # the allocator's, which subprocess needs. It deadlocks before
-                # starting anything, silently, and Python 3.12 warns about it.
-                # Worse, a Popen that raises in such a child skips the
-                # os._exit(0) that has to follow it, and the child carries on
-                # as a second copy of runmanager.
-                subprocess.Popen(
-                    [sys.executable, '-m', 'runviewer'],
-                    stdin=subprocess.DEVNULL,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    start_new_session=True,
-                    close_fds=True,
-                )
+                start_daemon([sys.executable, '-m', 'runviewer'])
             try:
                 runviewer.say_hello(timeout=15)
             except Exception as e:
