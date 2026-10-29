@@ -687,3 +687,35 @@ Found by this search; each is its owner's, routed by the coordinator after Ian d
   (`__main__.py:4725`). Only the name is affected; D5 would fix it.
 - **B6 fix**. `compile_labscript_with_globals_files_async`'s docstring
   (`__init__.py:919`) calls `output_path` a folder; it is the shot file. Upstream's.
+
+### Decided and applied
+
+Ian agreed to every candidate but D5, which is held, and X5 and D14, left. N1
+adds 15 functions, not 16: `queue_exchange` stays out of `remote`, as cut in step
+2.1 (E). N4 renames `globals_file.py` only, and the client's `path` stays. B5 is
+in `KNOWN_ISSUES.md`.
+
+Range for review: `0b324ce..cf7cfb8` on `CodeHealth`, one commit each: B2
+ebb38d0, D1 f0352b2, D3 2495963, D2 f23fc54, D4 6fbcbac, D6 9d5e084, B4 711821e,
+D7 cc52e36, D8 6f6cc74, D9 8ae9722, D10 and B1 6ee6cc8, D11 578bc39, D12
+0b3d6d0, D13 999962b, N1 9d8d6bc, N2 8cf7889, N6 02f9341, N8 fefeb4b, B3
+0fa004f, B6 15ae310, B5 40ca91f, N3 c337ba7, N4 eeaadd3, N5 090fba0, N7
+5291d16, X4 eb28e07, X1 520e32f, X2 cf7cfb8. 1e8cf64 gives the tests' lyse
+server a free port, since lyse's server now binds lyse's own when given none
+(lyse 82e1bdc).
+
+D2 changes two things a user can see: a change of units now marks the globals
+changed, as every other field does, so a preparse follows it; and the units
+cell's Bool state is refreshed after any field changes. The suite is 149 tests,
+with 30 subtests. B2, B3 and B1 each have a test that fails without its fix.
+
+Other repos change with this: labscript-optimization passes `sequence_id` to
+`submit_shots` (N5) and calls `bound_for_lyse` (X4), as does labscript-agents;
+blacs's integration test calls `get_save_data` (N7) and builds
+`RunmanagerServer` on a port of its own (X2).
+
+### Lab checks
+
+- On Development, on Windows: runviewer started by a shot sent to it with View
+  shot(s) ticked, now through `start_daemon` with `CREATE_NEW_PROCESS_GROUP`
+  and `CREATE_NO_WINDOW` (D6). It should open its window with no console.
