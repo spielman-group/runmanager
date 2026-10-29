@@ -16,7 +16,6 @@
 import itertools
 import math
 import random
-import sys
 
 import numpy as np
 
@@ -184,6 +183,21 @@ def expand_globals(sequence_globals, evaled_globals, expansion_config = None, re
         return shots
 
 
+def value_expression(value):
+    """Return an expression that evaluates to ``value``, needing only ``np``.
+
+    numpy's repr writes an array as a bare ``array(...)``, which needs pylab's
+    ``array`` in the namespace, and rounds and elides it by default. So an array is
+    written as its elements, as Python values whose reprs round-trip, and its dtype,
+    and a numpy scalar as its type and Python value.
+    """
+    if isinstance(value, np.ndarray):
+        return f'np.array({value.tolist()!r}, dtype={str(value.dtype)!r})'
+    if isinstance(value, np.generic):
+        return f'np.{type(value).__name__}({value.item()!r})'
+    return repr(value)
+
+
 def get_frozen_globals(globals_details, shot):
     frozen_globals = {}
     for group_name, globals_data in globals_details.items():
@@ -191,9 +205,7 @@ def get_frozen_globals(globals_details, shot):
             if record['jit_enabled']:
                 continue
             if record['scan_enabled']:
-                # numpy's default repr rounds to 8 digits and elides long arrays
-                with np.printoptions(threshold=sys.maxsize, floatmode='unique'):
-                    expression = repr(shot[global_name])
+                expression = value_expression(shot[global_name])
             else:
                 expression = record['default']
             frozen_globals[global_name] = expression

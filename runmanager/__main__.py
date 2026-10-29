@@ -50,7 +50,6 @@ splash.update_text('importing matplotlib')
 # GUI integration:
 import matplotlib
 matplotlib.use('Agg')
-import numpy as np
 
 from qtutils.qt import QtCore, QtGui, QtWidgets, QT_ENV
 
@@ -4076,9 +4075,7 @@ class RunmanagerServer(ZMQServer):
 
     @staticmethod
     def _coerce_remote_expression(value, name):
-        # Arrays are written in full, not summarised with an ellipsis or rounded:
-        with np.printoptions(threshold=sys.maxsize, floatmode='unique'):
-            return repr(value)
+        return runmanager.expander.value_expression(value)
 
     @staticmethod
     def _with_trailing_comment(expression, previous):

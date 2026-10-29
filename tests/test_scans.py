@@ -17,6 +17,8 @@ import tempfile
 import types
 import unittest
 
+import numpy as np
+
 import runmanager
 import runmanager.globals_file as globals_file
 # fixtures stubs the splash and does the guarded import of the application.
@@ -93,6 +95,44 @@ class ShotCountTests(unittest.TestCase):
         shots = runmanager.expand_globals(sequence_globals, results)
         with self.assertRaises(ValueError):
             runmanager.make_run_files('folder', sequence_globals, shots, {}, 'prefix')
+
+class FrozenGlobalsTests(unittest.TestCase):
+    def test_a_frozen_value_evaluates_back_to_itself_with_only_numpy(self):
+        values = [
+            np.array(1.5),
+            np.linspace(0, 1, 7),
+            np.arange(6).reshape(2, 3),
+            np.array([1 + 2j, 3.25 - 1e-300j]),
+            np.array([True, False]),
+            np.array(['a', 'bc']),
+            np.array([0.1, 1 / 3], dtype=np.float32),
+            np.float64(1 / 3),
+            np.float32(0.1),
+            np.int64(-7),
+            np.bool_(True),
+            np.complex128(1 - 1j),
+            np.str_('text'),
+            1 / 3,
+            [1, 2.5],
+            'text',
+        ]
+        details = {
+            'group': {
+                f'g{i}': {'default': '0', 'scan_enabled': True, 'jit_enabled': False}
+                for i in range(len(values))
+            }
+        }
+        shot = {f'g{i}': value for i, value in enumerate(values)}
+        frozen = runmanager.get_frozen_globals(details, shot)
+        for i, value in enumerate(values):
+            with self.subTest(value=value):
+                thawed = eval(frozen[f'g{i}'], {'np': np})
+                self.assertEqual(type(thawed), type(value))
+                if isinstance(value, np.ndarray):
+                    self.assertEqual((thawed.dtype, thawed.shape), (value.dtype, value.shape))
+                    np.testing.assert_array_equal(thawed, value)
+                else:
+                    self.assertEqual(thawed, value)
 
 class ScannedGlobalsTests(unittest.TestCase):
     def test_a_global_derived_from_another_on_its_axis_is_not_counted_as_scanned(self):

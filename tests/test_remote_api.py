@@ -540,7 +540,7 @@ class SubmitShotsTests(RemoteCommandTestCase):
         self.request(self.client.set_values, {'y': values})
 
         written = self.expressions()['y']
-        np.testing.assert_array_equal(eval(written, {'array': np.array}), values)
+        np.testing.assert_array_equal(eval(written, {'np': np}), values)
 
     def test_a_raw_value_that_is_not_text_is_refused_before_anything_is_set(self):
         with self.assertRaises(TypeError):
