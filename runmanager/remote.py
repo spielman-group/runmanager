@@ -1,9 +1,9 @@
 from .client import *
 from .client import RunmanagerClient as Client
 
-# Built here, where user code imports it, so that importing runmanager.client
+# Taken here, where user code imports it, so that importing runmanager.client
 # builds no client:
-_default_client = RunmanagerClient()
+_default_client = RunmanagerClient.instance()
 
 say_hello = _default_client.say_hello
 get_version = _default_client.get_version
