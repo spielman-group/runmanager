@@ -28,7 +28,7 @@ import labscript_utils.h5_lock
 import h5py
 
 from labscript_utils import ensure_str
-from labscript_utils.file_utils import warn_legacy_file
+from labscript_profile.legacy_files import warn_legacy_file
 from labscript_profile.toml_config import dump_toml_file, load_toml_file
 
 
