@@ -1081,7 +1081,8 @@ Taken:
   - the tab scan icons (4bae40c and 0784bbd);
   - the theme items (61c1a94's Engage and selection parts, and e4f30e1);
   - 2309c7e, through labscript-utils' `setup_application` and `monospace_font`;
-  - #163 (45baf1f) with 0a0ceb7;
+  - #163 (45baf1f) with 0a0ceb7, and 8ae14c0, since labscript fc29707 dropped
+    `from pylab import *`;
   - ac679f8.
 - The module split: 7729dc8 and its fixes, giving `exceptions`, `tokenizer`,
   `evaluator`, `group_manager`, `expander`, `compiler`, `differ` and `widgets`, with
@@ -1112,8 +1113,6 @@ Not possible:
   queue.
 - dc0d18f is upstream's screenshots. By Ian's P12 decision, the fork's are taken from
   the running app after the coupled merge.
-- 8ae14c0 names numpy in a compile error. It needs labscript to drop
-  `from pylab import *`, which labscript `CodeHealth` still has.
 - The style-commit hunks on lines the fork has changed. The same changes are left to
   step 2.6.
 - Already in the fork, in a shared form:
