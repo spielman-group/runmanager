@@ -1586,14 +1586,16 @@ class ExchangeFailureTests(unittest.TestCase):
         return app
 
     def test_a_failure_choosing_a_shot_is_reported_and_answered(self):
+        directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, directory, True)
         app = self.make_runmanager()
         app.queue_manager.enqueue([queued_shot('/tmp/shot_a.h5')])
         offered = app.queue_exchange(request_shot=True)
-        # No input known makes choosing a shot raise, so a fault is put there:
-        def fault():
-            raise RuntimeError('the queue cannot be read')
-
-        app.queue_manager.offer_next = fault
+        # Choosing a default shot raises once the default labscript file has gone.
+        app.queue_manager.set_empty_queue_policy(EMPTY_QUEUE_DEFAULT_LABSCRIPT)
+        app.queue_manager.set_default_labscript_file(
+            os.path.join(directory, 'moved.py')
+        )
 
         response = app.queue_exchange(
             outcome={'shot_id': offered['shot_id'], 'status': 'completed'},
@@ -1611,8 +1613,7 @@ class ExchangeFailureTests(unittest.TestCase):
             'the outcome that came with the request was still applied',
         )
         self.assertTrue(
-            any('the queue cannot be read' in line for line in app.said),
-            'and the operator is told why',
+            any('moved.py' in line for line in app.said), 'and the operator is told why'
         )
 
 

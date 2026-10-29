@@ -731,22 +731,6 @@ QToolButton:hover {
            <widget class="QComboBox" name="queue_empty_policy_combo"/>
           </item>
           <item>
-           <widget class="QLabel" name="label_default_shot_failed">
-            <property name="maximumSize">
-             <size>
-              <width>16</width>
-              <height>16</height>
-             </size>
-            </property>
-            <property name="pixmap">
-             <pixmap>:/qtutils/fugue/exclamation-red.png</pixmap>
-            </property>
-            <property name="scaledContents">
-             <bool>true</bool>
-            </property>
-           </widget>
-          </item>
-          <item>
            <widget class="QPushButton" name="queue_pause_button">
             <property name="focusPolicy">
              <enum>Qt::FocusPolicy::NoFocus</enum>
