@@ -3992,6 +3992,10 @@ class RunmanagerServer(ZMQServer):
     server = 'runmanager'
     default_port = DEFAULT_PORT
 
+    def __init__(self, app, **kwargs):
+        self.app = app
+        super().__init__(**kwargs)
+
     # A global's fields as a remote caller names them, and as its file does.
     GLOBAL_FIELDS = {
         'value': 'default',
@@ -4003,7 +4007,7 @@ class RunmanagerServer(ZMQServer):
     }
 
     def _get_active_global_locations(self, names=None):
-        active_groups = inmain(app.get_active_groups, interactive=False)
+        active_groups = inmain(self.app.get_active_groups, interactive=False)
         globals_details = runmanager.globals_file.get_globals_details(active_groups)
         locations = {}
         groups_of = {}
@@ -4117,7 +4121,7 @@ class RunmanagerServer(ZMQServer):
                 if field in ('default', 'scan'):
                     new_value = self._with_trailing_comment(new_value, previous_value)
                 try:
-                    group_tab = app.currently_open_groups[globals_file, group_name]
+                    group_tab = self.app.currently_open_groups[globals_file, group_name]
                 except KeyError:
                     runmanager.globals_file.set_field(
                         globals_file, group_name, global_name, field, new_value
@@ -4127,14 +4131,14 @@ class RunmanagerServer(ZMQServer):
                         global_name, field, previous_value, new_value, interactive=False
                     )
         finally:
-            app.globals_changed()
+            self.app.globals_changed()
         return skipped
 
     def handle_get_values(self, raw=False):
         return self._get_expression_field_values('default', raw=raw)
 
     def handle_get_globals(self, raw=False):
-        active_groups = inmain(app.get_active_groups, interactive=False)
+        active_groups = inmain(self.app.get_active_groups, interactive=False)
         return self._merge_groups(runmanager.get_globals(active_groups), raw)
 
     def handle_get_scans(self, raw=False):
@@ -4148,7 +4152,7 @@ class RunmanagerServer(ZMQServer):
 
     def handle_get_expansions(self):
         # The preparse guesses the expansion of a global whose type changed.
-        app.wait_until_preparse_complete()
+        self.app.wait_until_preparse_complete()
         return self._get_global_field_values('expansion')
 
     def handle_get_units(self):
@@ -4161,7 +4165,7 @@ class RunmanagerServer(ZMQServer):
                 group_name: item.checkState() == QtCore.Qt.Checked
                 for group_name, item in groups.items()
             }
-            for globals_file, groups in app.group_active_items().items()
+            for globals_file, groups in self.app.group_active_items().items()
         }
 
     def handle_set_values(self, globals, raw=False, skip_missing=False):
@@ -4204,7 +4208,7 @@ class RunmanagerServer(ZMQServer):
 
     @inmain_decorator()
     def handle_set_groups_active(self, groups):
-        items = app.group_active_items()
+        items = self.app.group_active_items()
         active = {
             (globals_file, group_name): item.checkState() == QtCore.Qt.Checked
             for globals_file, file_items in items.items()
@@ -4240,29 +4244,29 @@ class RunmanagerServer(ZMQServer):
         if os.path.exists(path):
             raise FileExistsError(f'{path} already exists.')
         runmanager.globals_file.new_globals_file(path)
-        return app.open_globals_file(path)
+        return self.app.open_globals_file(path)
 
     @inmain_decorator()
     def handle_open_globals_file(self, path):
         path = os.path.abspath(self._coerce_remote_text(path, 'path'))
         if not os.path.isfile(path):
             raise FileNotFoundError(f'No such file {path}.')
-        return app.open_globals_file(path)
+        return self.app.open_globals_file(path)
 
     @inmain_decorator()
     def handle_close_globals_file(self, path):
-        if path not in app.group_active_items():
+        if path not in self.app.group_active_items():
             raise ValueError(f'{path} is not an open globals file.')
-        app.close_globals_file(path, confirm=False)
+        self.app.close_globals_file(path, confirm=False)
 
     @inmain_decorator()
     def handle_new_group(self, globals_file, group_name):
         group_name = self._coerce_remote_text(group_name, 'group_name')
-        if globals_file not in app.group_active_items():
+        if globals_file not in self.app.group_active_items():
             raise ValueError(f'{globals_file} is not an open globals file.')
         self._refuse_legacy_hdf5(globals_file)
-        app.new_group(globals_file, group_name, interactive=False)
-        item = app.group_active_items()[globals_file][group_name]
+        self.app.new_group(globals_file, group_name, interactive=False)
+        item = self.app.group_active_items()[globals_file][group_name]
         return item.checkState() == QtCore.Qt.Checked
 
     @inmain_decorator()
@@ -4288,11 +4292,11 @@ class RunmanagerServer(ZMQServer):
         runmanager.new_globals(globals_file, group_name, records)
         stored = runmanager.globals_file.get_globals_details({group_name: globals_file})
         created = {name: stored[group_name][name] for name in records}
-        group_tab = app.currently_open_groups.get((globals_file, group_name))
+        group_tab = self.app.currently_open_groups.get((globals_file, group_name))
         if group_tab is not None:
             group_tab.add_global_rows(created)
             group_tab.do_model_sort()
-        app.globals_changed()
+        self.app.globals_changed()
         return {
             name: {field: record[key] for field, key in self.GLOBAL_FIELDS.items()}
             for name, record in created.items()
@@ -4304,89 +4308,89 @@ class RunmanagerServer(ZMQServer):
         self._check_before_writing(locations, {global_name: ''})
         globals_file, group_name = locations[global_name]
         try:
-            group_tab = app.currently_open_groups[globals_file, group_name]
+            group_tab = self.app.currently_open_groups[globals_file, group_name]
         except KeyError:
             runmanager.globals_file.delete_global(globals_file, group_name, global_name)
-            app.globals_changed()
+            self.app.globals_changed()
         else:
             group_tab.delete_global(global_name, confirm=False)
         return global_name
 
     def handle_engage(self, submission_mode=SUBMISSION_MODE_NEW_SEQUENCE):
-        app.wait_until_preparse_complete()
-        return [shot_receipt(record) for record in inmain(app.engage, submission_mode)]
+        self.app.wait_until_preparse_complete()
+        return [shot_receipt(record) for record in inmain(self.app.engage, submission_mode)]
 
     @inmain_decorator()
     def handle_abort(self):
-        app.on_abort_clicked()
+        self.app.on_abort_clicked()
 
     @inmain_decorator()
     def handle_get_run_shots(self):
-        return app.ui.checkBox_run_shots.isChecked()
+        return self.app.ui.checkBox_run_shots.isChecked()
 
     @inmain_decorator()
     def handle_set_run_shots(self, value):
-        app.ui.checkBox_run_shots.setChecked(
+        self.app.ui.checkBox_run_shots.setChecked(
             self._coerce_remote_boolean(value, 'value')
         )
 
     @inmain_decorator()
     def handle_get_view_shots(self):
-        return app.ui.checkBox_view_shots.isChecked()
+        return self.app.ui.checkBox_view_shots.isChecked()
 
     @inmain_decorator()
     def handle_set_view_shots(self, value):
-        app.ui.checkBox_view_shots.setChecked(
+        self.app.ui.checkBox_view_shots.setChecked(
             self._coerce_remote_boolean(value, 'value')
         )
 
     def handle_get_analyse_shots(self):
-        return app.analysis_submission.send_to_server
+        return self.app.analysis_submission.send_to_server
 
     def handle_set_analyse_shots(self, value):
-        app.analysis_submission.send_to_server = self._coerce_remote_boolean(value, 'value')
+        self.app.analysis_submission.send_to_server = self._coerce_remote_boolean(value, 'value')
 
     @inmain_decorator()
     def handle_get_shuffle(self):
-        return app.ui.pushButton_shuffle.isChecked()
+        return self.app.ui.pushButton_shuffle.isChecked()
 
     @inmain_decorator()
     def handle_set_shuffle(self, value):
-        app.ui.pushButton_shuffle.setChecked(
+        self.app.ui.pushButton_shuffle.setChecked(
             self._coerce_remote_boolean(value, 'value')
         )
 
     def handle_n_shots(self):
         # Wait until any current preparsing is done, to ensure this is not racy w.r.t
         # previous remote calls:
-        app.wait_until_preparse_complete()
-        return app.n_shots
+        self.app.wait_until_preparse_complete()
+        return self.app.n_shots
 
     @inmain_decorator()
     def handle_get_labscript_file(self):
-        labscript_file = app.ui.lineEdit_labscript_file.text()
+        labscript_file = self.app.ui.lineEdit_labscript_file.text()
         return os.path.abspath(labscript_file) if labscript_file else ''
 
     @inmain_decorator()
     def handle_set_labscript_file(self, value):
         labscript_file = os.path.abspath(value)
-        app.ui.lineEdit_labscript_file.setText(labscript_file)
+        self.app.ui.lineEdit_labscript_file.setText(labscript_file)
 
     @inmain_decorator()
     def handle_get_shot_output_folder(self):
-        shot_output_folder = app.ui.lineEdit_shot_output_folder.text()
+        shot_output_folder = self.app.ui.lineEdit_shot_output_folder.text()
         return os.path.abspath(shot_output_folder) if shot_output_folder else ''
 
     @inmain_decorator()
     def handle_set_shot_output_folder(self, value):
         shot_output_folder = os.path.abspath(value)
-        app.ui.lineEdit_shot_output_folder.setText(shot_output_folder)
+        self.app.ui.lineEdit_shot_output_folder.setText(shot_output_folder)
 
     def handle_error_in_globals(self):
         try:
             # This will raise an exception if there are multiple active groups of the
             # same name:
-            active_groups = inmain(app.get_active_groups, interactive=False)
+            active_groups = inmain(self.app.get_active_groups, interactive=False)
             sequence_globals = runmanager.get_globals(active_groups)
             # This will raise an exception if any of the globals can't be evaluated:
             runmanager.evaluate_globals(sequence_globals, raise_exceptions=True)
@@ -4395,11 +4399,11 @@ class RunmanagerServer(ZMQServer):
         return False
 
     def handle_is_output_folder_default(self):
-        return not app.non_default_folder
+        return not self.app.non_default_folder
 
     @inmain_decorator()
     def handle_reset_shot_output_folder(self):
-        app.on_reset_shot_output_folder_clicked(None)
+        self.app.on_reset_shot_output_folder_clicked(None)
 
     def handle_submit_shots(self, entries, sequence_id=None, sequence_index=None):
         """Submit one shot per entry, each with the globals that entry names.
@@ -4447,8 +4451,8 @@ class RunmanagerServer(ZMQServer):
             raise ValueError('Cannot submit entries that name different globals')
         # The preparse writes each global's expansion type, so the globals are
         # read once it has finished, as an Engage reads them.
-        app.wait_until_preparse_complete()
-        active_groups = inmain(app.get_active_groups, interactive=False)
+        self.app.wait_until_preparse_complete()
+        active_groups = inmain(self.app.get_active_groups, interactive=False)
         globals_details = runmanager.globals_file.get_globals_details(active_groups)
         group_of = {
             name: group for group, records in globals_details.items() for name in records
@@ -4495,7 +4499,7 @@ class RunmanagerServer(ZMQServer):
         # submitted last: an operator's Engage in between would otherwise take
         # the session's later shots into the operator's sequence.
         records = inmain(
-            app.compile_and_queue_shots,
+            self.app.compile_and_queue_shots,
             SUBMISSION_MODE_NEW_SEQUENCE if sequence_id is None else SUBMISSION_MODE_LAST_SEQUENCE,
             True,
             send_to_runviewer,
@@ -4510,18 +4514,18 @@ class RunmanagerServer(ZMQServer):
         Read-only and batched: a caller waiting on many shots asks once. The
         queue controller is safe to ask from any thread, so this is not a GUI
         read."""
-        return app.queue_controller.get_shot_statuses(list(shot_ids))
+        return self.app.queue_controller.get_shot_statuses(list(shot_ids))
 
     def handle_get_queue(self):
         """Read-only, and the queue controller is safe to ask from any thread."""
-        return app.queue_controller.get_queue()
+        return self.app.queue_controller.get_queue()
 
     def handle_test_compile(self):
-        app.wait_until_preparse_complete()
-        return app.test_compile()
+        self.app.wait_until_preparse_complete()
+        return self.app.test_compile()
 
     def handle_queue_exchange(self, outcome=None, request_shot=True):
-        return app.queue_exchange(outcome, bool(request_shot))
+        return self.app.queue_exchange(outcome, bool(request_shot))
 
     def handle_get_version(self):
         return runmanager.__version__
@@ -4534,7 +4538,7 @@ if __name__ == "__main__":
     qapplication = splash.qapplication
     app = RunManager()
     splash.update_text('Starting remote server')
-    runmanager_server = RunmanagerServer()
+    runmanager_server = RunmanagerServer(app)
     splash.hide()
 
     exec_qapplication(qapplication)

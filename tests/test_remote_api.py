@@ -84,14 +84,16 @@ class RemoteCommandTestCase(unittest.TestCase):
             _qapplication = QApplication([])
         self.app = self.make_app()
         self.addCleanup(self.app.queue_manager.shutdown)
-        # RunmanagerServer's handlers reach the application through this module
-        # global, which the application assigns to itself on startup. Nothing
-        # starts here, so the test puts it there and takes it away again.
+        # The group tabs reach the application through this module global, which
+        # the application assigns to itself on startup. Nothing starts here, so
+        # the test puts it there and takes it away again.
         patcher = mock.patch.object(main_module, 'app', self.app)
         patcher.start()
         self.addCleanup(patcher.stop)
         # On a free port, on loopback, never runmanager's own:
-        server = RunmanagerServer(port=free_port(), bind_address='tcp://127.0.0.1')
+        server = RunmanagerServer(
+            self.app, port=free_port(), bind_address='tcp://127.0.0.1'
+        )
         self.addCleanup(server.shutdown)
         self.client = RunmanagerClient(host='127.0.0.1', port=server.port, timeout=10)
 
