@@ -968,7 +968,7 @@ class GroupTab(object):
         self.connect_signals()
 
         self.populate_model()
-        logger.info(f'Initial population of {self.group_name}')
+        logger.info('Initial population of %s', self.group_name)
         for col in range(self.globals_model.columnCount()):
             if col != self.GLOBALS_COL_VALUE:
                 self.ui.treeView_globals.resizeColumnToContents(col)
@@ -1790,13 +1790,13 @@ class RunManager(LabscriptGuiApplication):
     GROUPS_DUMMY_ROW_TEXT = '<Click to add group>'
 
     def __init__(self):
-        logger.info(f'Python version: {sys.version}')
-        logger.info(f'Platform: {sys.platform}')
-        logger.info(f'Qt environment: {QT_ENV}')
-        logger.info(f'PySide/PyQt version: {importlib.metadata.version(QT_ENV)}')
-        logger.info(f'Qt version: {QtCore.qVersion()}')
-        logger.info(f"qtutils version: {importlib.metadata.version('qtutils')}")
-        logger.info(f'runmanager version: {runmanager.__version__}')
+        logger.info('Python version: %s', sys.version)
+        logger.info('Platform: %s', sys.platform)
+        logger.info('Qt environment: %s', QT_ENV)
+        logger.info('PySide/PyQt version: %s', importlib.metadata.version(QT_ENV))
+        logger.info('Qt version: %s', QtCore.qVersion())
+        logger.info("qtutils version: %s", importlib.metadata.version('qtutils'))
+        logger.info("runmanager version: %s", runmanager.__version__)
 
         splash.update_text('loading graphical interface')
         loader = UiLoader()
@@ -3245,7 +3245,7 @@ class RunManager(LabscriptGuiApplication):
                 self.check_output_folder_update()
             except Exception as e:
                 # Don't stop the thread.
-                logger.exception(f"error checking default output folder: {e}")
+                logger.exception("error checking default output folder: %s", e)
 
     @inmain_decorator()
     def check_output_folder_update(self):
@@ -3408,7 +3408,7 @@ class RunManager(LabscriptGuiApplication):
                         except queue.Empty:
                             break
                 # Do some work:
-                logger.info(f'Pre-parsing globals with {n_requests:d} requests')
+                logger.info('Pre-parsing globals with %d requests', n_requests)
                 try:
                     self.preparse_globals()
                 finally:
