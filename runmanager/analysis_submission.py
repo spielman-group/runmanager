@@ -93,10 +93,10 @@ class AnalysisSubmission(object):
         self.mainloop_thread.daemon = True
         self.mainloop_thread.start()
 
-    def get_configuration_data(self):
+    def get_save_data(self):
         return {'send_to_server': self.send_to_server}
 
-    def restore_configuration_data(self, data):
+    def restore_save_data(self, data):
         data = data or {}
         self._apply_send_to_server(data.get('send_to_server', False), clear_waiting=False)
 

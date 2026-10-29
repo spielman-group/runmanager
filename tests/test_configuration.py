@@ -47,7 +47,7 @@ class QueueInConfigurationTests(unittest.TestCase):
         app.axes_model = QStandardItemModel()
         app.currently_open_groups = {}
         app.analysis_submission = types.SimpleNamespace(
-            get_configuration_data=dict, restore_configuration_data=lambda data: None
+            get_save_data=dict, restore_save_data=lambda data: None
         )
         app.queue_controller = QueueController()
         app.queue_manager = QueueManager(

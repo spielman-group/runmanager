@@ -3920,7 +3920,7 @@ class RunManager(LabscriptGuiApplication):
                      'shuffle': shuffle,
                      'axes': axes,
                      'queue_state': self.queue_controller.export_state(),
-                     'analysis_submission': self.analysis_submission.get_configuration_data()}
+                     'analysis_submission': self.analysis_submission.get_save_data()}
         save_data.update(self.geometry_save_data())
         return save_data
 
@@ -4042,7 +4042,7 @@ class RunManager(LabscriptGuiApplication):
                 self.queue_empty_policy_combo.setCurrentIndex(index)
             self.queue_pause_button.setChecked(restored_queue_state['paused'])
 
-        self.analysis_submission.restore_configuration_data(
+        self.analysis_submission.restore_save_data(
             runmanager_config.get('analysis_submission')
         )
         self.restore_geometry(runmanager_config)
