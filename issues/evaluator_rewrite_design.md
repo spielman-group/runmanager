@@ -25,23 +25,26 @@ dependency hierarchy therefore holds only the names on the path taken: for
 ## Requirements
 
 1. Each global's expression is compiled once and evaluated at most once per call.
-2. A global is evaluated after the globals it refers to at definition time. Where no
-   cycle results, it is also evaluated after the globals that its lambdas refer to.
+2. A global is evaluated after every global it refers to, as upstream orders them.
 3. The globals an expression refers to come from its symbol table. They are the
    names that are global and read, and not assigned, in the expression or in a
    lambda, comprehension or generator in it.
    - A name that a nested scope binds is not a reference.
-   - A name that the expression itself assigns with `:=` is not a reference anywhere
-     in it, nested scopes included. This fixes upstream bug 1.
-4. A reference that occurs only inside a lambda is late-bound: Python binds the name
-   when the lambda runs. Such a reference orders the globals where it can, as
-   requirement 2 says, but never makes a cycle error on its own:
-   - a lambda's reference to its own global is no edge;
-   - mutual recursion through lambdas is allowed.
-
-   This fixes upstream bug 3. A comprehension or generator runs at definition time,
-   since runmanager turns an iterator into a tuple at once, so its references are
-   not late-bound.
+   - A name that the expression binds with `:=`, outside any lambda, is not a
+     reference anywhere in it, nested scopes included. Only real `:=` bindings count:
+     a comprehension's target is not one. So in `z = ([a for a in range(2)], lambda: a)[1]`,
+     the lambda's `a` is still a reference to the global `a`. This fixes upstream
+     bug 1.
+4. A global's reference to itself that occurs only inside a lambda is no edge. Python
+   binds the name before the lambda's body runs, so `f = lambda n: 1 if n < 2 else
+   n*f(n-1)` works. This fixes upstream bug 3, narrowed by Ian to direct
+   self-recursion. Every other reference stays an ordinary dependency, exactly as
+   upstream has it:
+   - Mutual recursion through lambdas keeps upstream's cycle error.
+   - A self-reference at definition time, in the expression itself or in a
+     comprehension or generator in it, is still a cycle.
+   - `a = (lambda: a)()` calls the lambda while `a` is being defined, so it gives a
+     NameError at evaluation, not a cycle error.
 5. Every global in a cycle of definition-time references, a self-reference included,
    gets a ValueError naming a cycle through it. Every member of overlapping cycles is
    found before any global leaves the graph. This fixes upstream bug 2.
@@ -52,10 +55,13 @@ dependency hierarchy therefore holds only the names on the path taken: for
      and `b = a + 1` gives 4, by design.
 7. An expression that does not compile holds its SyntaxError. That includes a syntax
    error, and `yield`.
-8. The hierarchy maps each global to every global it refers to, definition-time and
-   late-bound, on every branch.
+8. The hierarchy maps each global to every global it refers to, in the expression and
+   its nested scopes, on every branch.
 9. A global named like a namespace name shadows it, and is evaluated before the
-   globals that refer to it. So `x = 2*pi` with `pi = 3` gives 6.
+   globals that refer to it. So `x = 2*pi` with `pi = 3` gives 6. The exception: a
+   shadowing global that fails is not in the namespace, so the namespace name stays
+   visible. With `pi = 1/0`, `pi` holds the ZeroDivisionError and `x = 2*pi` uses the
+   namespace's `pi`.
 10. The error contract, in order:
     1. A name defined in more than one active group: with `raise_exceptions`, its
        ValueError is raised at once. Otherwise each definition holds it, and the name
@@ -78,7 +84,10 @@ dependency hierarchy therefore holds only the names on the path taken: for
     - iterators turned into tuples;
     - #163's warnings, which now read requirement 3's references;
     - the frozen and JIT globals of the queue's compile path.
-12. The work is linear in the number of globals: no expression is evaluated twice.
+12. Each expression is compiled, walked for references and evaluated at most once.
+    For G globals and E dependency edges, ordering costs O(G + E). Each cycle costs
+    one `CycleError` and one search of its strongly connected component, so C cycles
+    cost O(C (G + E)) at worst. Besides that, the cost is the expressions' own work.
 
 ## Architecture
 
@@ -95,21 +104,24 @@ The fork's changes then follow as commits of their own.
 
 The three upstream bugs, each offered upstream on `UpstreamBugFixes` once built:
 1. **Walrus.** `_global_references` counts a name read in a nested scope even when the
-   expression itself assigns it with `:=`. So `a = ((a := 2), (lambda: a)())[1]`
-   makes an invented self-cycle. The fix subtracts the expression's own assigned
-   names from its nested scopes' references.
+   expression itself binds it with `:=`. So `a = ((a := 2), (lambda: a)())[1]` makes
+   an invented self-cycle. The fix finds the expression's real `:=` targets from its
+   syntax tree: `ast.NamedExpr` nodes outside any lambda, which bind in the
+   expression's own scope. It subtracts them from the references. The symbol table
+   cannot be used, since on Python 3.12 and later it also marks comprehension
+   targets as assigned in the expression's scope.
 2. **Overlapping cycles.** On a `CycleError`, only the reported cycle's members get
    the ValueError and leave the graph. With `a = b`, `b = a + c` and `c = b`, `c` then
    gets a NameError instead. The fix first takes all of the reported cycle's strongly
    connected component: the globals reachable from the cycle that can also reach
    back to it. All of them get the ValueError, and then they leave.
 3. **Recursive lambdas.** `f = lambda n: 1 if n < 2 else n*f(n-1)` is refused as a
-   self-reference, although Python binds `f` before the body runs. The fix records
-   late-bound references, those occurring only inside a lambda's table, as edges of
-   their own:
-   - Cycle errors come from definition-time edges alone.
-   - The ordering uses both, after dropping the late-bound edges that lie inside a
-     cycle of the combined graph, a self-edge included.
+   self-reference, although Python binds `f` before the body runs. The fix is one
+   condition where the dependencies are made. `_global_references` gains an option
+   that stops at lambda tables, giving the definition-time references. When a
+   global's own name is among its references but not among its definition-time
+   references, that self-edge is dropped. The ordering, the cycle errors and the
+   guesser are otherwise upstream's.
 
 `TraceDictionary` goes. Upstream removed it too, and nothing outside runmanager uses
 it.
@@ -118,10 +130,13 @@ it.
 
 1. Take upstream's `evaluator.py` and `exceptions.py` whole, crediting 2d8129d,
    872a36d and the evaluator half of e829c32.
-2. Fork commit: the zipped-global check compares the expansion settings themselves,
-   not upstream's `axis_names`. `axis_names` treats an `outer` global and a zip group
-   of the same name as one axis. That rule is part of e829c32's expansion-setting
-   change, which Ian deferred, and the fork's expander keeps them as two axes.
+2. Fork commit: the other-axes check and the zip-length grouping both compare the
+   expansion settings themselves, not upstream's `axis_names`, and its import goes.
+   `axis_names` treats an `outer` global and a zip group of the same name as one
+   axis. That rule is part of e829c32's expansion-setting change, which Ian deferred,
+   and the fork's expander keeps them as two axes. A test shows that an outer
+   `x = [1, 2]` and a `y = [3]` in zip group `x` stay independent, with no
+   unequal-lengths error, as two axes.
 3. Fix upstream bug 1, the walrus, with its test.
 4. Fix upstream bug 2, overlapping cycles, with its test.
 5. Fix upstream bug 3, recursive lambdas, with its test.
@@ -143,7 +158,7 @@ step 2 and steps 3 to 5. Steps 3 to 5 leave the diff once upstream takes them.
 | 3483d09, b5c4b25, 28fc9ae, b283c3a, c110ea0 (already ported) | Taken as is |
 | 2d8129d (once each, in order) | Taken, then upstream bugs 2 and 3 are fixed in its ordering: steps 4 and 5 |
 | 872a36d (symbol-table references) | Taken, then upstream bug 1 is fixed: step 3 |
-| e829c32 (expansion settings) | `ExpansionError(message, value)` taken as is. The other-axes check differs, without `axis_names`: step 2 |
+| e829c32 (expansion settings) | `ExpansionError(message, value)` taken as is. The other-axes check and the zip-length grouping differ, without `axis_names`: step 2 |
 | 45baf1f (#163) | Taken as is. It replaces the fork's check of the traced names |
 
 ## What changes for users
@@ -156,10 +171,13 @@ These are stated in `usage.rst` too.
   `pi` for every global.
 - Dynamic names, such as `globals()['a']` and `eval('a')`, give no dependency. They
   work only if that global happens to be evaluated earlier, and fail otherwise.
-- A name read before the `:=` in the same expression assigns it, as in
-  `(x2, (x2 := 1))[1]`, is not a dependency. It fails with a NameError even when a
-  global `x2` exists.
-- Recursive and mutually recursive lambdas keep working.
+- A name read before the `:=` in the same expression binds it, as in
+  `(x2, (x2 := 1))[1]`, is not a dependency. It fails with a NameError unless `x2` is
+  already in the namespace when the expression runs: a namespace name, or a global
+  that happens to be evaluated earlier.
+- A directly recursive lambda keeps working. Mutually recursive lambdas are a cycle,
+  as upstream has them. `a = (lambda: a)()` gives a NameError.
+- With `pi = 1/0`, a global using `pi` gets the namespace's `pi`.
 - Every branch now counts, wherever the hierarchy is read:
   - **The guesser** still runs only when every global evaluates, and only on scanned
     globals (681ea89). Within that, a scanned global that refers to a scanned list
@@ -175,35 +193,53 @@ These are stated in `usage.rst` too.
 ## Tests
 
 The tests drive the public surface (`evaluate_globals`, `_evaluate_globals` as the GUI
-calls it, and the labconfig's `globals_namespace`), and cover only essential
-behaviour. New ones, in `tests/test_scans.py`:
-- **R1, R12:** a namespace file supplies `mark(x)`, which records each call. A chain
-  of globals defined last first, each `mark(...)` of the next, calls it once per
-  global.
-- **R2, R4:** the chain evaluates. Also:
+calls it, the labconfig's `globals_namespace`, and `get_queue_compile_globals`), and
+cover only essential behaviour. New ones, in `tests/test_scans.py`:
+- **R1, R12, evaluated at most once:** a namespace file supplies `mark(x)`, which
+  records each call.
+  - A chain of globals defined last first, each `mark(...)` of the next, calls it once
+    per global.
+  - A global `mark(0)/0` records one call and holds its ZeroDivisionError. The current
+    evaluator records one call per pass.
+- **R2, R4:**
+  - the chain evaluates;
   - a recursive lambda works;
-  - two mutually recursive lambdas work;
-  - `f = lambda: c * 2`, `c = 3` and `d = f()` gives `d == 6` with `f` defined first.
-- **R3:** the walrus case evaluates to 2, with no self-cycle. A comprehension or
-  lambda parameter named like a global gives no dependency.
+  - two mutually recursive lambdas hold the cycle error;
+  - `a = (lambda: a)()` holds a NameError.
+- **R3:**
+  - the walrus case evaluates to 2;
+  - `z = ([a for a in range(2)], lambda: a)[1]` depends on `a`;
+  - a lambda parameter named like a global gives no dependency.
 - **R5:** a self-reference, a two-global cycle, and the overlapping case each give
   every member the ValueError. A global that refers to a cycle member gets a
   NameError.
-- **R6, R7, R8, R9:** a SyntaxError is held; the hierarchy lists both branches of a
-  conditional; `pi` is shadowed.
-- **R10:** a namespace file that raises gives every global without an earlier error
-  the load's exception, and keeps a SyntaxError.
+- **R6 to R9:**
+  - a SyntaxError is held;
+  - the hierarchy lists both branches of a conditional;
+  - `pi = 3` shadows the namespace's `pi`, and `pi = 1/0` does not.
+- **R10:**
+  - With `raise_exceptions`, the summary names every failed global. A name defined in
+    two groups raises its own error first, before a SyntaxError elsewhere.
+  - Without it, both definitions hold the duplicate's error and the other globals
+    evaluate.
+  - A namespace file that raises gives every global without an earlier error the
+    load's exception, and keeps a SyntaxError.
+- **Step 2:** an outer `x` and a zip group named `x` stay two axes.
+- **#163 from the references:** a pylab name only in a branch not taken still warns.
+- **The frozen and JIT path:** a JIT global's expression changed after freezing
+  compiles to the new value, while the frozen globals keep theirs. This goes through
+  `get_queue_compile_globals` with the frozen overrides.
 
 Existing tests already cover the rest:
-- R10's raise paths and expansion checks, and R6's kept value: `ZipGroupTests`;
-- R11's frozen and JIT path: `test_frozen_globals`, `test_queueing`,
-  `FrozenGlobalsTests`;
-- #163's warnings: `NamespaceTests`;
+- the expansion checks' raise paths, and R6's kept value: `ZipGroupTests`;
+- frozen values that round-trip: `FrozenGlobalsTests`;
+- the queue's compile of frozen rows: `test_frozen_globals`, `test_queueing`;
+- #163's warning on a taken branch: `NamespaceTests`;
 - the remote getters: `test_remote_api`.
 
 Not a suite test, the benchmark: a chain of 1000 globals, defined last first.
-- The namespace is loaded once beforehand, and `_namespace` is patched to return it,
-  so loading the namespace is not timed.
+- The namespace is loaded once beforehand. Each run gets a fresh copy of it from a
+  patched `_namespace`, so loading is not timed and no run sees another's globals.
 - One warm-up call, then the median of five calls.
 - The current evaluator and the new one run on the same machine in the same session,
   and the result is reported as their ratio, not asserted. Timings taken here only
@@ -212,5 +248,5 @@ Not a suite test, the benchmark: a chain of 1000 globals, defined last first.
 ## Size
 
 `evaluator.py` and `exceptions.py` become upstream's. The fork's diff from upstream is
-step 2 and the three fixes, about 40 lines in all. Two lines go from `__init__.py`.
-The tests above add about 100 lines.
+step 2 and the three fixes, about 30 lines in all. Two lines go from `__init__.py`.
+The tests above add about 150 lines.
