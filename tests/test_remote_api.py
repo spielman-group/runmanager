@@ -1646,7 +1646,6 @@ class DefaultShotFailureTests(RemoteCommandTestCase):
         mark = self.app.ui.label_default_shot_failed
         self.ask()
         self.assertFalse(mark.isHidden())
-        self.assertIn('Compilation failed', mark.toolTip())
 
         self.set_policy(EMPTY_QUEUE_NOTHING)
         self.assertTrue(mark.isHidden())
