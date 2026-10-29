@@ -559,42 +559,15 @@ def next_sequence_index(shot_basedir, dt, increment=True):
         return sequence_index
 
 
-def get_output_folder_format(config, default=False):
-    """Return the configured output folder format, or the built-in fallback.
+def _sequence_format(config, option, fallback, default=False):
+    """The labconfig's ``[runmanager]`` format ``option``, or ``fallback``.
 
-    If default=True, then the sequence-index placeholder is replaced with the literal
-    directory name ``default``. This is used for default-shot submissions while
-    preserving the rest of the configured date/path structure."""
-    try:
-        subdir_format = config.get('runmanager', 'output_folder_format')
-    except (LabConfig.NoOptionError, LabConfig.NoSectionError):
-        subdir_format = os.path.join('%Y', '%m', '%d', '{sequence_index:05d}')
+    With ``default``, as for a default shot, its sequence-index field becomes the
+    literal ``default``."""
+    template = config.get('runmanager', option, fallback=fallback)
     if default:
-        subdir_format = re.sub(
-            r'\{sequence_index(?::[^}]*)?\}',
-            'default',
-            subdir_format,
-        )
-    return subdir_format
-
-
-def get_filename_prefix_format(config, default=False):
-    """Return the configured filename prefix format, or the built-in fallback.
-
-    If default=True, then the sequence-index placeholder is replaced with the literal
-    text ``default``. This keeps default-shot filenames aligned with the configured
-    prefix structure without using the numeric sequence index in the visible name."""
-    try:
-        filename_prefix_format = config.get('runmanager', 'filename_prefix_format')
-    except (LabConfig.NoOptionError, LabConfig.NoSectionError):
-        filename_prefix_format = '{sequence_timestamp}_{script_basename}'
-    if default:
-        filename_prefix_format = re.sub(
-            r'\{sequence_index(?::[^}]*)?\}',
-            'default',
-            filename_prefix_format,
-        )
-    return filename_prefix_format
+        template = re.sub(r'\{sequence_index(?::[^}]*)?\}', 'default', template)
+    return template
 
 
 def new_sequence_details(
@@ -652,7 +625,12 @@ def new_sequence_details(
 
     # Dated at the sequence's start, for all its shots; each shot fills in only globals.
     # Compute the output directory based on labconfig settings:
-    subdir_format = get_output_folder_format(config, default=default)
+    subdir_format = _sequence_format(
+        config,
+        'output_folder_format',
+        os.path.join('%Y', '%m', '%d', '{sequence_index:05d}'),
+        default,
+    )
 
     # Format the output directory according to the current timestamp, sequence index and
     # sequence_timestamp, if present in the format string:
@@ -662,7 +640,9 @@ def new_sequence_details(
     shot_output_dir = os.path.join(shot_basedir, subdir)
 
     # Compute the shot filename prefix according to labconfig settings:
-    filename_prefix_format = get_filename_prefix_format(config, default=default)
+    filename_prefix_format = _sequence_format(
+        config, 'filename_prefix_format', '{sequence_timestamp}_{script_basename}', default
+    )
     # Format the filename prefix according to the current timestamp, sequence index,
     # sequence_timestamp, and script_basename, if present in the format string:
     filename_prefix = format_lookup_string(
