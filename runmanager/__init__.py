@@ -281,12 +281,15 @@ def get_queue_compile_globals(groups, frozen_globals=None, default_globals=False
     sequence_globals = _details_to_sequence_globals(
         globals_details, defaults_only=default_globals, overrides=frozen_globals
     )
-    evaled_globals, _, _ = evaluate_globals(sequence_globals, raise_exceptions=True)
+    evaled_globals, _, expansions = evaluate_globals(
+        sequence_globals, raise_exceptions=True
+    )
     shots = expand_globals(sequence_globals, evaled_globals)
     if len(shots) != 1:
+        scanning_globals = [name for name, expansion in expansions.items() if expansion]
         raise ValueError(
-            'Queued shot compilation must produce exactly one shot, got %d.'
-            % len(shots)
+            'Cannot compile to a single run file: The following globals are a '
+            'sequence: ' + ', '.join(scanning_globals)
         )
     return sequence_globals, shots[0]
 
@@ -791,21 +794,11 @@ def make_run_file_from_globals_files(labscript_file, globals_files, output_path,
     """Creates a run file output_path, using all the globals from globals_files. Uses
     labscript_file to determine the sequence_attrs only"""
     groups = get_all_groups(globals_files)
-    sequence_globals = get_globals(groups)
-    evaled_globals, global_hierarchy, expansions = evaluate_globals(sequence_globals)
-    shots = expand_globals(sequence_globals, evaled_globals)
-    if len(shots) > 1:
-        scanning_globals = []
-        for global_name in expansions:
-            if expansions[global_name]:
-                scanning_globals.append(global_name)
-        raise ValueError('Cannot compile to a single run file: The following globals are a sequence: ' +
-                         ', '.join(scanning_globals))
-
+    sequence_globals, shot_globals = get_queue_compile_globals(groups)
     sequence_attrs, _, _ = new_sequence_details(
         labscript_file, config=config, increment_sequence_index=True
     )
-    make_single_run_file(output_path, sequence_globals, shots[0], sequence_attrs, 1, 1)
+    make_single_run_file(output_path, sequence_globals, shot_globals, sequence_attrs, 1, 1)
 
 
 def start_compiler(stream_port=None):
