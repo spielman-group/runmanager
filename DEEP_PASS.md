@@ -888,3 +888,12 @@ These are every branch other than the tiers and `CodeHealth`.
 | W4 | origin `RunmanagerGlobalFormatStrings` (`875edec`), `RunmanagerQueueSubmissionTypes` (`56ce434`), `UpdatedTitleBars` (`6d04b41`) | Each is contained in `Development` | delete |
 | W5 | origin `maintenance/3.0.x` (`61be21f`) | Upstream's 2020 maintenance branch, still upstream | delete from the fork |
 | W6 | `UpstreamBugFixes` (local and origin, `96ff041`) | Four fixes staged for an upstream pull request | keep |
+
+Ian approved U1 to U12, W1 to W5 and leaving the removed upstream names out.
+U1 to U12 are in `67b81e1..0a3bf5b`, and the suite is 155 tests, with 32
+subtests. Before deletion, each branch was checked for every non-merge commit
+being in `Development`, or in `Production` for W2. W1, W2 and W4 pass at the tips
+above. W3 has 19 commits that are not in `Development` and are not
+patch-equivalent to any there. W5 has 2, though it is the same as upstream's
+`maintenance/3.0.x`. Both are held for Ian. The deletion of W1, W2 and W4,
+locally and on `origin`, was refused by a permission check, and waits on Ian.
