@@ -14,4 +14,10 @@ API Reference
     runmanager.globals_file
     runmanager.batch_compiler
     runmanager.globals_diff
+    runmanager.differ
+    runmanager.evaluator
+    runmanager.expander
+    runmanager.group_manager
+    runmanager.tokenizer
+    runmanager.widgets
     runmanager.__main__

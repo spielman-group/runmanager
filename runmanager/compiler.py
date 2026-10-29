@@ -205,7 +205,32 @@ def make_run_files(
     having to clean up as many unused files in the event of failed compilation of
     labscripts. If you want all the run files to be created at some point, simply
     convert the returned generator to a list. The filenames the run files are given is
-    simply the sequence_id with increasing integers appended."""
+    simply the sequence_id with increasing integers appended. Raises ValueError if shots
+    is empty."""
+    if not shots:
+        raise ValueError('No shots to compile: a global that is expanded over has no values.')
+    return _make_run_files(
+        output_folder,
+        sequence_globals,
+        shots,
+        sequence_attrs,
+        filename_prefix,
+        shuffle,
+        return_infos,
+        create_files,
+    )
+
+
+def _make_run_files(
+    output_folder,
+    sequence_globals,
+    shots,
+    sequence_attrs,
+    filename_prefix,
+    shuffle,
+    return_infos,
+    create_files,
+):
     indexed_shots = list(enumerate(shots))
     ndigits = int(np.ceil(np.log10(len(indexed_shots))))
     if shuffle:
@@ -347,6 +372,8 @@ def get_queue_compile_globals(groups, frozen_globals=None, default_globals=False
         sequence_globals, raise_exceptions=True
     )
     shots = expand_globals(sequence_globals, evaled_globals)
+    if not shots:
+        raise ValueError('No shots to compile: a global that is expanded over has no values.')
     if len(shots) != 1:
         scanning_globals = [name for name, expansion in expansions.items() if expansion]
         raise ValueError(

@@ -88,6 +88,12 @@ class ShotCountTests(unittest.TestCase):
                 )
 
 
+    def test_a_scan_with_no_values_is_refused_before_any_file_is_made(self):
+        sequence_globals, results = evaluate({'x': ('[]', 'outer')})
+        shots = runmanager.expand_globals(sequence_globals, results)
+        with self.assertRaises(ValueError):
+            runmanager.make_run_files('folder', sequence_globals, shots, {}, 'prefix')
+
 class ScannedGlobalsTests(unittest.TestCase):
     def test_a_global_derived_from_another_on_its_axis_is_not_counted_as_scanned(self):
         sequence_globals = {
