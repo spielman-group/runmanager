@@ -1995,15 +1995,6 @@ class RunManager(LabscriptGuiApplication):
         self.axes_model.setHorizontalHeaderItem(self.AXES_COL_SHUFFLE, shuffle_header_item)
 
         self.ui.treeView_axes.setModel(self.axes_model)
-
-        # Setup stuff for a custom context menu:
-        self.ui.treeView_axes.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
-
-        # Make the actions for the context menu:
-        self.action_axes_check_selected = QtWidgets.QAction(QtGui.QIcon(':qtutils/fugue/ui-check-box'),
-                                                        'Check selected', self.ui)
-        self.action_axes_uncheck_selected = QtWidgets.QAction(QtGui.QIcon(':qtutils/fugue/ui-check-box-uncheck'),
-                                                          'Uncheck selected', self.ui)
                                                           
         # setup header widths
         self.ui.treeView_axes.header().setStretchLastSection(False)
@@ -2134,10 +2125,7 @@ class RunManager(LabscriptGuiApplication):
         # Tab closebutton clicked:
         self.ui.tabWidget.tabCloseRequested.connect(self.on_tabCloseRequested)
 
-        # Axes tab; right click menu, menu actions, reordering
-        # self.ui.treeView_axes.customContextMenuRequested.connect(self.on_treeView_axes_context_menu_requested)
-        self.action_axes_check_selected.triggered.connect(self.on_axes_check_selected_triggered)
-        self.action_axes_uncheck_selected.triggered.connect(self.on_axes_uncheck_selected_triggered)
+        # Axes tab; reordering
         axes = self.ui.treeView_axes
         self.ui.toolButton_axis_to_top.clicked.connect(lambda: axes.move_selected_rows('top'))
         self.ui.toolButton_axis_up.clicked.connect(lambda: axes.move_selected_rows('up'))
@@ -2251,7 +2239,6 @@ class RunManager(LabscriptGuiApplication):
             self.output_popout_button.setIcon(QtGui.QIcon(':/qtutils/fugue/arrow-out'))
         else:
             # pop it out
-            # self.ui.verticalLayout_output_tab.remove(self.output_box)
             self.output_box_window_verticalLayout.addWidget(self.output_box.output_textedit)
             self.output_popout_button.setIcon(QtGui.QIcon(':/qtutils/fugue/arrow-in'))
             self.output_box_window.show()
@@ -2763,20 +2750,6 @@ class RunManager(LabscriptGuiApplication):
                 self.close_group(globals_file, group_name)
                 break
 
-    def on_treeView_axes_context_menu_requested(self, point):
-        raise NotImplementedError
-        # menu = QtWidgets.QMenu(self.ui)
-        # menu.addAction(self.action_axes_check_selected)
-        # menu.addAction(self.action_axes_uncheck_selected)
-        # menu.exec(QtGui.QCursor.pos())
-        pass
-
-    def on_axes_check_selected_triggered(self, *args):
-        raise NotImplementedError
-
-    def on_axes_uncheck_selected_triggered(self, *args):
-        raise NotImplementedError
-        
     def on_axes_item_changed(self, item):
         if item.column() == self.AXES_COL_SHUFFLE:
             self.update_global_shuffle_state()
@@ -4049,9 +4022,7 @@ class RunManager(LabscriptGuiApplication):
 
     def parse_globals(self, active_groups, raise_exceptions=True, expand_globals=True, expansion_order = None, return_dimensions = False):
         sequence_globals = runmanager.get_globals(active_groups)
-        #logger.info('got sequence globals')
         evaled_globals, global_hierarchy, expansions = runmanager.evaluate_globals(sequence_globals, raise_exceptions)
-        #logger.info('evaluated sequence globals')
         if expand_globals:
             if return_dimensions:
                 shots, dimensions = runmanager.expand_globals(sequence_globals, evaled_globals, expansion_order, return_dimensions=return_dimensions)
@@ -4060,7 +4031,6 @@ class RunManager(LabscriptGuiApplication):
         else:
             shots = []
             dimensions = {}
-        #logger.info('expanded sequence globals')
         if return_dimensions:
             return sequence_globals, shots, evaled_globals, global_hierarchy, expansions, dimensions
         else:
