@@ -761,6 +761,9 @@ but has no candidate.
   Visible: such a file no longer opens, with a message saying why, where today
   it opens and loses the entry.
 
+Ian took R1 and R2, done as `e73b137..5b584b7`: R1 8572860, R2 5b584b7. The suite
+is 155 tests, with 32 subtests, and R2's test fails without its fix.
+
 ### Not candidates
 
 - `queue_exchange`'s `except Exception` (`__main__.py:4522`). blacs's
