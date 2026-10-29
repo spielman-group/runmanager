@@ -154,13 +154,13 @@ class RunmanagerQueueWidget(ShotQueueWidget):
         )
         self.queue_view.customContextMenuRequested.connect(self._show_row_menu)
 
-    def _row_info(self, path_info):
-        mode = path_info.get('mode', '')
+    def _row_info(self, display_item):
+        mode = display_item.get('mode', '')
         row_info = {
-            'path': path_info['path'],
-            'label': path_info.get('label', os.path.basename(path_info['path'])),
-            'tooltip': path_info.get('tooltip', path_info['path']),
-            'row_id': path_info.get('shot_id'),
+            'path': display_item['path'],
+            'label': display_item.get('label', os.path.basename(display_item['path'])),
+            'tooltip': display_item.get('tooltip', display_item['path']),
+            'row_id': display_item.get('shot_id'),
             'columns': [
                 {
                     'text': mode,
@@ -169,13 +169,13 @@ class RunmanagerQueueWidget(ShotQueueWidget):
                 }
             ],
         }
-        background = ROW_BACKGROUNDS.get(path_info.get('state'))
+        background = ROW_BACKGROUNDS.get(display_item.get('state'))
         if background is not None:
             row_info['background'] = background
             row_info['foreground'] = TINTED_ROW_FOREGROUND
         return row_info
 
-    def _sent_to_blacs_row(self, path_info):
+    def _sent_to_blacs_row(self, display_item):
         """The reserved first row: whichever shot has gone to BLACS.
 
         Set apart from the queue below it by a rule and by its colour, because
@@ -189,7 +189,7 @@ class RunmanagerQueueWidget(ShotQueueWidget):
         compile failure is deliberately not one of them: that row never left
         runmanager, and drawing it here claimed a handover that never
         happened."""
-        if path_info is None:
+        if display_item is None:
             return {
                 'path': '',
                 'label': 'Nothing sent to BLACS',
@@ -198,16 +198,16 @@ class RunmanagerQueueWidget(ShotQueueWidget):
                 # Nothing to act on, so nothing to select:
                 'selectable': False,
             }
-        row_info = self._row_info(path_info)
+        row_info = self._row_info(display_item)
         row_info['rule_below'] = True
-        if path_info['state'] == BLACS_RUNNING:
+        if display_item['state'] == BLACS_RUNNING:
             row_info['tooltip'] = (
                 '%s\nBLACS has this shot. Delete cancels it: the row stays '
                 'until BLACS next asks for work, because its file may still be '
                 'being written, but it will not be sent again.'
-                % path_info['path']
+                % display_item['path']
             )
-        elif path_info['state'] == BLACS_CANCELLED:
+        elif display_item['state'] == BLACS_CANCELLED:
             # Struck through rather than removed, and nothing more to aim at
             # it: a second Delete could not free the file any sooner than the
             # first, for the same reason.
@@ -215,16 +215,20 @@ class RunmanagerQueueWidget(ShotQueueWidget):
             row_info['selectable'] = False
         return row_info
 
-    def set_queue_paths(self, paths):
+    def set_display_items(self, display_items):
         selected_ids = set(self.selected_ids())
-        paths = list(paths)
+        display_items = list(display_items)
         # Only the head can have been sent: it is the row that gets offered,
         # and an outcome either retires it or leaves it there with a state.
-        sent = paths[0] if paths and sent_to_blacs(paths[0]) else None
-        waiting = paths[1:] if sent is not None else paths
+        sent = (
+            display_items[0]
+            if display_items and sent_to_blacs(display_items[0])
+            else None
+        )
+        waiting = display_items[1:] if sent is not None else display_items
         row_infos = [self._sent_to_blacs_row(sent)]
-        for path_info in waiting:
-            row_infos.append(self._row_info(path_info))
+        for display_item in waiting:
+            row_infos.append(self._row_info(display_item))
         self.set_row_infos(row_infos)
         self.select_ids(selected_ids)
 
@@ -1173,8 +1177,8 @@ class QueueManager(QtCore.QObject):
             self.queueChanged.emit()
         return removed_paths
 
-    def delete_rows(self, rows):
-        return self._remove_from_queue(*self.controller.delete_rows(list(rows)))
+    def delete_rows(self, shot_ids):
+        return self._remove_from_queue(*self.controller.delete_rows(list(shot_ids)))
 
     def clear(self):
         return self._remove_from_queue(*self.controller.clear())

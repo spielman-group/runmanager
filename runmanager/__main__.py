@@ -2271,7 +2271,7 @@ class RunManager(LabscriptGuiApplication):
         # The widget reserves its first row for the shot that went to BLACS and
         # lays the waiting work out beneath it, so there is nothing to divide
         # up here.
-        self.queue_widget.set_queue_paths(
+        self.queue_widget.set_display_items(
             self.queue_controller.get_queue_display_items()
         )
 

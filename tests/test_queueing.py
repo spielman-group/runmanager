@@ -1524,7 +1524,7 @@ class SentToBlacsRowTests(unittest.TestCase):
         )
         controller.offer_next()
         widget = make_queue_widget()
-        widget.set_queue_paths(controller.get_queue_display_items())
+        widget.set_display_items(controller.get_queue_display_items())
 
         model = widget.queue_model
         self.assertEqual(
@@ -1552,7 +1552,7 @@ class QueueDisplayTests(unittest.TestCase):
             offered['shot_id'], 'failed', 'Device(s) in error state'
         )
         widget = make_queue_widget()
-        widget.set_queue_paths(controller.get_queue_display_items())
+        widget.set_display_items(controller.get_queue_display_items())
 
         model = widget.queue_model
         for column in range(model.columnCount()):
