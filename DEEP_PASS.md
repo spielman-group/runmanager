@@ -730,3 +730,80 @@ blacs's integration test calls `get_save_data` (N7) and builds
 - On Development, on Windows: runviewer started by a shot sent to it with View
   shot(s) ticked, now through `start_daemon` with `CREATE_NEW_PROCESS_GROUP`
   and `CREATE_NO_WINDOW` (D6). It should open its window with no console.
+
+## Step 2.3: root causes
+
+Each guard the fork added, from the added lines of `git diff master CodeHealth --
+runmanager/`, traced to its cause: exception handlers, None and type checks,
+locks, early returns, timers and retries, each read in its function. Line
+references are to `35dacd1`. Step 2.2's area, with Codex for its re-check, is read
+but has no candidate.
+
+### Candidates
+
+| | Guard | Cause | Fix at the cause |
+| --- | --- | --- | --- |
+| R1 | `__main__.py:4043-4052`, `load_configuration`: the restored compile mode and empty-queue policy are set in their dropdowns only if `findData` finds them | A saved setting runmanager does not know, which `QueueManager.restore_save_data` now replaces with its default and reports in red (step 2.1 H, 0e9fa47, 888141b) | Drop both `index != -1` checks, 4 lines: every value restored is one the dropdowns hold. Not visible to a user |
+
+### Bugs found
+
+- **R2 fix** (trivial, about 6 lines and a test). `globals_file.py:109`,
+  `_normalise_document`: a group that is not a table, such as `note = "..."`
+  under `[groups]` in a hand-edited file, is read as an empty group. The tab
+  lists a group `note`, and the next save of any group writes
+  `[groups.note.globals]` in its place, losing the value (run in scratch on
+  `35dacd1`). A global that is not a table fails at `dict(record)` with a bare
+  `TypeError` or `ValueError`. Fix: refuse the file with `GlobalsFileError`
+  naming the group or global, as the HDF5 reader does for a missing `/globals`.
+  Visible: such a file no longer opens, with a message saying why, where today
+  it opens and loses the entry.
+
+### Not candidates
+
+- `queue_exchange`'s `except Exception` (`__main__.py:4522`). blacs's
+  `runmanager_rpc` (`shot_execution.py:198-209`) takes any raised exception for
+  an unreachable runmanager and keeps the outcome, so a raise would be resent for
+  ever. Answering is runmanager containing its own fault at its boundary
+  (labscript-style rule 5), and it keeps the report in runmanager's output box,
+  beside the queue.
+- `QueueController.shot_finished`'s repeated-outcome check (`queueing.py:867-884`):
+  BLACS resends an outcome whose reply was lost, and telling a resend from a second
+  identical failure needs a token the exchange does not carry. The behaviour is
+  blacs's `shot-management.rst`, the contract of record; a token would be a
+  protocol design for blacs and runmanager, not a fix.
+- The reclaim of a row still marked running (`queueing.py:820-829`): BLACS asks
+  again only when it is not running that row, so the row is one it lost.
+- The locks: `globals_file._file_lock`, since the GUI, remote calls and the
+  preparse edit files from different threads; `compiler_lock`;
+  `_default_shot_lock`; `QueueController._lock`. Each guards real concurrent use
+  where it happens.
+- `_default_shot_globals_changes` (`__main__.py:4434`): a default shot compiled
+  off the GUI thread can read globals that change before it is offered. The
+  cause is the asynchronous compile, which is the design.
+- `delete_shot_files` passing over `FileNotFoundError` (`queueing.py:1119`): a
+  file the operator or a close has already removed.
+- `restore_save_data`'s `isinstance(item, dict)` (`queueing.py:1232-1240`):
+  Production saves its queue as bare paths (step 2.1).
+- `apply_shot_outcome`'s refusal of an outcome it cannot read, and its use of the
+  row's path when BLACS names no file: blacs leaves out `path` when it has none
+  (`shot_execution.py:225-227`).
+- `_normalise_record`'s JIT? cleared under Scan?, and `outer` for a scan with no
+  expansion (`globals_file.py:83-90`): the file format's defaults for hand-edited
+  and older files.
+- `.toml` appended to a chosen file name (`__main__.py:3011`, `:3597`): the cause
+  is the save panel, outside the suite. labscript-utils' `file_dialogs` documents
+  it, and both dialogs are given a file name.
+- lyse submission's retries (`analysis_submission.py`): submission is decoupled
+  from acquisition by design.
+
+For step 4, guards with no cause left: `on_queue_empty_policy_changed` and
+`on_queue_compile_mode_changed` returning on None item data
+(`__main__.py:2261-2271`), since the dropdowns are filled before their signals
+are connected and never cleared; `AnalysisSubmission.shutdown`'s check that it
+is not on the mainloop thread (`analysis_submission.py:167-171`), since only the
+window's close calls it; `notify_shot_complete`'s `if not filepath`
+(`analysis_submission.py:155`), which its one caller checks first
+(`__main__.py:4577`); `expression_cell_colors`'s `palette` parameter and
+no-QApplication fallback (`__main__.py:204-207`), its one caller passing none
+under a QApplication; `selected_global_names`'s `name_item is not None`
+(`__main__.py:1305`).
