@@ -8,10 +8,9 @@ into the experiment logic (as global variables) when shot generation is started 
 the ‘Engage’ button.
 
 The parameters can take the form of any Python data type that can be stored in a hdf5
-file. When a parameter is specified as a list or array, runmanager automatically detects that
-you wish to explore a parameter space. Runmanager will generate a separate shot for each
-point in the array. If multiple arrays are specified across two or more parameters, runmanager
-automatically takes the Cartesian product of those parameters in order to generate
+file. To explore a parameter space, a parameter is scanned over a list or array, and
+runmanager generates a separate shot for each point in it. If two or more parameters are
+scanned, runmanager takes the Cartesian product of those parameters in order to generate
 shots that span the entire parameter space. For more complex experiments, parameters
 can be linked together so they iterate in lock step by defining one or more zip groups. If
 multiple zip groups are defined, the parameter space explored will be the Cartesian product

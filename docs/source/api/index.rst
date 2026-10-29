@@ -11,6 +11,7 @@ API Reference
     runmanager.functions
     runmanager.remote
     runmanager.client
+    runmanager.globals_file
     runmanager.batch_compiler
     runmanager.globals_diff
     runmanager.__main__

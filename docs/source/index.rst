@@ -28,4 +28,3 @@ A graphical and remote interface to parameterized experiments.
    Source Code <https://github.com/labscript-suite/runmanager>
    PyPI <https://pypi.org/project/runmanager/>
    Anaconda Cloud <https://anaconda.org/labscript-suite/runmanager>
-   BitBucket Archive <http://bitbucket-archive.labscriptsuite.org/#!/labscript_suite/runmanager>
