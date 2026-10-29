@@ -596,3 +596,94 @@ default shot a close during its preparation leaves is in `KNOWN_ISSUES.md`
 Bug 3's fix (a1d5d85, fd02976 and its test 5f3107b) is reverted, in 5773cf7,
 4c199fb and e2b0d13, and the retries are in `KNOWN_ISSUES.md`. Each new test
 fails without its change.
+
+## Step 2.2: duplication
+
+Searched: runmanager's package line by line for jobs done twice; every name runmanager
+shares a concept with in blacs, lyse, runviewer, labscript-utils, labscript, zprocess,
+labscript-agents and labscript-optimization, read at their `CodeHealth` refs and at
+`master` for upstream; and the librarian's map, with its answer on copies in other
+repos. Line references are to `1e80564`. **fix** marks a change of a few lines inside
+the existing structure; everything else is for Ian.
+
+### Candidates: jobs done twice
+
+| | Job | Copies | Should it exist | Its one copy | Size |
+| --- | --- | --- | --- | --- | --- |
+| D1 | Remote write of one field of many globals | `RunmanagerServer._set_expression_field_values` (`__main__.py:5066-5099`) and `_set_field_values` (`:5101-5132`): 26 of 34 lines the same; they differ in the coercion, the raw check, `repr` and the kept trailing comment | Yes, the public setters | `_set_field_values`, given the per-value preparation. **fix** | −26 +8 |
+| D2 | Commit one edited field of a global, from the window or a remote setter | `GroupTab.change_global_default`, `_units`, `_scan_enabled`, `_jit_enabled`, `_scan`, `_expansion` (`__main__.py:1623-1900`, 278 lines): one skeleton (set the text, make the file editable, `set_field`, revert and report on failure, record the previous value, sort, `globals_changed`). Upstream had three; the fork added the others | Yes | One `GroupTab` method taking the field and a step to run after success | −120; the six methods rewritten |
+| D3 | The name of the global a model item belongs to | 8 copies of 3–4 lines in two forms (`__main__.py:1185`, `1239`, `1249`, `1258`, `1267`, `1276`, `1286`, `1330`); the six `on_globals_model_*_changed` handlers (`:1236-1282`) share the rest of their body too | Yes | One `GroupTab` method using the form that also handles a folded row. **fix** | −15 |
+| D4 | Groups-tab model walks | "Selected group rows" written out four times (`__main__.py:3095`, `3115`, `3133`, `3155`), with two variants (`:3105`, `:3167`); walks over `groups_model` in `get_active_groups` (`:3736`), `get_save_data` (`:4093`) and `RunmanagerServer._group_active_items` (`:5054`); a new group's row added in `new_group` (`:4006`) and `copy_group` (`:3961`) | Yes | Two or three `RunManager` methods | −45 |
+| D5 | The file name of shot N of a sequence | `make_run_files` (`__init__.py:712-720`), `reindex_run_file_infos` (`__main__.py:2711-2730`, half by the shared utility, half by hand) and `prepare_default_shot` (`:4709-4729`); the prefix formatted and joined to its folder three times | Yes: a new, a joined and a default sequence | One function beside `make_run_files`, over `next_available_indexed_filepath` with a keyword that keeps the stem's digits (bug B5) | ~30, with a backward-compatible keyword in labscript-utils |
+| D6 | Starting runviewer detached | `send_to_runviewer` (`__main__.py:4609-4635`, 27 lines); `zprocess.start_daemon`, already used by labscript-utils and lyse, does it with a short-lived launcher that is safe on macOS | The launch, yes; this copy, no | `start_daemon`, given desktop-app's `runviewer-gui` on Windows and `python -m runviewer` elsewhere. On Windows the flags become `CREATE_NEW_PROCESS_GROUP \| CREATE_NO_WINDOW`, unchecked on a Windows machine. `test_send_to_runviewer.py` fakes `start_daemon` instead. **fix** | −22 +3 |
+| D7 | Talking to the compiler subprocess | The `['compile', ...]` request and `('done', ok, error)` reply in `compile_labscript_async` (`__init__.py:840-850`), `compile_multishot_async` (`:883-891`) and `compile_run_file` (`__main__.py:4274-4283`), whose comment says "change all three"; the subprocess started four times (`__init__.py:837`, `878`, `__main__.py:2078`, `2978`) | Yes; both async functions are upstream's, used by labscript-utils and blacs | Two small functions in `__init__.py`, each caller keeping its callbacks and errors. **fix** | ~+10 −20 |
+| D8 | Evaluating globals into exactly one shot | Upstream's `make_run_file_from_globals_files` (`__init__.py:790-803`) does what the fork's `get_queue_compile_globals` (`:272-291`) does | Yes; blacs's compile-and-restart uses the first | `get_queue_compile_globals`, taking the first's refusal, which names the scanning globals. **fix** | −8 |
+| D9 | A `[runmanager]` format with its fallback | `get_output_folder_format` and `get_filename_prefix_format` (`__init__.py:559-594`, fork's, used only by `new_sequence_details`): the same try/except and `sequence_index` substitution | One private function, using `LabConfig.get(..., fallback=)` | **fix** | −14 |
+| D10 | Name checks | Upstream's `is_valid_python_identifier` (`__init__.py:47-63`, a tokenizer) and `is_valid_hdf5_group_name` (`:66-89`, a loop over code points): `str.isidentifier` and `str.isascii` do these jobs | The names, yes (upstream's); the bodies, no | One line each; fixes bug B1. **fix** | −25 |
+| D11 | Scan? and JIT? excluding each other | `globals_file.set_field`'s `scan_enabled` branch (`globals_file.py:398-414`) does again what `_normalise_record` (`:74-94`) does on the save that follows; checked over 96 cases. The `jit_enabled` branch is needed | No | `_normalise_record`. **fix** | 17 → 4 lines |
+| D12 | Deleting a shot's file | `discard_default_shot` (`__main__.py:4657`) and `prepare_default_shot` (`:4752`) ignore every `OSError`; `QueueManager._delete_queue_files` (`queueing.py:1107`) ignores a missing file and reports the rest | Yes | `QueueManager`'s, so a default shot's file that cannot be deleted is reported too. **fix** | −8 +2 |
+| D13 | `remote`'s default client | `remote.py:6` builds `RunmanagerClient()`; `ZMQClient.instance()` is the suite's per-class singleton | Yes | `RunmanagerClient.instance()`. **fix** | ±1 |
+| D14 | A shot's full status record | `QueueController._status` (`queueing.py:453`) and `track_unqueued` (`:519`) both build it | Yes | `_status` | −9; marginal, leave |
+
+### Candidates: one concept, two spellings
+
+| | Concept | Spellings | Upstream or majority | Proposal | Size |
+| --- | --- | --- | --- | --- | --- |
+| N1 | `runmanager.remote`'s functions | 28 of the client's 44 methods; upstream's `remote.py` had every method. Missing: `get_expansions`, `set_expansions`, `get_units`, `get_groups`, `set_groups_active`, `new_globals_file`, `open_globals_file`, `close_globals_file`, `new_group`, `new_globals`, `delete_global`, `get_analyse_shots`, `set_analyse_shots`, `get_queue`, `test_compile`, `queue_exchange` | Every method | Add the 16. **fix** | +16 |
+| N2 | A component's saved state | `AnalysisSubmission.get_configuration_data` and `restore_configuration_data` (`analysis_submission.py:96`, `99`); upstream's BLACS class, which it is, and every other component in the suite say `get_save_data` and `restore_save_data` | `get_save_data`, `restore_save_data` | Rename back. **fix** | ±5 |
+| N3 | The BLACS flag | `send_to_BLACS` (`__main__.py` ×9, `queueing.py` ×3, tests ×6) beside `send_to_blacs` (`__main__.py:4123`, `4142`, `4220`, the saved key) | Both upstream's; snake_case is the rule | `send_to_blacs` | ±21, runmanager only |
+| N4 | Globals file, group and global | `globals_file.py` (the fork's) and five upstream functions in `__init__.py` say `filename`, `groupname`, `globalname`; `__main__.py` and `client.py` say `globals_file`, `group_name`, `global_name` (~240, 217 and 279 uses); `client.py`'s globals-file methods say `path` | `globals_file`, `group_name`, `global_name` | `globals_file.py` and the client's `path` follow the majority; upstream's `__init__.py` functions keep theirs. No caller in any repo passes these by keyword | ~90 lines in runmanager; `path` also ~15 in labscript-agents, whose tool schema names it |
+| N5 | A sequence in `submit_shots` | `sequence` (`client.py:539`, `__main__.py:5402`) against `sequence_id` everywhere else | `sequence_id` | Rename; labscript-optimization passes it by keyword (`runmanager_interface.py:88`) | ~15 in 2 repos |
+| N6 | The queue widget's rows | `RunmanagerQueueWidget.set_queue_paths(paths)` takes row dicts (`queueing.py:218`), where its base class says `set_row_infos(row_infos)`; `QueueManager.delete_rows(rows)` against `QueueController.delete_rows(shot_ids)` | The base class's | Rename. **fix** | ±14 |
+| N7 | The queue's saved state | `QueueController.export_state` and `restore_state` against `get_save_data` and `restore_save_data` elsewhere; upstream BLACS's queue said the latter | `get_save_data`, `restore_save_data` | Rename; blacs's integration test calls them | ~30 in 5 files, blacs's tests among them |
+| N8 | A shot's run number | `run_no` inside runmanager (upstream's) against `run_number` in the receipt and `submit_shots` (public to labscript-agents), and `nruns` beside `n_runs` in `make_run_files` | `run_no`, `n_runs` | `nruns` → `n_runs` (**fix**, 3 lines); leave `run_no` and the receipt | ±3 |
+
+Not candidates: upstream's `RunManager` beside `RunmanagerServer` and the rest (blacs's
+tests import it); `new_sequence_details`' `script_path` and the other upstream
+parameters, public and passed positionally; `timeout_time` beside `timeout` (a deadline
+and a duration); the client's unprefixed `n_shots`, `error_in_globals` and others
+(upstream's, public); the camelCase slots named after `.ui` widgets (upstream's); the
+`'not queued'` and `'not sent'` values (documented to agents); `shutdown` throughout,
+as labscript-utils and blacs's workers say; `say_hello` and the `handle_*` handlers,
+one name each. Within runmanager: the globals readers in `__init__.py` are a chain,
+not copies; the two duplicate-group-name checks differ deliberately (the live model,
+and the state before a remote change); `new_global` and `new_group` work on different
+models; the three queue-record literals differ in 2–4 keys and `_normalise_item`
+fills the rest; `prepare_default_shot`'s folder listing seeds the index after a
+restart, which the shared utility cannot. Seen for step 4: `nested`
+(`__main__.py:246`) has no caller, and `log_if_global` (`:174`) is always passed
+an empty list.
+
+### Candidates in other repos
+
+Found by this search; each is its owner's, routed by the coordinator after Ian decides.
+
+| | Owner | Job | Copies | Proposal | Size |
+| --- | --- | --- | --- | --- | --- |
+| X1 | labscript-utils, then runmanager | Saving a TOML file. A bug that loses data: `labscript_profile.toml_config.dump_toml_file` (`:45`) writes in place, so an interrupted `save_appconfig` leaves a truncated app config | runmanager's `globals_file.save_document` (`globals_file.py:192`) writes a temp file, fsyncs, keeps the permissions and replaces | `dump_toml_file` does what `save_document` does; `save_document` keeps its HDF5 refusal and normalising and calls it | labscript-utils +12 −2; runmanager −20 +1 |
+| X2 | labscript-utils, then each app | A server's port | runmanager (`__main__.py:4960`), blacs (`:312`), lyse (`:116`) and runviewer (`:1326`) read `ports/<app>` by hand; `ZMQClient` binds by `server` and `default_port`. blacs (`client.py:27`) and runviewer (`client.py:22`) spell the default port as a bare literal, runmanager as `DEFAULT_PORT` | `ZMQServer` takes `server` and `default_port` as `ZMQClient` does; each app's server sets them | labscript-utils ~+8; each app −1 +2 |
+| X3 | blacs | Shot outcome statuses, and runmanager's address | `shot_execution.py` writes `'completed'`, `'aborted'`, `'failed'` and `'rejected'` as literals ten times (`:579`, `711`, `714`, `719`, `722`, `794`, `800`, `818`, `923`, `928`), beside runmanager's `BLACS_*` constants it already imports from; it rebuilds runmanager's host and port from the labconfig (`:113-116`) for its link light, beside `RunmanagerClient()` (`:199`) | Import the constants; the light takes the client's `host` and `port` | blacs ±10, −2 |
+| X4 | runmanager, then labscript-agents and labscript-optimization | "lyse will have this shot" | `record['lyse'] in (LYSE_WAITING, LYSE_SENT)` in labscript-agents (`runmanager_interface.py:216`) and labscript-optimization (`session.py:175`) | One name beside the constants in `runmanager.client` | runmanager +2; ±1 each |
+| X5 | labscript-agents, labscript-optimization | A logo on a label | `analysis_submission.set_icon_label_pixmap` (`:36`); the two windows (`window.py:30`, `window.py:96`) load `runmanager.svg` by hand | Leave: low value | — |
+
+### Bugs found
+
+- **B1 fix**, with D10. `is_valid_python_identifier` (`__init__.py:47`) accepts names
+  Python rejects, such as `x²` and `٣`: a global so named is created, and no
+  expression can name it. Upstream's.
+- **B2 fix**. `RunmanagerServer._check_before_writing` (`__main__.py:5035`) accepts
+  `bytes` with `raw=True`. TOML cannot hold bytes, and `_with_trailing_comment` raises
+  on them, so the batch fails after earlier globals are written, against its "all or
+  none". Accept `str` only.
+- **B3 fix**. `handle_get_shot_output_folder` (`__main__.py:5374`) answers runmanager's
+  working directory when the field is empty; `handle_get_labscript_file` beside it
+  answers `''`.
+- **B4 fix**, with D6. `send_to_runviewer` (`__main__.py:4636-4645`) reports a
+  runviewer that did not start, then tries `add_shot` and reports again: two red lines
+  for one fault.
+- **B5 document**. A default shot's file drops a trailing `_<digits>` from the script's
+  name (`scan_2.py` gives `…_scan_5.h5`, not `…_scan_2_5.h5`), because
+  `next_available_indexed_filepath` strips a matching suffix even when given `start`
+  (`__main__.py:4725`). Only the name is affected; D5 would fix it.
+- **B6 fix**. `compile_labscript_with_globals_files_async`'s docstring
+  (`__init__.py:919`) calls `output_path` a folder; it is the shot file. Upstream's.
