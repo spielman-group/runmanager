@@ -667,15 +667,21 @@ def make_run_files(
     convert the returned generator to a list. The filenames the run files are given is
     simply the sequence_id with increasing integers appended."""
     indexed_shots = list(enumerate(shots))
-    n_runs = len(indexed_shots)
-    ndigits = int(np.ceil(np.log10(n_runs)))
+    ndigits = int(np.ceil(np.log10(len(indexed_shots))))
     if shuffle:
         random.shuffle(indexed_shots)
+    # Numbered before any file is made, since a number skipped for a file
+    # already in the folder takes the sequence beyond len(shots).
+    numbered = []
     run_no = 0
     for _, shot_globals in indexed_shots:
         runfilename, run_no = next_run_file(
             output_folder, filename_prefix, shot_globals, run_no, ndigits
         )
+        numbered.append((runfilename, run_no, shot_globals))
+        run_no += 1
+    n_runs = run_no
+    for runfilename, run_no, shot_globals in numbered:
         if create_files:
             make_single_run_file(
                 runfilename, sequence_globals, shot_globals, sequence_attrs, run_no, n_runs
@@ -690,7 +696,6 @@ def make_run_files(
             }
         else:
             yield runfilename
-        run_no += 1
 
 
 def next_run_file(output_folder, filename_prefix, shot_globals, run_no=None, width=1, taken=()):
@@ -729,9 +734,10 @@ def make_single_run_file(
     new_sequence_details, and is identical for every run of one sequence.
 
     run_no is this run's number, which is unique within its sequence. n_runs is how far
-    that sequence reaches as of this file: the number of runs it has once this one is
-    written. For a sequence compiled in one go that is the number of runs being
-    generated, and every file of it carries the same value. For a sequence that is added
+    that sequence reaches as of this file: one more than the highest run number it has
+    once this one is written. For a sequence compiled in one go every file carries the
+    same value, which exceeds the number of runs generated if files already in the
+    folder took some of their numbers. For a sequence that is added
     to afterwards it is not: the shots written earlier keep the smaller number they were
     written with, since they may already have run and are not rewritten. So n_runs read
     off one shot is not the size of its sequence, and the shots of one sequence need not

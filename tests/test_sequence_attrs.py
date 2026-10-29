@@ -132,3 +132,16 @@ class DefaultSequenceTests(unittest.TestCase):
                     shot.attrs['sequence_id'], row['sequence_attrs']['sequence_id']
                 )
                 self.assertEqual(shot.attrs['sequence_index'], -1)
+
+
+class RunFilesTests(unittest.TestCase):
+    def test_n_runs_reaches_past_a_number_taken_by_a_file_already_there(self):
+        directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, directory, True)
+        open(os.path.join(directory, 'test_0.h5'), 'w').close()
+
+        [path] = runmanager.make_run_files(directory, None, [{}], {}, 'test')
+
+        self.assertEqual(os.path.basename(path), 'test_1.h5')
+        with h5py.File(path, 'r') as shot:
+            self.assertEqual((shot.attrs['run number'], shot.attrs['n_runs']), (1, 2))
