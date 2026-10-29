@@ -22,6 +22,46 @@ from labscript_utils.qtwidgets.leftclick import LeftClickMixin, MovableRowsMixin
 from labscript_utils.qtwidgets.themed_window import best_contrast
 
 
+def mix_colors(color0, color1, fraction):
+    """The colour that is the given fraction of the way from color0 to color1 in RGB"""
+    return QtGui.QColor.fromRgbF(
+        *((1 - fraction) * a + fraction * b for a, b in zip(color0.getRgbF(), color1.getRgbF()))
+    )
+
+
+# Colour that is mixed into the button colour for the engage button, and its fraction:
+ENGAGE_RED = '#dc3232'
+ENGAGE_RED_FRACTION = 0.6
+# Opacity of the highlight colour over selected cells:
+SELECTION_FRACTION = 0.25
+
+
+def engage_button_style_sheet(palette):
+    """Style sheet for the engage button: the button colour of the palette mixed with
+    ENGAGE_RED, lighter on hover and darker when pressed. The palette must not be the
+    button's own, which has the background colour of the style sheet as its button
+    colour."""
+    background = mix_colors(
+        palette.color(QtGui.QPalette.ColorRole.Button),
+        QtGui.QColor(ENGAGE_RED),
+        ENGAGE_RED_FRACTION,
+    )
+    return f"""
+QToolButton {{
+    background-color: {background.name()};
+    border: 1px solid {background.darker(130).name()};
+    border-radius: 3px;
+    padding: 4px;
+}}
+QToolButton:hover {{
+    background-color: {background.lighter(115).name()};
+}}
+QToolButton:pressed {{
+    background-color: {background.darker(115).name()};
+}}
+"""
+
+
 def composite_colors(r0, g0, b0, a0, r1, g1, b1, a1):
     """composite a second colour over a first with given alpha values and return the
     result"""
@@ -328,18 +368,21 @@ class FingerTabWidget(QtWidgets.QTabWidget):
                 break
 
 
-def set_selection_highlight(widget):
+def set_selection_palette(widget):
+    """Give the widget the highlight colour of the application palette, partly
+    transparent, and the window text colour as the highlighted text colour"""
+    source = QtWidgets.QApplication.palette(widget)
+    highlight = source.color(QtGui.QPalette.Highlight)
+    highlight.setAlphaF(SELECTION_FRACTION)
+    text = source.color(QtGui.QPalette.WindowText)
     palette = widget.palette()
+    if palette.color(QtGui.QPalette.Highlight) == highlight and palette.color(
+        QtGui.QPalette.HighlightedText
+    ) == text:
+        return
     for group in [QtGui.QPalette.Active, QtGui.QPalette.Inactive]:
-        palette.setColor(
-            group,
-            QtGui.QPalette.Highlight,
-            QtGui.QColor(ItemView.COLOR_HIGHLIGHT))
-        palette.setColor(
-            group,
-            QtGui.QPalette.HighlightedText,
-            palette.color(QtGui.QPalette.Active, QtGui.QPalette.WindowText)
-        )
+        palette.setColor(group, QtGui.QPalette.Highlight, highlight)
+        palette.setColor(group, QtGui.QPalette.HighlightedText, text)
     widget.setPalette(palette)
 
 
@@ -347,12 +390,15 @@ class ItemView(LeftClickMixin):
     """Mixin for QTableView and QTreeView that adds modified tab and arrow key
     behaviour and custom selection highlighting to LeftClickMixin."""
 
-    COLOR_HIGHLIGHT = "#40308CC6" # Semitransparent blue
-
     def __init__(self, *args):
         super().__init__(*args)
         self.setAutoScroll(False)
-        set_selection_highlight(self)
+        set_selection_palette(self)
+
+    def changeEvent(self, event):
+        if event.type() == QtCore.QEvent.PaletteChange:
+            set_selection_palette(self)
+        super().changeEvent(event)
 
     def keyPressEvent(self, event):
         index = self.currentIndex()
@@ -464,7 +510,11 @@ class AlternatingColorModel(QtGui.QStandardItemModel):
         palette = self.view.palette()
         normal_color = palette.color(QtGui.QPalette.Base)
         alternate_color = palette.color(QtGui.QPalette.AlternateBase)
-        key = normal_rgb, alternate, selected, normal_color.rgba(), alternate_color.rgba()
+        highlight_color = palette.color(QtGui.QPalette.Highlight)
+        key = (
+            normal_rgb, alternate, selected,
+            normal_color.rgba(), alternate_color.rgba(), highlight_color.rgba(),
+        )
         try:
             return self.bg_brushes[key]
         except KeyError:
@@ -493,7 +543,7 @@ class AlternatingColorModel(QtGui.QStandardItemModel):
         # background colours:
         if selected and isinstance(self.view, QtWidgets.QTableView):
             # Overlay highlight colour:
-            r_s, g_s, b_s, a_s = QtGui.QColor(ItemView.COLOR_HIGHLIGHT).getRgb()
+            r_s, g_s, b_s, a_s = highlight_color.getRgb()
             r_0, g_0, b_0, a_0 = bg_color.getRgb()
             rgb = composite_colors(r_0, g_0, b_0, a_0, r_s, g_s, b_s, a_s)
             bg_color = QtGui.QColor(*rgb)
@@ -508,7 +558,7 @@ class AlternatingColorModel(QtGui.QStandardItemModel):
         making the alternate colours visible even when custom colors have been set - the
         same shading will be applied to the custom colours. Only really looks sensible
         when the normal and alternate colors are similar. Also applies selection
-        highlight colour (using ItemView.COLOR_HIGHLIGHT), similarly with alternate-row
+        highlight colour of the view's palette, similarly with alternate-row
         shading, for the case of a QTableView."""
         if role == QtCore.Qt.BackgroundRole:
             normal_brush = QtGui.QStandardItemModel.data(self, index, QtCore.Qt.BackgroundRole)
@@ -528,7 +578,12 @@ class Editor(QtWidgets.QTextEdit):
         self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         self.textChanged.connect(self.update_size)
         self.initial_height = None
-        set_selection_highlight(self)
+        set_selection_palette(self)
+
+    def changeEvent(self, event):
+        if event.type() == QtCore.QEvent.PaletteChange:
+            set_selection_palette(self)
+        super().changeEvent(event)
 
     def update_size(self):
         if self.initial_height is not None:

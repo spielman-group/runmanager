@@ -78,6 +78,7 @@ from runmanager.widgets import (
     ItemDelegate,
     TabToolButton,
     TreeView,
+    engage_button_style_sheet,
     expression_cell_colors,
     hidden_unicode_issues,
     scroll_view_to_row_if_current,
@@ -1498,6 +1499,7 @@ class RunManager(LabscriptGuiApplication):
 
         # The OS switching between light and dark:
         self.ui.themeChanged.connect(self.on_theme_changed)
+        self.set_engage_button_style()
 
         # The menu items:
         self.ui.actionLoad_configuration.triggered.connect(self.on_load_configuration_triggered)
@@ -1589,7 +1591,13 @@ class RunManager(LabscriptGuiApplication):
         QtGui.QShortcut('ctrl+shift+Tab', self.ui, lambda: self.switch_tabs(-1))
         logger.info('Signals connected')
 
+    def set_engage_button_style(self):
+        self.ui.pushButton_engage.setStyleSheet(
+            engage_button_style_sheet(QtWidgets.QApplication.palette(self.ui.pushButton_engage))
+        )
+
     def on_theme_changed(self):
+        self.set_engage_button_style()
         for tab in self.currently_open_groups.values():
             tab.redraw_colors()
         # Parsing recolours the expression cells. Not globals_changed(), which
