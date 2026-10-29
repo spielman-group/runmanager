@@ -704,12 +704,16 @@ D7 cc52e36, D8 6f6cc74, D9 8ae9722, D10 and B1 6ee6cc8, D11 578bc39, D12
 labscript-utils 04a1dce's `strip_suffix`. 1e8cf64 gives the tests' lyse server a
 free port, since lyse's server now binds lyse's own when given none (lyse
 82e1bdc), and 73db099 builds the tests' runviewer server as runviewer 82ac827
-now takes it.
+now takes it. Codex review findings 2 and 5 are fixed after it, as `bb8b2cd..8360224`:
+2 1328b71 numbers a batch before making its files, so `n_runs` reaches past a
+number skipped for a file already there; 5 8360224 skips missing globals before
+checking the values of the rest. Finding 1 waits on Ian.
 
 D2 changes two things a user can see: a change of units now marks the globals
 changed, as every other field does, so a preparse follows it; and the units
-cell's Bool state is refreshed after any field changes. The suite is 150 tests,
-with 30 subtests. B1, B2, B3 and B5 each have a test that fails without its fix.
+cell's Bool state is refreshed after any field changes. The suite is 152 tests,
+with 30 subtests. B1, B2, B3, B5 and review findings 2 and 5 each have a test
+that fails without its fix.
 
 Other repos change with this: labscript-optimization passes `sequence_id` to
 `submit_shots` (N5) and calls `bound_for_lyse` (X4), as does labscript-agents;
