@@ -50,3 +50,14 @@ class ZipGroupTests(unittest.TestCase):
                 self.assertEqual(results['group']['c'], [6, 7])
                 with self.assertRaises(ValueError):
                     runmanager.evaluate_globals(sequence_globals)
+
+    def test_a_zipped_global_that_depends_on_another_axis_is_refused(self):
+        _, results = evaluate({
+            'x': ('[1, 2, 3]', 'outer'),
+            'y': ('2 * x', ''),
+            'a': ('[4, 5]', 'z'),
+            'b': ('[len(y), 6]', 'z'),
+            'c': ('[2 * v for v in a]', 'z'),
+        })
+        self.assertIsInstance(results['group']['b'], ValueError)
+        self.assertEqual(results['group']['c'], [8, 10])
