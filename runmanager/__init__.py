@@ -666,8 +666,8 @@ def make_run_files(
     convert the returned generator to a list. The filenames the run files are given is
     simply the sequence_id with increasing integers appended."""
     indexed_shots = list(enumerate(shots))
-    nruns = len(indexed_shots)
-    ndigits = int(np.ceil(np.log10(nruns)))
+    n_runs = len(indexed_shots)
+    ndigits = int(np.ceil(np.log10(n_runs)))
     if shuffle:
         random.shuffle(indexed_shots)
     for run_no, (_, shot_globals) in enumerate(indexed_shots):
@@ -678,7 +678,7 @@ def make_run_files(
         runfilename = ('%s_%0' + str(ndigits) + 'd.h5') % (basename, run_no)
         if create_files:
             make_single_run_file(
-                runfilename, sequence_globals, shot_globals, sequence_attrs, run_no, nruns
+                runfilename, sequence_globals, shot_globals, sequence_attrs, run_no, n_runs
             )
         if return_infos:
             yield {
@@ -686,7 +686,7 @@ def make_run_files(
                 'shot_globals': shot_globals,
                 'sequence_attrs': dict(sequence_attrs),
                 'run_no': run_no,
-                'n_runs': nruns,
+                'n_runs': n_runs,
             }
         else:
             yield runfilename
