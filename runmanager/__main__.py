@@ -89,7 +89,7 @@ from runmanager.widgets import (
 )
 from blacs.client import BlacsClient
 from runviewer.client import RunviewerClient
-from zprocess import raise_exception_in_thread, start_daemon
+from zprocess import port_in_use, raise_exception_in_thread, start_daemon
 import runmanager
 from runmanager.client import (
     BLACS_COMPLETED,
@@ -4546,6 +4546,17 @@ if __name__ == "__main__":
     logger = setup_logging(APPLICATION_NAME)
     labscript_utils.excepthook.set_logger(logger)
     logger.info('\n\n===============starting===============\n')
+    port = LabConfig().getint('ports', 'runmanager', fallback=DEFAULT_PORT)
+    if port_in_use(port):
+        message = (
+            f"runmanager cannot start because port {port}, which is the runmanager "
+            "port in the labconfig, is in use. Another copy of runmanager is probably "
+            "running."
+        )
+        logger.error(message)
+        splash.hide()
+        QtWidgets.QMessageBox.critical(None, 'runmanager', message)
+        sys.exit(1)
     qapplication = splash.qapplication
     setup_application(qapplication)
     app = RunManager()
