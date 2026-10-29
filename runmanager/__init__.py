@@ -17,7 +17,6 @@ import sys
 import random
 import time
 import subprocess
-import types
 import threading
 import traceback
 import datetime
@@ -334,12 +333,12 @@ def evaluate_globals(sequence_globals, raise_exceptions=True):
             try:
                 code = compile(expression, '<string>', 'eval')
                 value = eval(code, sandbox)
-                # Need to know the length of any generators, convert to tuple:
-                if isinstance(value, types.GeneratorType):
+                # Need to know the length of any iterator, convert to tuple:
+                if hasattr(value, '__next__'):
                     value = iterator_to_tuple(value)
                 # Make sure if we're zipping or outer-producting this value, that it can
                 # be iterated over:
-                if expansions[global_name] == 'outer':
+                if expansions[global_name]:
                     try:
                         iter(value)
                     except Exception as e:
