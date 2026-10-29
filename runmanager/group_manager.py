@@ -73,7 +73,7 @@ def new_globals(filename, groupname, records):
     be blank."""
     for globalname in records:
         if not is_valid_python_identifier(globalname):
-            raise ValueError('%s is not a valid Python variable name'%globalname)
+            raise ValueError('{globalname} is not a valid Python variable name')
     globals_file.new_globals(filename, groupname, records)
 
 
@@ -82,7 +82,7 @@ def rename_global(filename, groupname, oldglobalname, newglobalname):
         # No rename!
         return
     if not is_valid_python_identifier(newglobalname):
-        raise ValueError('%s is not a valid Python variable name'%newglobalname)
+        raise ValueError(f'{newglobalname} is not a valid Python variable name')
     globals_file.rename_global(filename, groupname, oldglobalname, newglobalname)
 
 
@@ -101,7 +101,7 @@ def get_all_groups(h5_files):
     for path in h5_files:
         for group_name in globals_file.get_group_names(path):
             if group_name in groups:
-                raise ValueError('Error: group %s is defined in both %s and %s. ' % (group_name, groups[group_name], path) +
+                raise ValueError(f'Error: group {group_name} is defined in both {groups[group_name]} and {path}. '
                                  'Only uniquely named groups can be used together '
                                  'to make a run file.')
             groups[group_name] = path

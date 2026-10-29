@@ -1356,15 +1356,14 @@ class RunManager(LabscriptGuiApplication):
         else:
             active_config_file = autoload_config_file
             self.ui.setEnabled(False)
-            self.output_box.output('Loading default config file %s...' % autoload_config_file)
+            self.output_box.output(f'Loading default config file {autoload_config_file}...')
 
             def load_the_config_file():
                 try:
                     self.load_configuration(autoload_config_file, at_startup=True)
                     self.output_box.output('done.\n')
                 except Exception as e:
-                    self.output_box.output('\nCould not load config file: %s: %s\n\n' %
-                                           (e.__class__.__name__, str(e)), red=True)
+                    self.output_box.output(f'\nCould not load config file: {e.__class__.__name__}: {e!s}\n\n', red=True)
                 else:
                     self.output_box.output('Ready.\n\n')
                 finally:
@@ -1912,7 +1911,7 @@ class RunManager(LabscriptGuiApplication):
         try:
             self.engage(submission_mode)
         except Exception as e:
-            self.output_box.output('%s\n\n' % str(e), red=True)
+            self.output_box.output(f'{e!s}\n\n', red=True)
         logger.info('end engage')
 
     def engage(self, submission_mode=SUBMISSION_MODE_NEW_SEQUENCE):
@@ -2380,7 +2379,7 @@ class RunManager(LabscriptGuiApplication):
 
         # Display the output tab so the user can see the output:
         self.ui.tabWidget.setCurrentWidget(self.ui.tab_output)
-        self.output_box.output('Globals diff with:\n%s\n\n' % globals_file)
+        self.output_box.output(f'Globals diff with:\n{globals_file}\n\n')
 
         # Do the globals diff
         globals_diff_table = runmanager.globals_diff_groups(active_groups, other_groups)
@@ -2887,7 +2886,7 @@ class RunManager(LabscriptGuiApplication):
                 if active_item.checkState() == QtCore.Qt.Checked:
                     if group_name in active_groups:
                         msg = (
-                            'There are two active groups named %s. ' % group_name
+                            f'There are two active groups named {group_name}. '
                             + 'Active groups must have unique names.'
                         )
                         if interactive:
@@ -3300,7 +3299,7 @@ class RunManager(LabscriptGuiApplication):
             if not has_been_a_warning[0]:
                 has_been_a_warning[0] = True
                 self.output_box.output('\n')
-            self.output_box.output('Warning: %s\n' % message, red=True)
+            self.output_box.output(f'Warning: {message}\n', red=True)
 
         opened_globals_files = {}
         for globals_file in runmanager_config.get('h5_files_open', []):
@@ -3313,7 +3312,7 @@ class RunManager(LabscriptGuiApplication):
                     raise_exception_in_thread(sys.exc_info())
                     continue
             else:
-                self.output_box.output('\nWarning: globals file %s no longer exists\n' % globals_file, red=True)
+                self.output_box.output(f'\nWarning: globals file {globals_file} no longer exists\n', red=True)
 
         for globals_file, group_name in runmanager_config.get('active_groups', []):
             globals_file = opened_globals_files.get(globals_file, globals_file)
@@ -3321,7 +3320,7 @@ class RunManager(LabscriptGuiApplication):
                 group_active_item = self.get_group_item_by_name(globals_file, group_name, self.GROUPS_COL_ACTIVE)
                 group_active_item.setCheckState(QtCore.Qt.Checked)
             except LookupError:
-                warning("previously active group '%s' in %s no longer exists" % (group_name, globals_file))
+                warning(f"previously active group '{group_name}' in {globals_file} no longer exists")
 
         for globals_file, group_name in runmanager_config.get('groups_open', []):
             globals_file = opened_globals_files.get(globals_file, globals_file)
@@ -3329,7 +3328,7 @@ class RunManager(LabscriptGuiApplication):
             try:
                 self.get_group_item_by_name(globals_file, group_name, self.GROUPS_COL_NAME)
             except LookupError:
-                warning("previously open group '%s' in %s no longer exists" % (group_name, globals_file))
+                warning(f"previously open group '{group_name}' in {globals_file} no longer exists")
             else:
                 self.open_group(globals_file, group_name)
 
@@ -3339,7 +3338,7 @@ class RunManager(LabscriptGuiApplication):
                 self.ui.lineEdit_labscript_file.setText(current_labscript_file)
                 self.last_opened_labscript_folder = os.path.dirname(current_labscript_file)
             elif current_labscript_file:
-                warning('previously selected labscript file %s no longer exists' % current_labscript_file)
+                warning(f'previously selected labscript file {current_labscript_file} no longer exists')
 
         shot_output_folder = runmanager_config.get('shot_output_folder')
         if shot_output_folder is not None:
@@ -3699,14 +3698,14 @@ class RunManager(LabscriptGuiApplication):
             try:
                 runviewer.say_hello(timeout=15)
             except Exception as e:
-                self.output_box.output('Couldn\'t submit shot to runviewer: %s\n\n' % str(e), red=True)
+                self.output_box.output(f'Couldn\'t submit shot to runviewer: {e!s}\n\n', red=True)
                 return
 
         try:
             runviewer.add_shot(agnostic_path)
             self.output_box.output('Shot %s sent to runviewer.\n' % os.path.basename(run_file))
         except Exception as e:
-            self.output_box.output('Couldn\'t submit shot to runviewer: %s\n\n' % str(e), red=True)
+            self.output_box.output(f'Couldn\'t submit shot to runviewer: {e!s}\n\n', red=True)
 
     def discard_default_shot(self):
         """Drop a prepared default shot that is not going to be handed over.

@@ -307,10 +307,10 @@ def make_single_run_file(
             try:
                 f['globals'].attrs[name] = value
             except Exception as e:
-                message = ('Global %s cannot be saved as an hdf5 attribute. ' % name +
+                message = (f'Global {name} cannot be saved as an hdf5 attribute. ' +
                            'Globals can only have relatively simple datatypes, with no nested structures. ' +
                            'Original error was:\n' +
-                           '%s: %s' % (e.__class__.__name__, str(e)))
+                           f'{e.__class__.__name__}: {e!s}')
                 raise ValueError(message)
 
 

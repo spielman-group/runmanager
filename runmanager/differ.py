@@ -109,5 +109,5 @@ def globals_diff_shots(file1, file2):
     # Get other file's globals groups
     other_groups = get_all_groups(file2)
 
-    print('Globals diff between:\n%s\n%s\n\n' % (file1, file2))
+    print(f'Globals diff between:\n{file1}\n{file2}\n\n')
     return globals_diff_groups(active_groups, other_groups, return_string=False)

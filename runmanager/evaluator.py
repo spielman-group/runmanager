@@ -48,7 +48,7 @@ def iterator_to_tuple(iterator, max_length=1000000):
         if i == max_length:
             raise ValueError('This iterator is very long, possibly infinite. ' +
                              'Runmanager cannot create an infinite number of shots. ' +
-                             'If you really want an iterator longer than %d, ' % max_length +
+                             f'If you really want an iterator longer than {max_length}, ' +
                              'please modify runmanager.iterator_to_tuple and increase max_length.')
     return tuple(temp_list)
 
@@ -87,7 +87,7 @@ def evaluate_globals(sequence_globals, raise_exceptions=True):
                 for other_group_name in sequence_globals:
                     if global_name in sequence_globals[other_group_name]:
                         groups_with_same_global.append(other_group_name)
-                exception = ValueError('Global named \'%s\' is defined in multiple active groups:\n    ' % global_name +
+                exception = ValueError(f'Global named \'{global_name}\' is defined in multiple active groups:\n    ' +
                                        '\n    '.join(groups_with_same_global))
                 if raise_exceptions:
                     raise exception
@@ -162,7 +162,7 @@ def evaluate_globals(sequence_globals, raise_exceptions=True):
             if raise_exceptions:
                 message = 'Error parsing globals:\n'
                 for global_name, exception in errors:
-                    message += '%s: %s: %s\n' % (global_name, exception.__class__.__name__, str(exception))
+                    message += f'{global_name}: {exception.__class__.__name__}: {exception!s}\n'
                 raise Exception(message)
             else:
                 for global_name, exception in errors:
