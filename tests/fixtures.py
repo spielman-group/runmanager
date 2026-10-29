@@ -81,7 +81,6 @@ _stub_splash_module()
 
 import runmanager.__main__ as main_module  # noqa: E402
 from runmanager.__main__ import (  # noqa: E402
-    Editor,
     FingerTabWidget,
     GroupTab,
     RunManager,
@@ -95,6 +94,7 @@ from lyse.client import LyseClient  # noqa: E402
 from lyse.communication import LyseServer  # noqa: E402
 from qtutils.qt.QtWidgets import QApplication  # noqa: E402
 from runmanager.analysis_submission import AnalysisSubmission  # noqa: E402
+from runmanager.widgets import Editor  # noqa: E402
 
 # The module itself, for the tests that patch names in its namespace rather
 # than borrow a method from it. Exported for the same reason the classes are:
