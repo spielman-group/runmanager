@@ -4042,16 +4042,12 @@ class RunManager(LabscriptGuiApplication):
             self.ui.lineEdit_default_labscript_file.setText(
                 restored_queue_state['default_labscript_file']
             )
-            index = self.queue_compile_mode_combo.findData(
-                restored_queue_state['compile_mode']
+            self.queue_compile_mode_combo.setCurrentIndex(
+                self.queue_compile_mode_combo.findData(restored_queue_state['compile_mode'])
             )
-            if index != -1:
-                self.queue_compile_mode_combo.setCurrentIndex(index)
-            index = self.queue_empty_policy_combo.findData(
-                restored_queue_state['empty_queue_policy']
+            self.queue_empty_policy_combo.setCurrentIndex(
+                self.queue_empty_policy_combo.findData(restored_queue_state['empty_queue_policy'])
             )
-            if index != -1:
-                self.queue_empty_policy_combo.setCurrentIndex(index)
             self.queue_pause_button.setChecked(restored_queue_state['paused'])
 
         self.analysis_submission.restore_save_data(
