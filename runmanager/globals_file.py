@@ -23,16 +23,13 @@ import copy
 import functools
 import os
 import threading
-import uuid
 
 import labscript_utils.h5_lock
 import h5py
 
-import tomli_w
-
 from labscript_utils import ensure_str
 from labscript_utils.file_utils import warn_legacy_file
-from labscript_profile.toml_config import load_toml_file
+from labscript_profile.toml_config import dump_toml_file, load_toml_file
 
 
 CANONICAL_FORMAT = "runmanager_globals"
@@ -198,30 +195,9 @@ def save_document(globals_file, document):
     directory = os.path.dirname(globals_file)
     if directory:
         os.makedirs(directory, exist_ok=True)
-    # Every edit to a single global rewrites the whole file, so write out of
-    # place and replace: a save that is interrupted or that raises part way
-    # through must not leave a truncated file where the globals used to be.
-    # Unique per save, so that two threads saving at once never share one.
-    temp_filename = "%s.%s.tmp" % (globals_file, uuid.uuid4().hex)
-    try:
-        with open(temp_filename, "xb") as f:
-            tomli_w.dump(document, f)
-            f.flush()
-            os.fsync(f.fileno())
-        try:
-            # Keep the permissions the globals file already had. Experiment
-            # globals commonly live on a shared drive, where dropping group
-            # access would lock out everyone else on the apparatus:
-            os.chmod(temp_filename, os.stat(globals_file).st_mode & 0o777)
-        except OSError:
-            pass
-        os.replace(temp_filename, globals_file)
-    except BaseException:
-        try:
-            os.remove(temp_filename)
-        except OSError:
-            pass
-        raise
+    # Every edit to a single global rewrites the whole file, which is replaced
+    # whole: an interrupted save keeps the globals that were there.
+    dump_toml_file(globals_file, document)
 
 
 def new_globals_file(globals_file):
