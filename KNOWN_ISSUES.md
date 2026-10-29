@@ -7,6 +7,5 @@
 - `__init__.py`, `find_comments`: offsets after a string spanning lines are too small, so the globals diff and the remote setters' kept comment cut the wrong text (upstream 35ea631).
 - `__init__.py`, `make_single_run_file`: a bare file name makes `os.makedirs('')` raise (upstream 854c5da).
 - `__main__.py`, `close_current_tab`: `close_group` pops from the dict being iterated, so Ctrl+W raises RuntimeError (upstream 05a3b14).
-- `__main__.py`, `_coerce_remote_expression` and `submit_shots`: an array set remotely is written as numpy's default `repr`, which elides arrays over 1000 elements, so the stored expression is wrong (upstream a3a97be).
 - `__main__.py`, the axes tab's `expansion_name.split()`: a zip group named with a space raises ValueError (upstream 03b54f9).
 - `batch_compiler.py`, `BatchProcessor.compile`: `os.chdir` is outside the `try` and `SystemExit` is not caught, so a missing script directory or a script calling `sys.exit` kills the compiler while runmanager waits for its reply (upstream 5bb5e3c).

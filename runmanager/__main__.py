@@ -50,6 +50,7 @@ splash.update_text('importing matplotlib')
 # GUI integration:
 import matplotlib
 matplotlib.use('Agg')
+import numpy as np
 
 from qtutils.qt import QtCore, QtGui, QtWidgets, QT_ENV
 from qtutils.qt.QtCore import Qt
@@ -4677,7 +4678,9 @@ class RunmanagerServer(ZMQServer):
 
     @staticmethod
     def _coerce_remote_expression(value, name):
-        return repr(value)
+        # Arrays are written in full, not summarised with an ellipsis or rounded:
+        with np.printoptions(threshold=sys.maxsize, floatmode='unique'):
+            return repr(value)
 
     @staticmethod
     def _with_trailing_comment(expression, previous):
@@ -5091,7 +5094,9 @@ class RunmanagerServer(ZMQServer):
             for name, value in entry.items():
                 group_records = details[group_of[name]]
                 previous = group_records[name]['default']
-                default = self._with_trailing_comment(repr(value), previous)
+                default = self._with_trailing_comment(
+                    self._coerce_remote_expression(value, name), previous
+                )
                 group_records[name] = dict(group_records[name], default=default)
             pairs, expansions = runmanager.get_shots_with_frozen_globals(details)
             if len(pairs) != 1:

@@ -22,6 +22,7 @@ import unittest
 from unittest import mock
 
 import labscript_utils.h5_lock, h5py
+import numpy as np
 from qtutils import inmain
 from qtutils.qt.QtCore import QCoreApplication, QEvent, Qt
 from qtutils.qt.QtGui import QStandardItemModel
@@ -519,6 +520,13 @@ class SubmitShotsTests(RemoteCommandTestCase):
         self.assertEqual(
             self.expressions(), {'x': '1.0  # MHz', 'y': '2*3', 'depth': '4'}
         )
+
+    def test_an_array_is_written_in_full(self):
+        values = np.linspace(0, 1, 1001)
+        self.request(self.client.set_values, {'y': values})
+
+        written = self.expressions()['y']
+        np.testing.assert_array_equal(eval(written, {'array': np.array}), values)
 
     def test_a_raw_value_that_is_not_text_is_refused_before_anything_is_set(self):
         with self.assertRaises(TypeError):
