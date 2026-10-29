@@ -119,6 +119,10 @@ def new_sequence_details(
     now = datetime.datetime.now()
     if default:
         now = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    # With the UTC offset in force at that time, which a default sequence's midnight
+    # may not share with now:
+    now = now.astimezone()
+    if default:
         sequence_index = -1
     else:
         sequence_index = next_sequence_index(shot_basedir, now, increment_sequence_index)
@@ -126,7 +130,9 @@ def new_sequence_details(
 
     # Toplevel attributes to be saved to the shot files:
     sequence_date = now.strftime('%Y-%m-%d')
-    sequence_id = sequence_timestamp + '_' + script_basename
+    # The time with its UTC offset, so that a time in the hour that repeats as daylight
+    # saving time ends is unambiguous:
+    sequence_id = now.strftime('%Y%m%dT%H%M%S%z') + '_' + script_basename
 
     sequence_attrs = {
         'script_basename': script_basename,
