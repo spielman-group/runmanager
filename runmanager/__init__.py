@@ -1070,7 +1070,9 @@ def flatten_globals(sequence_globals, evaluated=False):
 
 def globals_diff_groups(active_groups, other_groups, max_cols=1000, return_string=True):
     """Given two sets of globals groups, perform a diff of the raw
-    and evaluated globals."""
+    and evaluated globals. If return_string is True, returns the diff as a
+    string. Otherwise prints it and returns it as a pandas DataFrame, which is
+    empty if there are no differences."""
     our_sequence_globals = get_globals(active_groups)
     other_sequence_globals = get_globals(other_groups)
 
@@ -1102,13 +1104,14 @@ def globals_diff_groups(active_groups, other_groups, max_cols=1000, return_strin
         other_expression, other_tokens = remove_comments_and_tokenify(other_expression)
         if our_tokens != other_tokens:
             filtered_differences[name] = [repr(other_value), repr(our_value), other_expression, our_expression]
+    import pandas as pd
+    df = pd.DataFrame.from_dict(
+        filtered_differences,
+        'index',
+        columns=['Prev (Eval)', 'Current (Eval)', 'Prev (Raw)', 'Current (Raw)'],
+    ).sort_index()
     if filtered_differences:
-        import pandas as pd
-        df = pd.DataFrame.from_dict(filtered_differences, 'index')
-        df = df.sort_index()
-        df.columns = ['Prev (Eval)', 'Current (Eval)', 'Prev (Raw)', 'Current (Raw)']
-        df_string = df.to_string(max_cols=max_cols)
-        payload = df_string + '\n\n'
+        payload = df.to_string(max_cols=max_cols) + '\n\n'
     else:
         payload = 'Evaluated globals are identical to those of selected file.\n'
     if return_string:

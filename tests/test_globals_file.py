@@ -11,6 +11,8 @@
 # the project for the full license.                                 #
 #                                                                   #
 #####################################################################
+import contextlib
+import io
 import os
 import shutil
 import tempfile
@@ -64,6 +66,23 @@ class MalformedFileTests(unittest.TestCase):
                     f.write(header + entry)
                 with self.assertRaises(globals_file.GlobalsFileError):
                     runmanager.get_all_groups([path])
+
+
+class GlobalsDiffTests(unittest.TestCase):
+    def test_identical_globals_diff_to_an_empty_table(self):
+        directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, directory, True)
+        path = os.path.join(directory, 'globals.toml')
+        globals_file.new_globals_file(path)
+        globals_file.new_group(path, 'group')
+        globals_file.new_globals(path, 'group', {'x': {'default': '1'}})
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            table = runmanager.globals_diff_groups(
+                {'group': path}, {'group': path}, return_string=False
+            )
+
+        self.assertTrue(table.empty)
 
 
 class GlobalNameTests(unittest.TestCase):
