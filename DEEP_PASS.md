@@ -1138,3 +1138,39 @@ The branch's PR draft:
 > - `FingerTabWidget.setTabClosable(index, False)` raised, as `setTabButton` refused
 >   `None`.
 > - runviewer is started with zprocess's `start_daemon`, not a `Popen` per platform.
+
+## Compatibility audit
+
+Every compatibility path in the package at `fc29258`. The search covered legacy,
+deprecation, FutureWarning, alias, re-export, fallback and old-format handling, and
+any reference to another tier. No path serves only the fork's other tiers, or
+nothing, so none is removed.
+
+Kept, as upstream's own form has them:
+- #163's deprecated pylab names, with their FutureWarning and amber cells.
+- `get_shot_globals`' FutureWarning pointing to `labscript_utils.shot_utils`.
+- `functions.drop_times`.
+- `runmanager/__init__.py`'s re-exports and `__all__`.
+- `runmanager.remote`, with its `Client` name and flat functions, over `client.py`.
+- The client sending `preserve_comments` only when it is False.
+
+For Ian, each keeping a user's saved file working:
+1. Legacy HDF5 globals files (`globals_file.load_legacy_hdf5_document`,
+   `convert_to_toml`, the remote API's refusal, and the guesser's skip). They keep
+   globals files from before TOML, and the globals of any shot file, readable, read-only
+   and convertible to TOML on the first edit, with a FutureWarning on reading.
+2. A saved queue whose rows are bare paths (`QueueManager.restore_save_data`,
+   `QueueController._normalise_item`). This keeps the queue in a runmanager
+   configuration saved by `Production` loading after the merge.
+3. Saved queues and configurations from before the campaign's fields, which are
+   filled with defaults on loading: `paused`, `compile_mode`, `shot_id`, `default_shot`,
+   `send_to_runviewer`, `labscript_file`. These keep any older saved runmanager
+   configuration loading.
+4. Frozen `array(...)` text in saved queue rows from before 1006d75. It has no code of
+   its own: while `pylab_namespace` is True the rows compile, with the #163 warning,
+   and with it False they fail.
+5. `_normalise_record`'s format defaults: JIT? cleared under Scan?, and `outer` for a
+   scan with no expansion. They read TOML globals files that are older or edited by hand.
+
+The INI app-config conversion is labscript-utils', kept by Ian's decision in its pass.
+runmanager has no copy of it.
