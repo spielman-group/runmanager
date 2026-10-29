@@ -14,7 +14,8 @@ scanned, runmanager takes the Cartesian product of those parameters in order to 
 shots that span the entire parameter space. For more complex experiments, parameters
 can be linked together so they iterate in lock step by defining one or more zip groups. If
 multiple zip groups are defined, the parameter space explored will be the Cartesian product
-of each zip group and any other parameters containing an array or list.
+of each zip group and any other scanned parameters. A parameter that is not scanned has the
+same value, a whole list or array included, in every shot.
 
 .. _fig-interface:
 
