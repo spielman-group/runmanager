@@ -573,26 +573,26 @@ nothing of runmanager.
 
 ### Decided and applied
 
-Ian kept F, G and I, and had A–E and H cut as recommended. He had bugs 1–4 and 6
-fixed, bug 5 by blacs's owner (blacs 9528b18), and bug 7 documented, the
-behaviour left. For bug 3 a
-failed default shot now waits for its source, the globals or the default
-labscript file, to change, with a red ! beside the empty-queue policy meanwhile;
-for bug 6 the file has upstream BLACS's banner again.
+Ian kept F, G and I, and had A–E and H cut as recommended. He had bugs 1, 2, 4
+and 6 fixed, bug 5 by blacs's owner (blacs 9528b18), and bugs 3 and 7
+documented, the behaviour left. Bug 3 is in `KNOWN_ISSUES.md`: its fix, a
+failure remembered until its source changed, was reverted after two review
+rounds found faults in that memory. For bug 6 the file has upstream BLACS's
+banner again.
 
-Range for review: `7ede9b5..bb2a57f` on `CodeHealth`, one commit each: A
+Range for review: `7ede9b5..86de3e4` on `CodeHealth`, one commit each: A
 29de04e, B fa97b78, C 7915026, D 319a7ab, E 6ab5242, H 2cebb82, bug 2 cd5b36d,
-bug 3 a1d5d85, bug 4 c8171f8, bug 6 1f96b72, bug 7 bb2a57f. Bug 1 is on `Development` as 07058b7,
+bug 4 c8171f8, bug 6 1f96b72, bug 7 bb2a57f. Bug 1 is on `Development` as 07058b7,
 with its test 52466dc, and on `Production` as d475d27, adapted to its helpers; it
 reached `CodeHealth` in the merge 7ede9b5, with `LabAgentFixes2`. Bug 2's meta
 issue is closed (meta 376dc32). The suite is 146 tests, with 27 subtests, and each
 new or changed test fails without its change.
 
-Codex's review, all five agreed by Ian, is `92290b9..5ab9f2f`: H's unknown
-settings are replaced again and reported (0e9fa47); bug 3's source is compared by
-content, and a policy or script change clears the ! (fd02976), which also says in
-LAZY_COMPILE.md that a ready default shot goes when its script changes; the
+From Codex's reviews, agreed by Ian: H's unknown settings, the queue's and each
+row's, are replaced again and reported in red (0e9fa47, 888141b); the
 hidden-Unicode test collapses the row and reads the tooltip (c1caa88); and the
-default shot a close during its preparation leaves is in KNOWN_ISSUES.md
-(5ab9f2f), since waiting for it would deadlock on the preparation's `inmain`. The
-suite is 148 tests, and each new test fails without its change.
+default shot a close during its preparation leaves is in `KNOWN_ISSUES.md`
+(5ab9f2f), since waiting for it would deadlock on the preparation's `inmain`.
+Bug 3's fix (a1d5d85, fd02976 and its test 5f3107b) is reverted, in 5773cf7,
+4c199fb and e2b0d13, and the retries are in `KNOWN_ISSUES.md`. Each new test
+fails without its change.
