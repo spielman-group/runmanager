@@ -940,3 +940,14 @@ and `.pdf` are upstream's 2014 manual and stay.
 `README.md`, `AGENTS.md` and `KNOWN_ISSUES.md` are current. `LAZY_COMPILE.md` was
 checked against the code: compile modes, Engage's records, `compile_shot` and the
 failure rules.
+
+Ian approved C1 to C4 and P1 to P11. They are in `f101c93..d96ddbd`: ca7d66f for
+C2 to C4, d96ddbd for the documents and C1. P7's fix also corrects the same claim
+in `introduction.rst`. P9: `usage.rst` now holds all of `LAZY_COMPILE.md`, under
+"Compiling queued shots", "JIT globals" and the restart button, except the repeated
+default-shot failure, which `KNOWN_ISSUES.md` holds. The file is gone, and no repo
+referred to it. P12 is deferred until after the coupled merge, when the screenshots
+will be taken from the running app. The docs build, with the labscript_utils mocks
+of `conf.py` and Qt offscreen, gives no warning from this step. It shows one bug,
+now in `KNOWN_ISSUES.md`: `runmanager.remote` does not import under those mocks, so
+the API reference has no page for it. The suite is 155 tests, with 32 subtests.
