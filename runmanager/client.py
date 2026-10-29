@@ -43,6 +43,12 @@ LYSE_NOT_SENT = 'not sent'
 SHOT_OUTCOME_STATUSES = (BLACS_COMPLETED, BLACS_ABORTED, BLACS_FAILED, BLACS_REJECTED)
 
 
+def bound_for_lyse(record):
+    """Whether a :meth:`RunmanagerClient.shot_status` record's shot has gone to
+    lyse, or is still to go once BLACS completes it."""
+    return record['lyse'] in (LYSE_WAITING, LYSE_SENT)
+
+
 class SequenceRefused(ValueError):
     """Runmanager will not add shots to the sequence asked for."""
 
@@ -673,6 +679,9 @@ class RunmanagerClient(ZMQClient):
                     Runmanager will not send it, because Analyse was off when
                     the shot completed, or the shot was cleared while waiting
                     (the Clear button, or unticking Analyse).
+
+                :func:`bound_for_lyse` says whether a record is ``'waiting'``
+                or ``'sent'``.
             ``pending``
                 Whether the shot may still reach ``blacs`` ``'completed'``, as
                 far as runmanager can tell, and nothing about lyse. True for a
