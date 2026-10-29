@@ -152,11 +152,8 @@ class AnalysisSubmission(object):
         self.inqueue.put(['check/retry', None])
 
     def notify_shot_complete(self, filepath):
-        if not filepath:
-            return
         filepath = labscript_utils.shared_drive.path_to_local(str(filepath))
         self.inqueue.put(['file', filepath])
-        return 'queued'
 
     def shutdown(self):
         if self._shutdown:
@@ -164,11 +161,7 @@ class AnalysisSubmission(object):
         self._shutdown = True
         self.lyse_link.shutdown()
         self.inqueue.put(['close', None])
-        if (
-            self.mainloop_thread.is_alive()
-            and threading.current_thread() is not self.mainloop_thread
-        ):
-            self.mainloop_thread.join(timeout=1)
+        self.mainloop_thread.join(timeout=1)
 
     def mainloop(self):
         self._mainloop_logger = logging.getLogger('runmanager.AnalysisSubmission.mainloop')

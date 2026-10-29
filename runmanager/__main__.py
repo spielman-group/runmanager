@@ -37,15 +37,11 @@ splash.show()
 
 splash.update_text('importing standard library modules')
 import time
-import contextlib
 import threading
-import ast
-import pprint
 import tempfile
 import unicodedata
 import importlib.metadata
 import importlib.resources
-from pathlib import Path
 
 splash.update_text('importing matplotlib')
 # Evaluation of globals happens in a thread with the pylab module imported.
@@ -170,25 +166,6 @@ SUBMISSION_MODES = {
 }
 
 
-def log_if_global(g, g_list, message):
-    """logs a message if the global name "g" is in "g_list"
-    
-    useful if you want to print out a message inside a loop over globals,
-    but only for a particular global (or set of globals).
-    
-    If g_list is empty, then it will use the hardcoded list below
-    (useful if you want to change the behaviour globally)    
-    """
-    if not isinstance(g_list, list):
-        g_list = [g_list]
-        
-    if not g_list:
-        g_list = [] # add global options here
-    
-    if g in g_list:
-        logger.info(message)
-
-    
 def composite_colors(r0, g0, b0, a0, r1, g1, b1, a1):
     """composite a second colour over a first with given alpha values and return the
     result"""
@@ -201,10 +178,8 @@ def composite_colors(r0, g0, b0, a0, r1, g1, b1, a1):
     return [int(round(x)) for x in (r, g, b, 255 * a)]
 
 
-def expression_cell_colors(palette=None):
-    if palette is None:
-        qapplication = QtWidgets.QApplication.instance()
-        palette = qapplication.palette() if qapplication is not None else QtGui.QPalette()
+def expression_cell_colors():
+    palette = QtWidgets.QApplication.instance().palette()
     text_color = palette.color(QtGui.QPalette.Text)
     active_candidates = [QtGui.QColor('#D7ECFF'), QtGui.QColor('#234A75')]
     error_candidates = [QtGui.QColor('#F79494'), QtGui.QColor('#8A2E2E')]
@@ -239,16 +214,6 @@ def tooltip_with_hidden_unicode_warning(base_tooltip, text):
     if base_tooltip:
         return base_tooltip + '\n' + warning
     return warning
-
-
-@contextlib.contextmanager
-def nested(*contextmanagers):
-    if contextmanagers:
-        with contextmanagers[0]:
-            with nested(*contextmanagers[1:]):
-                yield
-    else:
-        yield
 
 
 def scroll_view_to_row_if_current(view, item):
@@ -1302,8 +1267,7 @@ class GroupTab(object):
         for index in self.ui.treeView_globals.selectionModel().selectedRows():
             name_item = self.get_global_name_item(index)
             if (
-                name_item is not None
-                and not name_item.data(self.GLOBALS_ROLE_IS_DUMMY_ROW)
+                not name_item.data(self.GLOBALS_ROLE_IS_DUMMY_ROW)
                 and name_item.text() not in names
             ):
                 names.append(name_item.text())
@@ -1935,7 +1899,6 @@ class RunManager(LabscriptGuiApplication):
         # The last manually selected shot output folder, defaults to
         # experiment_shot_storage:
         self.last_selected_shot_output_folder = self.exp_config.get('paths', 'experiment_shot_storage')
-        self.shared_drive_prefix = self.exp_config.get('paths', 'shared_drive')
         self.experiment_shot_storage = self.exp_config.get('paths', 'experiment_shot_storage')
         # Store the currently open groups as {(globals_filename, group_name): GroupTab}
         self.currently_open_groups = {}
@@ -2262,14 +2225,10 @@ class RunManager(LabscriptGuiApplication):
 
     def on_queue_empty_policy_changed(self, index):
         empty_queue_policy = self.queue_empty_policy_combo.itemData(index)
-        if empty_queue_policy is None:
-            return
         self.queue_manager.set_empty_queue_policy(empty_queue_policy)
 
     def on_queue_compile_mode_changed(self, index):
         compile_mode = self.queue_compile_mode_combo.itemData(index)
-        if compile_mode is None:
-            return
         self.queue_manager.set_compile_mode(compile_mode)
 
     def update_blacs_status(self, reachable, answer):
@@ -2445,7 +2404,7 @@ class RunManager(LabscriptGuiApplication):
         # A default shot belongs to the day's default sequence, which no batch
         # joins, so it is passed over here and offer_shot() does not record one
         # as the shot last sent.
-        queue_paths = self.queue_controller.get_queue_paths(include_default_shots=False)
+        queue_paths = self.queue_controller.get_queue_paths()
         if not queue_paths:
             return None
         return os.path.abspath(queue_paths[-1])
@@ -4207,23 +4166,13 @@ class RunManager(LabscriptGuiApplication):
                 key = 'new_guess'
             else:
                 key = 'previous_guess'
-                
-            # debug logging
-            log_if_global(global_name, [], 'setting expansion type for new dependency' if new else 'setting expansion type for old dependencies')
-            
-            
+
             # only do this if the expansion is *not* already set to a specific zip group
             if global_name in expansions and expansions[global_name] != '' and expansions[global_name] != 'outer':
                 expansion_types[global_name][key] = expansions[global_name]
-                
-                # debug logging
-                log_if_global(global_name, [], 'Using existing expansion %s for %s'%(expansions[global_name], global_name))
             else:
                 expansion_types[global_name][key] = expansion_to_set
                 expansions[global_name] = expansion_to_set
-                
-                # debug logging
-                log_if_global(global_name, [], 'Using existing expansion %s for %s'%(expansion_to_set, global_name))
             
         
         for global_name in sorted(expansion_types):
@@ -4362,8 +4311,6 @@ class RunManager(LabscriptGuiApplication):
         active_groups = item.get('active_groups') or inmain(
             self.get_active_groups, interactive=False
         )
-        if active_groups is None:
-            raise RuntimeError('No active globals groups available for queued compilation.')
         sequence_globals, runglobals = runmanager.get_queue_compile_globals(
             active_groups, item.get('frozen_globals'), default_globals=default_globals
         )

@@ -49,14 +49,10 @@ from runmanager.client import (
     COMPILE_FAILED,
     COMPILE_WAITING,
     LYSE_WAITING,
-    PROVIDER_NONE,
-    PROVIDER_PAUSED,
-    PROVIDER_SHOT,
     QUEUE_BLOCKED,
     QUEUE_LEFT,
     QUEUE_NOT_QUEUED,
     QUEUE_QUEUED,
-    SHOT_OUTCOME_STATUSES,
 )
 
 EMPTY_QUEUE_NOTHING = 'nothing'
@@ -442,17 +438,11 @@ class QueueController(object):
             self._items = kept
             return removed_paths, [dict(item) for item in kept]
 
-    def get_queue_paths(self, include_default_shots=True):
-        """Return the paths of the queued shots.
-
-        Clear ``include_default_shots`` to leave out the shots runmanager
-        produced itself, whose sequence no batch joins."""
+    def get_queue_paths(self):
+        """Return the paths of the queued shots, leaving out the shots
+        runmanager produced itself, whose sequence no batch joins."""
         with self._lock:
-            return [
-                item['path']
-                for item in self._items
-                if include_default_shots or not item['default_shot']
-            ]
+            return [item['path'] for item in self._items if not item['default_shot']]
 
     def _status(self, item, queue_step, pending=False):
         """The shot_status record of a row. Call with the lock held.

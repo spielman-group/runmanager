@@ -49,13 +49,3 @@ shot_status = _default_client.shot_status
 submit_shots = _default_client.submit_shots
 get_queue = _default_client.get_queue
 test_compile = _default_client.test_compile
-
-if __name__ == '__main__':
-    # Test
-    import time
-
-    current = get_values(raw=True)
-    print("get globals:", current)
-    print("set globals", set_values({'test': current['test']}, raw=True))
-    assert get_values(raw=True)['test'] == current['test']
-    engage()

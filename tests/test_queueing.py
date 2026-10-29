@@ -34,14 +34,18 @@ from fixtures import (
     submit_to_lyse,
     wait_for,
 )
-from runmanager.client import LYSE_SENT, PROVIDER_PAUSED, PROVIDER_PENDING
+from runmanager.client import (
+    LYSE_SENT,
+    PROVIDER_NONE,
+    PROVIDER_PAUSED,
+    PROVIDER_PENDING,
+    PROVIDER_SHOT,
+)
 from runmanager.queueing import (
     COMPILE_MODE_EAGER,
     COMPILE_MODE_LAZY,
     EMPTY_QUEUE_DEFAULT_LABSCRIPT,
     EMPTY_QUEUE_NOTHING,
-    PROVIDER_NONE,
-    PROVIDER_SHOT,
     TINTED_ROW_FOREGROUND,
     QueueController,
     QueueManager,
