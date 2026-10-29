@@ -951,3 +951,55 @@ will be taken from the running app. The docs build, with the labscript_utils moc
 of `conf.py` and Qt offscreen, gives no warning from this step. It shows one bug,
 now in `KNOWN_ISSUES.md`: `runmanager.remote` does not import under those mocks, so
 the API reference has no page for it. The suite is 155 tests, with 32 subtests.
+
+## Upstream adoption review
+
+Upstream's 93 non-merge commits in `master..upstream/master` (to `d5842a2`), read
+against `CodeHealth` at `6dd3dfd`. Nothing is adopted until Ian decides. Rows marked
+**bug** are faults the fork shares. The nine read in the code are in `KNOWN_ISSUES.md`,
+and the rest are from reading only. **conflict** marks a clash with the fork's design.
+
+### Adopt: fixes
+
+| Upstream | What | CodeHealth |
+| --- | --- | --- |
+| 28fc9ae, b283c3a, b5c4b25, 3483d09, c110ea0, `ExpansionError(ValueError)` from e829c32 | Refuse zip groups of unequal length and zipped globals that depend on other axes; check zip globals are iterable; treat every iterator as a tuple; keep a failing global's value in the namespace | **bug**: none of it. Unequal zips silently drop shots (`__init__.py:446`). Output changes: such sequences are refused |
+| 05a3b14, 0ba0e2a, 35ea631, 854c5da, a3a97be, the `split(None, 1)` of 03b54f9 | Ctrl+W, the globals diff, `find_comments`, a bare run-file name, long remote arrays, zip names with spaces | **bug**, one to four lines each |
+| 5bb5e3c, the finally-quit and stderr fallback of dc8695b | The compiler survives a missing script folder or `sys.exit`, and always quits its child | **bug**: the compiler child dies and runmanager waits |
+| b6cecb2, 331a7bd | Globals created, deleted or renamed during a parse | **bug** (read only): KeyError, or GlobalsFileError from `set_field` |
+| 763a278 | Keep a just-loaded group's stored zip name | **bug** (read only): may be overwritten by `outer`. Write a test first |
+| da0fd6b (3 of 9) | The copy/move menu's duplicate-name loop, `keyPressEvent` on an invalid index, `make_run_file_from_globals_files`'s run number | **bug** (read only). The other six are in the fork or do not apply to TOML |
+| 744d647 | A header line in the output box before each shot compiles | No. Put it in `QueueManager.compile_shot`, which has no batch loop |
+| d053c40 | Empty queue and Restart interrupt the running compile | No: they wait it out. **conflict**: the compile reply and `test_compiler_restart.py`. A hand port |
+| cd77801, bd805b0 | The compiler keeps the code object while the script is unchanged; preparse counts shots from axis lengths | No: each shot recompiles the script, and preparse builds every shot |
+| 2d8129d, 872a36d | Evaluate each global once, in dependency order, from symbol tables | No (repeated passes with `TraceDictionary`). One port with the first row; a self-reference becomes ValueError |
+| e5ecbd8 | The globals diff as a block per global, long values shortened | No: wide pandas tables that are slow in the output box |
+
+### Ian decides: features
+
+| Upstream | What | Notes |
+| --- | --- | --- |
+| a658642, e829c32, 1bd464e, 60b14c0, f0e044f, e2e542c, 78ddd37, 7528a82 | Expansion settings marked custom or automatic, with an `auto`/`none` drop-down editor | **conflict**: TOML record schema, Scan?-only expansion, `client.set_expansions`. A redesign, not a merge |
+| 9c5d2bc | A history of each global's values, and comments drawn grey | History **conflicts** with the Default/Scan value cell. Grey comments and its SyntaxError catch are small |
+| 45baf1f, 0a0ceb7, 8ae14c0 | Deprecate pylab names in globals; a namespace-file setting | **conflict**: frozen globals are numpy `repr`s that use pylab names. 8ae14c0 needs labscript to drop `from pylab import *` |
+| 076fbf8 | A Bool global's toggle in the value cell, not the units cell | **conflict**: the fork's units-cell checkbox |
+| 4bae40c, 0784bbd | Group tabs marked when they hold scanned globals; status icons right of the name | Small; adopt together |
+| 61c1a94, e4f30e1 | The Engage button and selection follow the theme; tab labels in the application font | The fork themes cells already; the rest is a few lines |
+| dea3566, 3bc461e, d5842a2, 1bc5c76, 2fdcc78, 9912fd0, 2309c7e | Exit if the port is in use; qtutils ≥ 4.4.1 and zprocess ≥ 3.0.1 floors; 2× icons; the application font and style | Needs zprocess `port_in_use` and qtutils 4.4 (env has 4.1.3) and labscript-utils' `setup_application`. Owners of those repos first |
+| ac679f8 | `sequence_id` time with its UTC offset | Changes the string; lyse must read it first (upstream lyse 87703f8) |
+| 4d287db, 04a36c4 | Release workflow: runners `windows-2022` and `macos-15-intel` (macos-13 is retired); tag handling | A file copy, if the fork's workflow is ever run |
+
+### Not wanted, or already in the fork
+
+- The module split and its fixes (7729dc8, e06872f, 7363f89, 9fb1358, 99cc405,
+  35355ea, 4c20a38, 7c50b46). The fork has its own modules (`globals_file`,
+  `queueing`, `client`), and upstream's `group_manager` is its HDF5 globals API.
+- Style and lint (ea20be6 to 0acc334, 9d24a9a, 5431bb8, the ruff settings). Step
+  2.6 does the fork's own style pass, including the eager log calls 5431bb8 removes.
+- 9ff38d5 repacks HDF5 globals files; TOML files are rewritten whole. bc71818 writes
+  the sequence globals once, but the fork freezes globals per shot. 057b251 and
+  bf55903 the fork has. ce80ab0 is a binding workaround that belongs in a shared
+  helper if needed. dc0d18f's screenshots show upstream's window.
+- Already in the fork: 6ba78d2, b42e389 (as Empty queue), 176acd9, 9005b03,
+  d8311b0 (for Engage and remote), six of da0fd6b's nine, and 57370ec
+  (`open_in_editor`).
