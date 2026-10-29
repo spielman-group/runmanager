@@ -22,7 +22,6 @@ import unittest
 from unittest import mock
 
 import labscript_utils.h5_lock, h5py
-from labscript_utils.ls_zprocess import ZMQServer
 from qtutils import inmain
 from qtutils.qt.QtCore import QCoreApplication, QEvent, Qt
 from qtutils.qt.QtGui import QStandardItemModel
@@ -42,6 +41,7 @@ from fixtures import (
     GroupTab,
     RunManager,
     RunmanagerServer,
+    free_port,
     labconfig,
     load_main_ui,
     main_module,
@@ -89,10 +89,8 @@ class RemoteCommandTestCase(unittest.TestCase):
         patcher = mock.patch.object(main_module, 'app', self.app)
         patcher.start()
         self.addCleanup(patcher.stop)
-        # Only the port RunmanagerServer's __init__ reads from the labconfig is
-        # skipped: the real server binds a free one, on loopback.
-        server = RunmanagerServer.__new__(RunmanagerServer)
-        ZMQServer.__init__(server, bind_address='tcp://127.0.0.1')
+        # On a free port, on loopback, never runmanager's own:
+        server = RunmanagerServer(port=free_port(), bind_address='tcp://127.0.0.1')
         self.addCleanup(server.shutdown)
         self.client = RunmanagerClient(host='127.0.0.1', port=server.port, timeout=10)
 

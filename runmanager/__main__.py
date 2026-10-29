@@ -4695,6 +4695,9 @@ class RunManager(LabscriptGuiApplication):
 
 
 class RunmanagerServer(ZMQServer):
+    server = 'runmanager'
+    default_port = DEFAULT_PORT
+
     # A global's fields as a remote caller names them, and as its file does.
     GLOBAL_FIELDS = {
         'value': 'default',
@@ -4704,10 +4707,6 @@ class RunmanagerServer(ZMQServer):
         'jit_enabled': 'jit_enabled',
         'expansion': 'expansion',
     }
-
-    def __init__(self):
-        port = app.exp_config.getint('ports', 'runmanager', fallback=DEFAULT_PORT)
-        ZMQServer.__init__(self, port=port)
 
     def _get_active_global_locations(self, names=None):
         active_groups = inmain(app.get_active_groups, interactive=False)
