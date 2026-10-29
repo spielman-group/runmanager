@@ -898,3 +898,45 @@ patch-equivalent to any there. W5 has 2, though it is the same as upstream's
 `maintenance/3.0.x`. Ian deleted all five, at the tips above. W3 went
 because `CodeHealth`'s `.github` matches it, and e4a440f's tree replaced its
 `group.ui` table layout.
+
+## Step 2.5: documents, TODO, FIXME, XXX
+
+Searched: `git grep` for TODO, FIXME and XXX in every tracked file; comment lines
+that parse as Python in `runmanager/`, `tests/` and `docs/source/conf.py`; and
+every document, read against the code at `c36421f`: `README.md`, `AGENTS.md`,
+`KNOWN_ISSUES.md`, `LAZY_COMPILE.md`, `issues/`, and `docs/source`'s `.rst` files.
+Line references are to `c36421f`. Marks: **do** (easy and worthwhile), **docs**
+(worthwhile but more than a few lines), **go** (delete). No bugs in the code were
+found.
+
+### TODOs and commented-out code
+
+| | Where | What | Mark |
+| --- | --- | --- | --- |
+| C1 | `docs/source/conf.py:114-116` | `# TODO`, `desktop-app`, `spinapi/pynivision/etc` under `intersphinx_mapping` | go, as in every repo |
+| C2 | `__main__.py:1999-2006`, `:2138-2140`, `:2766-2779` | Upstream's unfinished context menu for the axes tab: a custom context-menu policy with no handler connected, two actions in no menu, and three handlers that raise `NotImplementedError`, one with its menu code commented out. Step 2.4's name count missed it, since the connections count as uses | go: about 20 lines; a right-click on the axes tab does nothing before or after |
+| C3 | `__main__.py:2254` | `# self.ui.verticalLayout_output_tab.remove(self.output_box)` | go |
+| C4 | `__main__.py:4052`, `:4054`, `:4063` | Three commented-out `logger.info` lines in `parse_globals` | go |
+
+### Documents
+
+| | Document | Problem | Mark |
+| --- | --- | --- | --- |
+| P1 | `docs/source/index.rst:31` | The BitBucket archive link | go (Ian's standing rule) |
+| P2 | `usage.rst:64-70` | The "BLACS hostname" item describes a field runmanager no longer has | do: drop the item and move its labconfig sentence to the BLACS checkbox item |
+| P3 | `usage.rst:80-104` | "The first 3 tabs" lists Output, Axes and Groups. The Queue tab, which comes first, is missing | do: one more item, pointing to "Where shot files are written" |
+| P4 | `usage.rst:102`, `:134-135`, `:147` | Globals are said to live in HDF5 files. They are TOML files, and an HDF5 globals file is read-only until it is converted | do: a few words each |
+| P5 | `usage.rst:243-249` and footnote [3] | Opening a shot file's globals is said to edit that shot file. An edit converts it to a new TOML file, and the shot file is left alone (`ensure_editable_globals_file`, `__main__.py:3546`) | do: rewrite the paragraph and drop the footnote |
+| P6 | `usage.rst:228-232` | A Boolean global's units are said to be set to Bool. The units cell shows Bool, and the file keeps its units (3c42c11) | do: one sentence |
+| P7 | `usage.rst:178-190`, `:272-286` | A list or array value is said to become a scan axis by itself. In the fork, a global scans only with *Scan?* ticked, from its Scan expression; its Default is passed whole (`__init__.py:192-197`). The Default and Scan columns, *Scan?* and *JIT?* are not described anywhere in the docs | docs: rewrite feature 1 and the list item, and add a short section on the value column and JIT globals, about 30 lines |
+| P8 | `usage.rst:324-325`, `:396-400`, `:418-419` | Engage is said to write each shot file and send it to BLACS. Engage queues records; files are written when a shot compiles, and BLACS asks for them (`LAZY_COMPILE.md`) | do: three sentences |
+| P9 | `LAZY_COMPILE.md`, at the root | The compile modes, JIT globals and compile failures, for users, outside the built docs | Ian decides: keep it, or move it into `usage.rst` under P7's new section |
+| P10 | `api/index.rst` | `runmanager.globals_file` is missing; the removed `runmanager.*` globals functions point users to it | do: one line |
+| P11 | `issues/runmanager_issues_2026_09_24.md` | Says its one item waits for the test cleanup, which step 1 did. The item: the tests build `QueueManager` in eight places in four files, each differing in one to four of five arguments | go: a shared builder would hide what each test gives the manager; the file goes with it |
+| P12 | `usage.rst`'s figures | They show upstream's window; the fork has rearranged it (`96390b4`) and replaced Abort with Empty queue | docs: new screenshots, for Ian |
+
+The rest of `usage.rst` is upstream's text and holds. `docs/using_runmanager.docx`
+and `.pdf` are upstream's 2014 manual and stay.
+`README.md`, `AGENTS.md` and `KNOWN_ISSUES.md` are current. `LAZY_COMPILE.md` was
+checked against the code: compile modes, Engage's records, `compile_shot` and the
+failure rules.
