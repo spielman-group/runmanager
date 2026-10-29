@@ -397,20 +397,11 @@ def get_field(filename, groupname, globalname, field):
 @_locked
 def set_field(filename, groupname, globalname, field, value):
     record = get_global_record(filename, groupname, globalname)
-    # Disabling a scan (directly, or by enabling JIT) leaves the stored
-    # expansion alone, so that a zip group survives a scan off/on cycle.
-    if field == "scan_enabled":
-        record[field] = bool(value)
-        if record[field]:
-            record["jit_enabled"] = False
-            if not record["expansion"]:
-                record["expansion"] = "outer"
-    elif field == "jit_enabled":
-        record[field] = bool(value)
-        if record[field]:
-            record["scan_enabled"] = False
-    else:
-        record[field] = value
+    record[field] = value
+    # Saving keeps Scan? over JIT? and gives a scan an expansion, so ticking
+    # JIT? is the one change that must untick Scan? itself:
+    if field == "jit_enabled" and value:
+        record["scan_enabled"] = False
     set_global_record(filename, groupname, globalname, record)
 
 
