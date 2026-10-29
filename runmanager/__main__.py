@@ -1398,6 +1398,7 @@ class GroupTab(object):
             units_item.setBackground(QtGui.QBrush(QtGui.QColor(self.color_bool_off)))
         else:
             units_item.setData(False, self.GLOBALS_ROLE_IS_BOOL)
+            units_item.setData(units_item.text(), self.GLOBALS_ROLE_SORT_DATA)
             units_item.setEditable(True)
             units_item.setData(None, QtCore.Qt.CheckStateRole)
             units_item.setData(None, QtCore.Qt.BackgroundRole)

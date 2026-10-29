@@ -257,6 +257,18 @@ class ValueColumnTests(unittest.TestCase):
         self.assertTrue(self.record('power')['jit_enabled'])
         self.assertEqual(self.record('power')['units'], 'Hz')
 
+    def test_a_global_that_stops_being_boolean_sorts_by_its_units(self):
+        self.tab.change_global('freq', 'units', '', 'A', interactive=False)
+        self.tab.change_global('power', 'units', '', 'Hz', interactive=False)
+        self.view.sortByColumn(self.tab.GLOBALS_COL_UNITS, QtCore.Qt.SortOrder.AscendingOrder)
+        self.tab.change_global('power', 'default', '2', 'True', interactive=False)
+        self.tab.change_global('power', 'default', 'True', '3', interactive=False)
+        names = [
+            self.tab.globals_model.item(row, self.tab.GLOBALS_COL_NAME).text()
+            for row in range(self.tab.globals_model.rowCount())
+        ]
+        self.assertLess(names.index('freq'), names.index('power'))
+
     def test_child_selection_targets_the_global_for_bulk_changes(self):
         active, _ = self.value_rect('time')
         self.view.expand(active)
