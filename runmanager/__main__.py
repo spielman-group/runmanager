@@ -4071,6 +4071,22 @@ class RunManager(LabscriptGuiApplication):
                     if isinstance(value, runmanager.ExpansionError):
                         continue
                     return False
+        def store_guess(group_name, global_name, guess):
+            # A legacy HDF5 globals file is read-only until the user converts it,
+            # so no guess is stored in one:
+            filename = active_groups[group_name]
+            if runmanager.globals_file.is_legacy_hdf5(filename):
+                return False
+            try:
+                runmanager.globals_file.set_field(
+                    filename, group_name, global_name, 'expansion', guess
+                )
+            except runmanager.globals_file.GlobalsFileError:
+                # Deleted or renamed after the globals were read; the parse that
+                # follows that change updates it.
+                return False
+            return True
+
         # Did the guessed expansion type for any of the globals change?
         expansion_types_changed = False
         expansion_types = {}
@@ -4109,16 +4125,9 @@ class RunManager(LabscriptGuiApplication):
                                                     'value': new_value
                                                     }
                 elif new_guess != previous_guess:
-                    filename = active_groups[group_name]
-                    # A legacy HDF5 globals file is read-only until the user
-                    # converts it, so no guess is stored in one:
-                    if runmanager.globals_file.is_legacy_hdf5(filename):
-                        continue
-                    runmanager.globals_file.set_field(
-                        filename, group_name, global_name, 'expansion', new_guess
-                    )
-                    expansions[global_name] = new_guess
-                    expansion_types_changed = True
+                    if store_guess(group_name, global_name, new_guess):
+                        expansions[global_name] = new_guess
+                        expansion_types_changed = True
 
         # recursively find dependencies and add them to a zip group!
         def find_dependencies(global_name, global_hierarchy, expansion_types):
@@ -4182,14 +4191,9 @@ class RunManager(LabscriptGuiApplication):
 
         for global_name, guesses in expansion_types.items():
             if guesses['new_guess'] != guesses['previous_guess']:
-                filename = active_groups[guesses['group_name']]
-                if runmanager.globals_file.is_legacy_hdf5(filename):
-                    continue
-                runmanager.globals_file.set_field(
-                    filename, str(guesses['group_name']), str(global_name), 'expansion',
-                    str(guesses['new_guess']))
-                expansions[global_name] = guesses['new_guess']
-                expansion_types_changed = True
+                if store_guess(guesses['group_name'], global_name, str(guesses['new_guess'])):
+                    expansions[global_name] = guesses['new_guess']
+                    expansion_types_changed = True
 
         # Now check everything that has an expansion type not equal to outer.
         # If it has one, but is not iteratble, remove it from teh zip group
@@ -4199,13 +4203,8 @@ class RunManager(LabscriptGuiApplication):
                     try:
                         iter(evaled_globals[group_name][global_name])
                     except Exception:
-                        filename = active_groups[group_name]
-                        if runmanager.globals_file.is_legacy_hdf5(filename):
-                            continue
-                        runmanager.globals_file.set_field(
-                            filename, group_name, global_name, 'expansion', ''
-                        )
-                        expansion_types_changed = True
+                        if store_guess(group_name, global_name, ''):
+                            expansion_types_changed = True
 
         self.previous_evaled_globals = evaled_globals
         self.previous_global_hierarchy = global_hierarchy
