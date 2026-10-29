@@ -87,7 +87,7 @@ def rename_global(filename, groupname, oldglobalname, newglobalname):
 
 
 def guess_expansion_type(value):
-    if isinstance(value, np.ndarray) or isinstance(value, list):
+    if isinstance(value, (np.ndarray, list)):
         return 'outer'
     else:
         return ''
@@ -95,7 +95,7 @@ def guess_expansion_type(value):
 
 def get_all_groups(h5_files):
     """returns a dictionary of group_name: h5_path pairs from a list of h5_files."""
-    if isinstance(h5_files, bytes) or isinstance(h5_files, str):
+    if isinstance(h5_files, (bytes, str)):
         h5_files = [h5_files]
     groups = {}
     for path in h5_files:
