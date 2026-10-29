@@ -326,7 +326,7 @@ class ItemView(LeftClickMixin):
     COLOR_HIGHLIGHT = "#40308CC6" # Semitransparent blue
 
     def __init__(self, *args):
-        super(ItemView, self).__init__(*args)
+        super().__init__(*args)
         self.setAutoScroll(False)
         set_selection_highlight(self)
 
@@ -342,7 +342,7 @@ class ItemView(LeftClickMixin):
             else:
                 # Space/enter on non-editable items simulates a left click:
                 self.leftClicked.emit(index)
-        return super(ItemView, self).keyPressEvent(event)
+        return super().keyPressEvent(event)
 
     def moveCursor(self, cursor_action, keyboard_modifiers):
         current_index = self.currentIndex()
@@ -360,13 +360,13 @@ class ItemView(LeftClickMixin):
         elif cursor_action == QtWidgets.QAbstractItemView.MoveNext:
             return current_index.sibling(current_row, current_column + 1)
         else:
-            return super(ItemView, self).moveCursor(cursor_action, keyboard_modifiers)
+            return super().moveCursor(cursor_action, keyboard_modifiers)
 
 
 class TreeView(ItemView, MovableRowsMixin, QtWidgets.QTreeView):
     """Treeview version of our customised ItemView"""
     def __init__(self, parent=None):
-        super(TreeView, self).__init__(parent)
+        super().__init__(parent)
         # Set columns to their minimum size, disabling resizing. Caller may still
         # configure a specific section to stretch:
         self.header().setSectionResizeMode(
@@ -401,7 +401,7 @@ class GlobalsTreeView(TreeView):
 class TableView(ItemView, QtWidgets.QTableView):
     """TableView version of our customised ItemView"""
     def __init__(self, parent=None):
-        super(TableView, self).__init__(parent)
+        super().__init__(parent)
         # Set rows and columns to the minimum size, disabling interactive resizing.
         # Caller may still configure a specific column to stretch:
         self.verticalHeader().setSectionResizeMode(
