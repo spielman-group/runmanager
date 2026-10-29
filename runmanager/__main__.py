@@ -5032,8 +5032,8 @@ class RunmanagerServer(ZMQServer):
         # Refused before any write: a batch must not be half applied, and the
         # Convert dialog would stop the server answering.
         for global_name, new_value in globals.items():
-            if raw and not isinstance(new_value, (str, bytes)):
-                msg = "global %s must be a string if raw=True, not %s"
+            if raw and not isinstance(new_value, str):
+                msg = "global %s must be a str if raw=True, not %s"
                 raise TypeError(msg % (global_name, new_value.__class__.__name__))
             if global_name not in locations:
                 raise ValueError(

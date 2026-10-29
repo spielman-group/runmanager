@@ -522,6 +522,14 @@ class SubmitShotsTests(RemoteCommandTestCase):
             self.expressions(), {'x': '1.0  # MHz', 'y': '2*3', 'depth': '4'}
         )
 
+    def test_a_raw_value_that_is_not_text_is_refused_before_anything_is_set(self):
+        with self.assertRaises(TypeError):
+            self.request(self.client.set_values, {'y': '7', 'x': b'1'}, raw=True)
+
+        self.assertEqual(
+            self.expressions(), {'x': '0 # metres', 'y': '2*3', 'depth': '4'}
+        )
+
     def test_skip_missing_writes_the_globals_that_exist_and_returns_the_rest(self):
         with self.assertRaises(ValueError):
             self.request(self.client.set_values, {'depth': 5, 'nope': 2})
