@@ -1075,11 +1075,20 @@ def flatten_globals(sequence_globals, evaluated=False):
     return flattened_sequence_globals
 
 
-def globals_diff_groups(active_groups, other_groups, max_cols=1000, return_string=True):
+def _shortened(text):
+    """``text`` on one line, with its middle cut out if it is over 200 characters."""
+    text = ' '.join(text.split())
+    if len(text) > 200:
+        text = text[:98] + ' ... ' + text[-97:]
+    return text
+
+
+def globals_diff_groups(active_groups, other_groups, return_string=True):
     """Given two sets of globals groups, perform a diff of the raw
     and evaluated globals. If return_string is True, returns the diff as a
     string. Otherwise prints it and returns it as a pandas DataFrame, which is
-    empty if there are no differences."""
+    empty if there are no differences. In the string, values and expressions
+    over 200 characters are shortened; the DataFrame has them in full."""
     our_sequence_globals = get_globals(active_groups)
     other_sequence_globals = get_globals(other_groups)
 
@@ -1111,24 +1120,30 @@ def globals_diff_groups(active_groups, other_groups, max_cols=1000, return_strin
         other_expression, other_tokens = remove_comments_and_tokenify(other_expression)
         if our_tokens != other_tokens:
             filtered_differences[name] = [repr(other_value), repr(our_value), other_expression, our_expression]
-    import pandas as pd
-    df = pd.DataFrame.from_dict(
-        filtered_differences,
-        'index',
-        columns=['Prev (Eval)', 'Current (Eval)', 'Prev (Raw)', 'Current (Raw)'],
-    ).sort_index()
+    columns = ['Prev (Eval)', 'Current (Eval)', 'Prev (Raw)', 'Current (Raw)']
     if filtered_differences:
-        payload = df.to_string(max_cols=max_cols) + '\n\n'
+        # A block per global, since a table pads every row to its longest cell,
+        # which for a long list makes text the output box takes minutes to lay out:
+        width = max(len(column) for column in columns) + 2
+        blocks = []
+        for name in sorted(filtered_differences):
+            lines = [name]
+            for column, text in zip(columns, filtered_differences[name]):
+                lines.append(f"    {column + ':':<{width}}{_shortened(text)}")
+            blocks.append('\n'.join(lines))
+        payload = '\n\n'.join(blocks) + '\n\n'
     else:
         payload = 'Evaluated globals are identical to those of selected file.\n'
     if return_string:
         return payload
-    else:
-        print(payload)
-        return df
+    print(payload)
+    import pandas as pd
+    return pd.DataFrame.from_dict(
+        filtered_differences, 'index', columns=columns
+    ).sort_index()
 
 
-def globals_diff_shots(file1, file2, max_cols=100):
+def globals_diff_shots(file1, file2):
     # Get file's globals groups
     active_groups = get_all_groups(file1)
 
@@ -1136,4 +1151,4 @@ def globals_diff_shots(file1, file2, max_cols=100):
     other_groups = get_all_groups(file2)
 
     print('Globals diff between:\n%s\n%s\n\n' % (file1, file2))
-    return globals_diff_groups(active_groups, other_groups, max_cols=max_cols, return_string=False)
+    return globals_diff_groups(active_groups, other_groups, return_string=False)
