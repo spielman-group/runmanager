@@ -11,10 +11,11 @@
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #
 import copy
+import importlib.metadata
 import os
 from pathlib import Path
-from jinja2 import FileSystemLoader, Environment
-import importlib.metadata
+
+from jinja2 import Environment, FileSystemLoader
 
 # -- Project information (unique to each project) -------------------------------------
 
@@ -163,9 +164,7 @@ elif labscript_suite_doc_version not in ['stable', 'latest']:
 labscript_intersphinx_mapping = {}
 for ls_prog in labscript_suite_programs:
     val = (
-        'https://docs.labscriptsuite.org/projects/{}/en/{}/'.format(
-            ls_prog, labscript_suite_doc_version
-        ),
+        f'https://docs.labscriptsuite.org/projects/{ls_prog}/en/{labscript_suite_doc_version}/',
         None,
     )
     labscript_intersphinx_mapping[ls_prog] = val
@@ -178,7 +177,7 @@ for ls_prog in labscript_suite_programs:
 # add intersphinx reference for the metapackage
 if project != "the labscript suite":
     val = (
-        'https://docs.labscriptsuite.org/en/{}/'.format(labscript_suite_doc_version),
+        f'https://docs.labscriptsuite.org/en/{labscript_suite_doc_version}/',
         None,
     )
     intersphinx_mapping['labscript-suite'] = val
