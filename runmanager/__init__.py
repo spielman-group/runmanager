@@ -12,6 +12,7 @@
 #####################################################################
 
 import itertools
+import math
 import os
 import sys
 import random
@@ -449,16 +450,9 @@ def evaluate_globals(sequence_globals, raise_exceptions=True):
     return results, global_hierarchy, expansions
 
 
-def expand_globals(sequence_globals, evaled_globals, expansion_config = None, return_dimensions = False):
-    """Expands iterable globals according to their expansion
-    settings. Creates a number of 'axes' which are to be outer product'ed
-    together. Some of these axes have only one element, these are globals
-    that do not vary. Some have a set of globals being zipped together,
-    iterating in lock-step. Others contain a single global varying
-    across its values (the globals set to 'outer' expansion). Returns
-    a list of shots, each element of which is a dictionary for that
-    shot's globals."""
-
+def _make_axes(sequence_globals, evaled_globals, expansion_config=None):
+    """The scan's axes as ``(axes, global_names, shuffle)``, each a dict by axis name,
+    in the axes' order: their values, the globals on them, and whether to shuffle."""
     if expansion_config is None:
         order = {}
         shuffle = {}
@@ -484,7 +478,6 @@ def expand_globals(sequence_globals, evaled_globals, expansion_config = None, re
 
     axes = {}
     global_names = {}
-    dimensions = {}
     for zip_key in zip_keys:
         axis = []
         zip_global_names = []
@@ -500,9 +493,7 @@ def expand_globals(sequence_globals, evaled_globals, expansion_config = None, re
                     value = [value]
                 axis.append(value)
                 zip_global_names.append(global_name)
-        axis = list(zip(*axis, strict=True))
-        dimensions['zip '+zip_key] = len(axis)
-        axes['zip '+zip_key] = axis
+        axes['zip '+zip_key] = list(zip(*axis, strict=True))
         global_names['zip '+zip_key] = zip_global_names
 
     # Give each global being outer-product'ed its own axis. It gets
@@ -514,35 +505,64 @@ def expand_globals(sequence_globals, evaled_globals, expansion_config = None, re
             value = values[global_name]
             if isinstance(value, Exception):
                 continue
-            axis = [value]
-            axis = list(zip(*axis))
-            dimensions['outer '+global_name] = len(axis)
-            axes['outer '+global_name] = axis
+            axes['outer '+global_name] = list(zip(*[value]))
             global_names['outer '+global_name] = [global_name]
 
-    # add any missing items to order and dimensions
-    for key, value in axes.items():
-        if key not in order:
-            order[key] = -1
-        if key not in shuffle:
-            shuffle[key] = False
-        if key not in dimensions:
-            dimensions[key] = 1
+    # sort the axes by order. An ordered axis the globals no longer produce, such
+    # as a scan just disabled, is skipped:
+    ordered = sorted(axes, key=lambda key: order.get(key, -1))
+    return (
+        {key: axes[key] for key in ordered},
+        {key: global_names[key] for key in ordered},
+        {key: shuffle.get(key, False) for key in ordered},
+    )
+
+
+def count_shots(sequence_globals, evaled_globals, expansion_config=None, return_dimensions=False):
+    """Count the shots expand_globals makes from the same arguments, without making them.
+
+    Parameters
+    ----------
+    sequence_globals, evaled_globals, expansion_config
+        As expand_globals takes them.
+    return_dimensions : bool, optional
+        Also return the length of each axis.
+
+    Returns
+    -------
+    int
+        The number of shots.
+    dict
+        With ``return_dimensions``, the length of each axis, by its name.
+    """
+    axes, _, _ = _make_axes(sequence_globals, evaled_globals, expansion_config)
+    dimensions = {key: len(axis) for key, axis in axes.items()}
+    n_shots = math.prod(dimensions.values())
+    if return_dimensions:
+        return n_shots, dimensions
+    return n_shots
+
+
+def expand_globals(sequence_globals, evaled_globals, expansion_config = None, return_dimensions = False):
+    """Expands iterable globals according to their expansion
+    settings. Creates a number of 'axes' which are to be outer product'ed
+    together. Some of these axes have only one element, these are globals
+    that do not vary. Some have a set of globals being zipped together,
+    iterating in lock-step. Others contain a single global varying
+    across its values (the globals set to 'outer' expansion). Returns
+    a list of shots, each element of which is a dictionary for that
+    shot's globals."""
+    axes, global_names, shuffle = _make_axes(sequence_globals, evaled_globals, expansion_config)
+    dimensions = {key: len(axis) for key, axis in axes.items()}
 
     # shuffle relevant axes
     for axis_name, axis_values in axes.items():
         if shuffle[axis_name]:
             random.shuffle(axis_values)
 
-    # sort axes and global names by order. An ordered axis the globals no longer
-    # produce, such as a scan just disabled, is skipped:
-    ordered = [key for key in sorted(order, key=order.get) if key in axes]
-    axes = [axes[key] for key in ordered]
-    global_names = [global_names[key] for key in ordered]
-
+    axes = list(axes.values())
     # flatten the global names
-    global_names = [global_name for global_list in global_names for global_name in global_list]
-
+    global_names = [global_name for global_list in global_names.values() for global_name in global_list]
 
     shots = []
     for axis_values in itertools.product(*axes):

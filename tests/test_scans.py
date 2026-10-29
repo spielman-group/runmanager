@@ -70,6 +70,24 @@ class ZipGroupTests(unittest.TestCase):
         self.assertEqual(results['group']['c'], [8, 10])
 
 
+class ShotCountTests(unittest.TestCase):
+    def test_the_shot_count_is_the_number_of_shots_engage_makes(self):
+        for scan in [
+            {'a': ('5', ''), 'x': ('[1, 2, 3]', 'outer'), 'p': ('[4, 5]', 'z'), 'q': ('[6, 7]', 'z')},
+            {'a': ('5', '')},
+            {'x': ('[]', 'outer'), 'y': ('[1, 2]', 'outer')},
+        ]:
+            with self.subTest(scan=scan):
+                sequence_globals, results = evaluate(scan)
+                shots, dimensions = runmanager.expand_globals(
+                    sequence_globals, results, return_dimensions=True
+                )
+                self.assertEqual(
+                    runmanager.count_shots(sequence_globals, results, return_dimensions=True),
+                    (len(shots), dimensions),
+                )
+
+
 class ExpansionGuessTests(unittest.TestCase):
     def setUp(self):
         directory = tempfile.mkdtemp()

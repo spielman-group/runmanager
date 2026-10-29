@@ -3370,18 +3370,17 @@ class RunManager(LabscriptGuiApplication):
         # type changes. If this occurs, we will have to parse again to
         # include the change:
         while True:
-            results = self.parse_globals(active_groups, raise_exceptions=False, expand_globals=False, return_dimensions = True)
-            sequence_globals, shots, evaled_globals, global_hierarchy, expansions, dimensions = results
-            self.n_shots = len(shots)
+            results = self.parse_globals(active_groups, raise_exceptions=False, expand_globals=False)
+            sequence_globals, _, evaled_globals, global_hierarchy, expansions = results
             expansions_changed = self.guess_expansion_modes(
                 active_groups, evaled_globals, global_hierarchy, expansions)
             if not expansions_changed:
-                # Now expand globals while parsing to calculate the number of shots.
-                # this must only be done after the expansion type guessing has been updated to avoid exceptions
-                # when changing a zip group from a list to a single value
-                results = self.parse_globals(active_groups, raise_exceptions=False, expand_globals=True, return_dimensions = True)
-                sequence_globals, shots, evaled_globals, global_hierarchy, expansions, dimensions = results
-                self.n_shots = len(shots)
+                # Count the shots without making them, which for a large scan
+                # would take all the memory there is. Only once the guessing has
+                # settled, so that the counted expansions are the stored ones:
+                self.n_shots, dimensions = runmanager.count_shots(
+                    sequence_globals, evaled_globals, return_dimensions=True
+                )
                 break
         self.update_tabs_parsing_indication(active_groups, sequence_globals, evaled_globals, self.n_shots)
         self.update_axes_tab(expansions, dimensions)
@@ -4031,21 +4030,14 @@ class RunManager(LabscriptGuiApplication):
         success, error = self.queue_manager.compile_shot(record)
         return {'success': success, 'error': error, 'path': record['path']}
 
-    def parse_globals(self, active_groups, raise_exceptions=True, expand_globals=True, expansion_order = None, return_dimensions = False):
+    def parse_globals(self, active_groups, raise_exceptions=True, expand_globals=True, expansion_order = None):
         sequence_globals = runmanager.get_globals(active_groups)
         evaled_globals, global_hierarchy, expansions = runmanager.evaluate_globals(sequence_globals, raise_exceptions)
         if expand_globals:
-            if return_dimensions:
-                shots, dimensions = runmanager.expand_globals(sequence_globals, evaled_globals, expansion_order, return_dimensions=return_dimensions)
-            else:
-                shots = runmanager.expand_globals(sequence_globals, evaled_globals, expansion_order)
+            shots = runmanager.expand_globals(sequence_globals, evaled_globals, expansion_order)
         else:
             shots = []
-            dimensions = {}
-        if return_dimensions:
-            return sequence_globals, shots, evaled_globals, global_hierarchy, expansions, dimensions
-        else:
-            return sequence_globals, shots, evaled_globals, global_hierarchy, expansions
+        return sequence_globals, shots, evaled_globals, global_hierarchy, expansions
 
     def guess_expansion_modes(self, active_groups, evaled_globals, global_hierarchy, expansions):
         """This function is designed to be called iteratively. It changes the
