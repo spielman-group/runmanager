@@ -52,20 +52,51 @@ the dependency hierarchy holds only the names on the path taken: for
 
 ## Architecture
 
-In `runmanager/evaluator.py`, as upstream has it:
+Upstream's `runmanager/evaluator.py` is taken whole, from `upstream/master`, together
+with its `runmanager/exceptions.py`. It already holds every upstream evaluator commit
+the fork has ported one at a time, and the fork's changes then follow as commits of
+their own:
 - `_global_references(table)` walks a `symtable` (872a36d).
-- `_evaluate_globals` flattens the groups as now, then compiles each expression
-  once. It keeps the code object and the expression's references, and takes the
-  dependencies as the references that are globals.
-- `graphlib.TopologicalSorter` orders the globals. On a `CycleError`, the cycle's
-  globals get the ValueError and leave the graph, and sorting goes on.
-- The expressions are evaluated in that order, in one namespace dict. A global whose
-  dependency failed gets the NameError instead of being evaluated.
-- The zip-length and other-axes checks run after, on the static hierarchy.
+- `_evaluate_globals` compiles each expression once, keeping its code object and
+  references. It orders the globals with `graphlib.TopologicalSorter`. On a
+  `CycleError`, the cycle's globals get the ValueError and leave the graph, and
+  sorting goes on. Then it evaluates them in that order, in one namespace dict
+  (2d8129d).
+- #163's namespace and deprecation checks read the symbol-table references (45baf1f).
+- `ExpansionError` carries the global's value (e829c32's exception, which upstream's
+  evaluator constructs).
 
-`TraceDictionary` goes. Upstream removed it too, and nothing outside runmanager
-uses it, but it is a public name of `runmanager` (in `__all__`). It leaves
-`__all__`, as upstream's has.
+`TraceDictionary` goes. Upstream removed it too, and nothing outside runmanager uses
+it. It leaves `runmanager/__init__.py` and its `__all__`, a separate commit.
+
+## Build
+
+1. Replace `evaluator.py` and `exceptions.py` with upstream's, crediting 2d8129d,
+   872a36d and the evaluator half of e829c32.
+2. One fork commit: the zipped-global check compares the expansion settings
+   themselves, not upstream's `axis_names`. The reason: `axis_names` treats an `outer`
+   global and a zip group of the same name as one axis, which is part of e829c32's
+   expansion-setting change that Ian deferred, and the fork's expander keeps them as
+   two axes.
+3. One fork commit: `TraceDictionary` leaves `__init__.py`.
+
+The fork's other evaluator changes need no line of their own:
+- The guesser reads the hierarchy as it is, now static.
+- The frozen globals and JIT globals do not touch the evaluator.
+- #163's checks are upstream's.
+
+After the build, `git diff upstream/master CodeHealth -- runmanager/evaluator.py` holds
+only step 2, and `runmanager/exceptions.py` does not differ.
+
+| Upstream commit | In the build |
+| --- | --- |
+| 7729dc8, e06872f, 4c20a38 (split, docstrings, `iterator_to_tuple` moved) | Taken as is |
+| ea20be6, 9d24a9a, a467455, 2754f37, 9a3bd5e, 65bc426 (style and lint) | Taken as is |
+| 3483d09, b5c4b25, 28fc9ae, b283c3a, c110ea0 (already ported) | Taken as is |
+| 2d8129d (once each, in order) | Taken as is |
+| 872a36d (symbol-table references) | Taken as is |
+| e829c32 (expansion settings) | `ExpansionError(message, value)` taken as is. `axis_names`, in the other-axes check, differs: step 2 |
+| 45baf1f (#163) | Taken as is. It replaces the fork's check of the traced names |
 
 ## What changes for users
 
@@ -82,11 +113,12 @@ uses it, but it is a public name of `runmanager` (in `__all__`). It leaves
 
 ## Not changing
 
-- The guesser, `ExpansionError`, the frozen globals and the queue's compile path.
+- The guesser, the frozen globals and the queue's compile path.
 - JIT globals are still evaluated at compile, with the frozen globals as overrides,
   through the same function.
 
 ## Size
 
-About 120 lines change in `evaluator.py`; upstream's form of the function is taken
-whole. Two lines go from `__init__.py`. A test file covers requirements 2 to 8.
+`evaluator.py` and `exceptions.py` become upstream's, and the fork's diff from upstream
+in them is one change of a few lines. Two lines go from `__init__.py`. A test file
+covers requirements 2 to 8.
