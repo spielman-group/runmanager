@@ -1182,9 +1182,8 @@ class GroupTab(object):
         if qapplication.keyboardModifiers() != QtCore.Qt.NoModifier:
             return
         item = self.globals_model.itemFromIndex(index)
-        parent_index = index.parent() if index.parent().isValid() else index
-        name_index = parent_index.siblingAtColumn(self.GLOBALS_COL_NAME)
-        name_item = self.globals_model.itemFromIndex(name_index)
+        name_item = self.get_global_name_item(index)
+        name_index = name_item.index()
         global_name = name_item.text()
         if item.data(self.GLOBALS_ROLE_IS_DUMMY_ROW):
             self.ui.treeView_globals.setCurrentIndex(name_index)
@@ -1236,56 +1235,42 @@ class GroupTab(object):
     def on_globals_model_default_changed(self, item):
         new_default = item.text()
         previous_default = item.data(self.GLOBALS_ROLE_PREVIOUS_TEXT)
-        parent_index = item.index().parent() if item.index().parent().isValid() else item.index()
-        global_name = self.globals_model.itemFromIndex(
-            parent_index.siblingAtColumn(self.GLOBALS_COL_NAME)
-        ).text()
+        global_name = self.get_global_name_item(item.index()).text()
         if new_default != previous_default:
             self.change_global_default(global_name, previous_default, new_default)
 
     def on_globals_model_units_changed(self, item):
         new_units = item.text()
         previous_units = item.data(self.GLOBALS_ROLE_PREVIOUS_TEXT)
-        global_name = self.globals_model.itemFromIndex(
-            item.index().sibling(item.index().row(), self.GLOBALS_COL_NAME)
-        ).text()
+        global_name = self.get_global_name_item(item.index()).text()
         if new_units != previous_units:
             self.change_global_units(global_name, previous_units, new_units)
 
     def on_globals_model_scan_enabled_changed(self, item):
         new_state = item.checkState() == QtCore.Qt.Checked
         previous_state = item.data(self.GLOBALS_ROLE_PREVIOUS_CHECKSTATE)
-        global_name = self.globals_model.itemFromIndex(
-            item.index().sibling(item.index().row(), self.GLOBALS_COL_NAME)
-        ).text()
+        global_name = self.get_global_name_item(item.index()).text()
         if new_state != previous_state:
             self.change_global_scan_enabled(global_name, previous_state, new_state)
 
     def on_globals_model_jit_enabled_changed(self, item):
         new_state = item.checkState() == QtCore.Qt.Checked
         previous_state = item.data(self.GLOBALS_ROLE_PREVIOUS_CHECKSTATE)
-        global_name = self.globals_model.itemFromIndex(
-            item.index().sibling(item.index().row(), self.GLOBALS_COL_NAME)
-        ).text()
+        global_name = self.get_global_name_item(item.index()).text()
         if new_state != previous_state:
             self.change_global_jit_enabled(global_name, previous_state, new_state)
 
     def on_globals_model_scan_changed(self, item):
         new_scan = item.text()
         previous_scan = item.data(self.GLOBALS_ROLE_PREVIOUS_TEXT)
-        parent_index = item.index().parent() if item.index().parent().isValid() else item.index()
-        global_name = self.globals_model.itemFromIndex(
-            parent_index.siblingAtColumn(self.GLOBALS_COL_NAME)
-        ).text()
+        global_name = self.get_global_name_item(item.index()).text()
         if new_scan != previous_scan:
             self.change_global_scan(global_name, previous_scan, new_scan)
 
     def on_globals_model_expansion_changed(self, item):
         new_expansion = item.text()
         previous_expansion = item.data(self.GLOBALS_ROLE_PREVIOUS_TEXT)
-        global_name = self.globals_model.itemFromIndex(
-            item.index().sibling(item.index().row(), self.GLOBALS_COL_NAME)
-        ).text()
+        global_name = self.get_global_name_item(item.index()).text()
         with self.globals_model_item_changed_disconnected:
             scan_enabled_item = self.get_global_item_by_name(
                 global_name, self.GLOBALS_COL_SCAN_ENABLED
@@ -1327,10 +1312,7 @@ class GroupTab(object):
     def selected_global_names(self):
         names = []
         for index in self.ui.treeView_globals.selectionModel().selectedRows():
-            parent_index = index.parent() if index.parent().isValid() else index
-            name_item = self.globals_model.itemFromIndex(
-                parent_index.siblingAtColumn(self.GLOBALS_COL_NAME)
-            )
+            name_item = self.get_global_name_item(index)
             if (
                 name_item is not None
                 and not name_item.data(self.GLOBALS_ROLE_IS_DUMMY_ROW)
@@ -1354,6 +1336,13 @@ class GroupTab(object):
 
     def close(self):
         self.tabWidget.removeTab(self.tabWidget.indexOf(self.ui))
+
+    def get_global_name_item(self, index):
+        """The Name item of the global whose row, or folded row, holds ``index``."""
+        parent_index = index.parent() if index.parent().isValid() else index
+        return self.globals_model.itemFromIndex(
+            parent_index.siblingAtColumn(self.GLOBALS_COL_NAME)
+        )
 
     def get_global_item_by_name(self, global_name, column, previous_name=None):
         possible_name_items = self.globals_model.findItems(global_name, column=self.GLOBALS_COL_NAME)
