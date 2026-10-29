@@ -16,13 +16,14 @@ import shutil
 import tempfile
 import types
 import unittest
+from unittest import mock
 
 import numpy as np
 
 import runmanager
 import runmanager.globals_file as globals_file
 # fixtures stubs the splash and does the guarded import of the application.
-from fixtures import RunManager
+from fixtures import RunManager, labconfig
 
 
 def evaluate(expressions):
@@ -133,6 +134,38 @@ class FrozenGlobalsTests(unittest.TestCase):
                     np.testing.assert_array_equal(thawed, value)
                 else:
                     self.assertEqual(thawed, value)
+
+class NamespaceTests(unittest.TestCase):
+    def evaluate_with_labconfig(self, expressions, **runmanager_settings):
+        directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, directory, True)
+        config = labconfig(directory, **runmanager_settings)
+        with mock.patch.object(runmanager.evaluator, 'LabConfig', lambda: config):
+            return evaluate(expressions)[1]['group']
+
+    def test_a_pylab_name_still_works_with_a_warning_naming_its_numpy_replacement(self):
+        with self.assertWarnsRegex(FutureWarning, r'np\.linspace'):
+            results = self.evaluate_with_labconfig({'x': ('linspace(0, 1, 3)', '')})
+        np.testing.assert_array_equal(results['x'], np.linspace(0, 1, 3))
+
+    def test_without_pylab_its_names_are_gone_and_a_namespace_file_adds_names(self):
+        directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, directory, True)
+        namespace_file = os.path.join(directory, 'namespace.py')
+        with open(namespace_file, 'w') as f:
+            f.write('def double(x):\n    return 2 * x\n')
+        results = self.evaluate_with_labconfig(
+            {
+                'a': ('linspace(0, 1, 3)', ''),
+                'b': ('sum([1, 2])', ''),
+                'c': ('double(np.float64(2))', ''),
+            },
+            pylab_namespace=False,
+            globals_namespace=namespace_file,
+        )
+        self.assertIsInstance(results['a'], NameError)
+        self.assertEqual(results['b'], 3)
+        self.assertEqual(results['c'], 4)
 
 class ScannedGlobalsTests(unittest.TestCase):
     def test_a_global_derived_from_another_on_its_axis_is_not_counted_as_scanned(self):

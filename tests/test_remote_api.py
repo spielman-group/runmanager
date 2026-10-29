@@ -229,7 +229,7 @@ class SubmittingApp(object):
 
     def wait_until_preparse_complete(self):
         """Do what the preparse does to what a submission reads afterwards."""
-        _, shots, _, _, expansions = self.parse_globals(
+        _, shots, _, _, expansions, _ = self.parse_globals(
             self.get_active_groups(), raise_exceptions=False
         )
         self.n_shots = len(shots)

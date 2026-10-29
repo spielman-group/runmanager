@@ -19,7 +19,7 @@ import random
 
 import numpy as np
 
-from runmanager.evaluator import evaluate_globals
+from runmanager.evaluator import _evaluate_globals
 from runmanager.group_manager import _details_to_sequence_globals
 
 
@@ -228,11 +228,15 @@ def get_shots_with_frozen_globals(globals_details, expansion_order=None):
         One ``(shot globals, frozen globals)`` pair per shot.
     dict
         The expansion type of each global.
+    dict
+        For each global that uses names only `from pylab import *` provides, the
+        warning naming their replacements.
     """
     sequence_globals = _details_to_sequence_globals(globals_details)
-    evaled_globals, _, expansions = evaluate_globals(sequence_globals)
+    evaled_globals, _, expansions, deprecations = _evaluate_globals(sequence_globals)
     shots = expand_globals(sequence_globals, evaled_globals, expansion_order)
     return (
         [(shot, get_frozen_globals(globals_details, shot)) for shot in shots],
         expansions,
+        deprecations,
     )

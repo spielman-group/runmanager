@@ -39,7 +39,7 @@ class FrozenGlobalsTests(unittest.TestCase):
         )
         globals_file.set_field(path, 'group', 'x', 'scan_enabled', True)
         groups = {'group': path}
-        pending, _ = runmanager.get_shots_with_frozen_globals(
+        pending, _, _ = runmanager.get_shots_with_frozen_globals(
             globals_file.get_globals_details(groups)
         )
 

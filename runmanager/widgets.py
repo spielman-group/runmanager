@@ -80,13 +80,15 @@ def expression_cell_colors():
     text_color = palette.color(QtGui.QPalette.Text)
     active_candidates = [QtGui.QColor('#D7ECFF'), QtGui.QColor('#234A75')]
     error_candidates = [QtGui.QColor('#F79494'), QtGui.QColor('#8A2E2E')]
+    deprecated_candidates = [QtGui.QColor('#F5D78A'), QtGui.QColor('#7A5A12')]
     bool_on_candidates = [QtGui.QColor('#63F731'), QtGui.QColor('#29A300')]
     bool_off_candidates = [QtGui.QColor('#608060'), QtGui.QColor('#003900')]
     active = best_contrast(text_color, active_candidates)
     error = best_contrast(text_color, error_candidates)
+    deprecated = best_contrast(text_color, deprecated_candidates)
     bool_on = best_contrast(text_color, bool_on_candidates)
     bool_off = best_contrast(text_color, bool_off_candidates)
-    return error.name(), active.name(), bool_on.name(), bool_off.name()
+    return error.name(), active.name(), bool_on.name(), bool_off.name(), deprecated.name()
 
 
 def hidden_unicode_issues(text):
