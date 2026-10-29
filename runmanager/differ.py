@@ -17,7 +17,6 @@ from labscript_utils.dict_diff import dict_diff
 
 from runmanager.evaluator import evaluate_globals
 from runmanager.group_manager import get_all_groups, get_globals
-from runmanager.tokenizer import remove_comments_and_tokenify
 
 
 def flatten_globals(sequence_globals, evaluated=False):

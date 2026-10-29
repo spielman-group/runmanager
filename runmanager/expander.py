@@ -18,7 +18,6 @@ import math
 import random
 import sys
 
-import numpy as np
 
 from runmanager.evaluator import evaluate_globals
 from runmanager.group_manager import _details_to_sequence_globals

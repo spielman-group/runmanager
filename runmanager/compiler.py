@@ -15,9 +15,6 @@ Actual compilation takes place in batch_compiler.py.
 These functions prepare the sequence and globals.
 """
 
-import datetime
-import errno
-import json
 import os
 import random
 import re
@@ -29,14 +26,11 @@ import labscript_utils.h5_lock
 import h5py
 import numpy as np
 
-from labscript_utils.labconfig import LabConfig
-from labscript_utils.ls_zprocess import ProcessTree, zmq_push_multipart
-from labscript_utils.file_utils import next_available_indexed_filepath
+from labscript_utils.labconfig import LabConfigfrom labscript_utils.file_utils import next_available_indexed_filepath
 from labscript_utils.lookup_format import format_lookup_string
 
 from runmanager import globals_file
 from runmanager.evaluator import evaluate_globals
-from runmanager.expander import expand_globals
 from runmanager.group_manager import _details_to_sequence_globals, get_all_groups
 
 process_tree = ProcessTree.instance()
