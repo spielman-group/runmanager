@@ -51,9 +51,9 @@ class BatchProcessor(object):
         # Save the current working directory before changing it to the location of the
         # user's script:
         cwd = os.getcwd()
-        os.chdir(os.path.dirname(labscript_file))
 
         try:
+            os.chdir(os.path.dirname(labscript_file))
             # Do not let the modulewatcher unload any modules whilst we're working:
             with self.kill_lock, module_watcher.lock:
                 labscript.labscript_init(run_file, labscript_file=labscript_file)
@@ -63,7 +63,8 @@ class BatchProcessor(object):
                     )
                     exec(code, self.script_module.__dict__)
             return True, ''
-        except Exception:
+        # A script that calls sys.exit has failed to compile, as any other error:
+        except (Exception, SystemExit):
             traceback_lines = traceback.format_exception(*sys.exc_info())
             del traceback_lines[1:2]
             message = ''.join(traceback_lines)
