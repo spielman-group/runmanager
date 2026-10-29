@@ -192,8 +192,8 @@ class ValueColumnTests(unittest.TestCase):
         editor = self.editor()
         editor.insertPlainText('half typed')
 
-        self.tab.change_global_jit_enabled('power', False, True, interactive=False)
-        self.tab.change_global_scan_enabled('power', False, True, interactive=False)
+        self.tab.change_global('power', 'jit_enabled', False, True, interactive=False)
+        self.tab.change_global('power', 'scan_enabled', False, True, interactive=False)
         self.qapplication.processEvents()
 
         self.assertEqual(self.record('freq')['default'], '10')
@@ -313,7 +313,7 @@ class ValueColumnTests(unittest.TestCase):
         self.assertEqual(self.view.currentIndex().column(), self.tab.GLOBALS_COL_UNITS)
 
     def test_hidden_unicode_in_inactive_expression_is_shown_with_a_warning_the_row_can_hide(self):
-        self.tab.change_global_scan('freq', 'linspace(0, 1, 3)', '1\u200b', interactive=False)
+        self.tab.change_global('freq', 'scan', 'linspace(0, 1, 3)', '1\u200b', interactive=False)
         root = self.tab.get_global_item_by_name('freq', self.tab.GLOBALS_COL_SCAN_ENABLED).index()
         scan = self.expression_item('freq', 'scan')
         self.assertTrue(self.view.isExpanded(root))
