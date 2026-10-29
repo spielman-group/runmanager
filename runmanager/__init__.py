@@ -45,22 +45,7 @@ from . import globals_file
 
 
 def is_valid_python_identifier(name):
-    # No whitespace allowed. Do this check here because an actual newline in the source
-    # is not easily distinguished from a NEWLINE token in the produced tokens, which is
-    # produced even when there is no newline character in the string. So since we ignore
-    # NEWLINE later, we must check for it now.
-    if name != "".join(name.split()):
-        return False
-    try:
-        tokens = list(tokenize.generate_tokens(io.StringIO(name).readline))
-    except tokenize.TokenError:
-        return False
-    token_types = [
-        t[0] for t in tokens if t[0] not in [tokenize.NEWLINE, tokenize.ENDMARKER]
-    ]
-    if len(token_types) == 1:
-        return token_types[0] == tokenize.NAME
-    return False
+    return name.isidentifier()
 
 
 def is_valid_hdf5_group_name(name):
@@ -75,18 +60,8 @@ def is_valid_hdf5_group_name(name):
     Returns:
         bool: Whether or not `name` is a valid name for an hdf5 group. This will
             be `True` if it is a valid name or `False` otherwise.
-    """    
-    # Ensure only ASCII characters are used.
-    for char in name:
-        if ord(char) >= 128:
-            return False
-    
-    # Ensure forbidden ASCII characters are not used.
-    forbidden_characters = ['.', '/']
-    for character in forbidden_characters:
-        if character in name:
-            return False
-    return True
+    """
+    return name.isascii() and '.' not in name and '/' not in name
 
 
 class ExpansionError(Exception):

@@ -17,6 +17,7 @@ import tempfile
 import threading
 import unittest
 
+import runmanager
 import runmanager.globals_file as globals_file
 
 
@@ -49,3 +50,17 @@ class ConcurrentEditTests(unittest.TestCase):
             [globals_file.get_field(path, 'group', name, 'default') for name in ('x', 'y')],
             ['99', '99'],
         )
+
+
+class GlobalNameTests(unittest.TestCase):
+    def test_a_global_is_named_only_as_an_expression_can_name_it(self):
+        directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, directory, True)
+        path = os.path.join(directory, 'globals.toml')
+        globals_file.new_globals_file(path)
+        runmanager.new_group(path, 'group')
+
+        for name in ('x\u00b2', '\u0663', 'a b'):
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                runmanager.new_global(path, 'group', name)
+        runmanager.new_global(path, 'group', 'x_2')
