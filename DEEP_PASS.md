@@ -1003,3 +1003,40 @@ and the rest are from reading only. **conflict** marks a clash with the fork's d
 - Already in the fork: 6ba78d2, b42e389 (as Empty queue), 176acd9, 9005b03,
   d8311b0 (for Engage and remote), six of da0fd6b's nine, and 57370ec
   (`open_in_editor`).
+
+### Upstream stage
+
+Ian approved the small fixes and Python ≥ 3.13. They are in `a044892..c93b3d4`,
+one commit per fix, each naming its upstream commit:
+- the zip checks (3483d09, c110ea0, b5c4b25, 28fc9ae, b283c3a);
+- the one-to-four-line bugs (a3a97be, 05a3b14, 03b54f9, 854c5da, 0ba0e2a, 35ea631);
+- the compiler child (5bb5e3c, and dc8695b's quit and stderr parts);
+- the parse races (b6cecb2, and 331a7bd as a guard on `guess_expansion_modes`'
+  writes);
+- 763a278, test first;
+- da0fd6b's three;
+- 744d647, as one plain line in `QueueManager.compile_shot`.
+
+`usage.rst` now says that a zip group of unequal lengths, or a zipped global that
+depends on another axis, shows an error and is refused. `KNOWN_ISSUES.md` loses the
+lines these close. It gains one: the guesser stores an expansion guessed from the
+Default of a global that is not scanned. `requires-python` is ≥ 3.13. Two comments
+no longer name `zprocess.locking`, which zprocess 3.0 removed. The suite is 162
+tests, with 34 subtests.
+
+New tests cover the zip checks, a remote array, the globals diff and 763a278, and
+each fails without its fix. The compiler child's fixes were checked by calling
+`BatchProcessor.compile` on a missing folder and on a script that calls
+`sys.exit`. Both escaped before the fix and both report a failed compile after
+it. No test was added for those, nor for the GUI one-liners (Ctrl+W, a zip name
+with a space, the copy menu, a key with no current row) or `find_comments`.
+
+The two new errors are plain `ValueError`s, not e829c32's `ExpansionError`. The
+fork's guesser goes on guessing past an `ExpansionError`. It would write a blank
+expansion for such a zip group, and a scanned global with a blank expansion
+becomes `outer`, which turns the refused zip into an outer product. A
+`ValueError` stops the guesser, so the error stays until the user fixes the group.
+
+Listed for Ian later, not in this stage: d053c40 (interrupting the compile), the
+evaluator rewrite (2d8129d, 872a36d), cd77801 and bd805b0, e5ecbd8, and every row
+of "Ian decides: features".
