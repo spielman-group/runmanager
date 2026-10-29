@@ -2428,7 +2428,7 @@ class RunManager(LabscriptGuiApplication):
             # the new group:
             self.ui.treeView_groups.setCurrentIndex(name_index)
             self.ui.treeView_groups.edit(name_index)
-        if item.column() == self.GROUPS_COL_ACTIVE:
+        elif item.column() == self.GROUPS_COL_ACTIVE:
             # They clicked on the active column. Toggle the checkbox. We do
             # this manually because setting the item checkable means the model
             # changes before we catch the mouse click. This is a pain because
