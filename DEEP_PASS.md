@@ -1174,3 +1174,6 @@ For Ian, each keeping a user's saved file working:
 
 The INI app-config conversion is labscript-utils', kept by Ian's decision in its pass.
 runmanager has no copy of it.
+
+Ian keeps 1, 2, 3 and 5. Items 1 and 2 were already his decisions, and he decided 3 and
+5 in this audit's batch. No code changes.
