@@ -77,11 +77,11 @@ class RunmanagerClient(ZMQClient):
         the evaluated Python values."""
         return self.request('get_globals', raw=raw)
 
-    def set_values(self, globals, raw=False, skip_missing=False):
+    def set_values(self, globals, raw=False, skip_missing=False, preserve_comments=True):
         """Set Default expressions for active globals.
 
-        A comment the stored expression ends with is kept, unless the new one
-        has its own.
+        Unless ``raw``, a comment the stored expression ends with is kept on the
+        new one, if ``preserve_comments``. A raw expression is stored as given.
 
         Parameters
         ----------
@@ -93,6 +93,8 @@ class RunmanagerClient(ZMQClient):
         skip_missing : bool
             If True, a name in no active group is skipped and the others are
             written. Otherwise it is refused.
+        preserve_comments : bool
+            If False, the stored comment is not kept.
 
         Returns
         -------
@@ -110,7 +112,12 @@ class RunmanagerClient(ZMQClient):
         RuntimeError
             For a name defined in more than one active group.
         """
-        return self.request('set_values', globals, raw=raw, skip_missing=skip_missing)
+        # Sent only when False, so that the default call works with a server that
+        # does not take it:
+        kwargs = {} if preserve_comments else {'preserve_comments': False}
+        return self.request(
+            'set_values', globals, raw=raw, skip_missing=skip_missing, **kwargs
+        )
 
     def get_scans(self, raw=False):
         """Return all active globals' Scan values.
@@ -119,7 +126,7 @@ class RunmanagerClient(ZMQClient):
         evaluated Python values."""
         return self.request('get_scans', raw=raw)
 
-    def set_scans(self, globals, raw=False, skip_missing=False):
+    def set_scans(self, globals, raw=False, skip_missing=False, preserve_comments=True):
         """Set Scan expressions for active globals.
 
         Parameters
@@ -129,6 +136,8 @@ class RunmanagerClient(ZMQClient):
         raw : bool
             As for ``set_values``.
         skip_missing : bool
+            As for ``set_values``.
+        preserve_comments : bool
             As for ``set_values``.
 
         Returns
@@ -142,7 +151,10 @@ class RunmanagerClient(ZMQClient):
         ValueError, TypeError, RuntimeError
             As ``set_values`` raises them.
         """
-        return self.request('set_scans', globals, raw=raw, skip_missing=skip_missing)
+        kwargs = {} if preserve_comments else {'preserve_comments': False}
+        return self.request(
+            'set_scans', globals, raw=raw, skip_missing=skip_missing, **kwargs
+        )
 
     def get_scan_enabled(self):
         """Return all active globals' Scan? state."""

@@ -4111,7 +4111,7 @@ class RunmanagerServer(ZMQServer):
             )
 
     @inmain_decorator()
-    def _set_field_values(self, field, globals, coerce, skip_missing=False):
+    def _set_field_values(self, field, globals, coerce, skip_missing=False, keep_comment=False):
         _, _, locations = self._get_active_global_locations(globals)
         skipped = []
         if skip_missing:
@@ -4129,7 +4129,7 @@ class RunmanagerServer(ZMQServer):
                 previous_value = runmanager.globals_file.get_field(
                     globals_file, group_name, global_name, field
                 )
-                if field in ('default', 'scan'):
+                if keep_comment:
                     new_value = self._with_trailing_comment(new_value, previous_value)
                 try:
                     group_tab = self.app.currently_open_groups[globals_file, group_name]
@@ -4179,20 +4179,22 @@ class RunmanagerServer(ZMQServer):
             for globals_file, groups in self.app.group_active_items().items()
         }
 
-    def handle_set_values(self, globals, raw=False, skip_missing=False):
+    def handle_set_values(self, globals, raw=False, skip_missing=False, preserve_comments=True):
         return self._set_field_values(
             'default',
             globals,
             self._coerce_remote_text if raw else self._coerce_remote_expression,
             skip_missing,
+            keep_comment=preserve_comments and not raw,
         )
 
-    def handle_set_scans(self, globals, raw=False, skip_missing=False):
+    def handle_set_scans(self, globals, raw=False, skip_missing=False, preserve_comments=True):
         return self._set_field_values(
             'scan',
             globals,
             self._coerce_remote_text if raw else self._coerce_remote_expression,
             skip_missing,
+            keep_comment=preserve_comments and not raw,
         )
 
     def handle_set_scan_enabled(self, globals):

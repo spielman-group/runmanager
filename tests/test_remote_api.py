@@ -525,6 +525,16 @@ class SubmitShotsTests(RemoteCommandTestCase):
             self.expressions(), {'x': '1.0  # MHz', 'y': '2*3', 'depth': '4'}
         )
 
+    def test_a_raw_expression_is_stored_as_given_and_a_comment_can_be_dropped(self):
+        self.request(self.client.set_values, {'x': '1'}, raw=True)
+        self.assertEqual(self.expressions()['x'], '1')
+
+        self.request(self.client.set_values, {'x': '2 # metres'}, raw=True)
+        self.request(self.client.set_values, {'x': 3})
+        self.assertEqual(self.expressions()['x'], '3 # metres')
+        self.request(self.client.set_values, {'x': 4}, preserve_comments=False)
+        self.assertEqual(self.expressions()['x'], '4')
+
     def test_an_array_is_written_in_full(self):
         values = np.linspace(0, 1, 1001)
         self.request(self.client.set_values, {'y': values})
