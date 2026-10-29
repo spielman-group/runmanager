@@ -45,8 +45,8 @@ which shot and why, and its `shot_status` record keeps the compile's error. The
 rows behind it carry on. Nothing compiles it again, since a shot that always fails
 would be recompiled for ever: engage it again once the cause is fixed.
 
-A default shot that fails is not made again until the globals or the default
-labscript file change. Meanwhile a red ! beside the empty-queue policy says why.
+A default shot that fails is made again at BLACS's next request, and fails again
+until the cause is fixed (`KNOWN_ISSUES.md`).
 
 Restarting the compiler subprocess fails the compile in flight, and later
 compiles wait until the new subprocess is up.
