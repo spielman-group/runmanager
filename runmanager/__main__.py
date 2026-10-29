@@ -143,7 +143,7 @@ app = None
 
 process_tree = ProcessTree.instance()
 
-# Set a meaningful name for zprocess.locking's client id:
+# Set a meaningful name for the zlock client's id:
 process_tree.zlock_client.set_process_name(APPLICATION_NAME)
 
 SubmissionMode = collections.namedtuple(

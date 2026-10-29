@@ -79,7 +79,7 @@ class BatchProcessor(object):
                    
 if __name__ == '__main__':
     process_tree = ProcessTree.connect_to_parent()
-    # Set a meaningful name for zprocess.locking's client id:
+    # Set a meaningful name for the zlock client's id:
     process_tree.zlock_client.set_process_name('runmanager.batch_compiler')
     module_watcher = ModuleWatcher() # Make sure modified modules are reloaded
     # Rename this module to '_runmanager_batch_compiler' and put it in sys.modules under
