@@ -29,7 +29,8 @@ from labscript_utils.modulewatcher import ModuleWatcher
 ABORT_TIMEOUT = 5
 KILL_LOCK_TIMEOUT = 60
 
-class BatchProcessor(object):
+
+class BatchProcessor:
     def __init__(self, to_parent, from_parent, kill_lock):
         self.to_parent = to_parent
         self.from_parent = from_parent

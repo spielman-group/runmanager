@@ -244,7 +244,7 @@ class UnitsDelegate(ItemDelegate):
             option.text = 'Bool'
 
 
-class GroupTab(object):
+class GroupTab:
     GLOBALS_COL_SCAN_ENABLED = 0
     GLOBALS_COL_JIT_ENABLED = 1
     GLOBALS_COL_NAME = 2
