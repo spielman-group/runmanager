@@ -30,9 +30,10 @@ dependency hierarchy therefore holds only the names on the path taken: for
    names that are global and read, and not assigned, in the expression or in a
    lambda, comprehension or generator in it.
    - A name that a nested scope binds is not a reference.
-   - A name that the expression binds with `:=`, outside any lambda, is not a
-     reference anywhere in it, nested scopes included. Only real `:=` bindings count:
-     a comprehension's target is not one. So in `z = ([a for a in range(2)], lambda: a)[1]`,
+   - A name that the expression binds with `:=` in its own scope is not a reference
+     anywhere in it, nested scopes included. A lambda's body is another scope, but its
+     default arguments run in the expression's scope, so a `:=` in a default counts.
+     Only real `:=` bindings count: a comprehension's target is not one. So in `z = ([a for a in range(2)], lambda: a)[1]`,
      the lambda's `a` is still a reference to the global `a`. This fixes upstream
      bug 1.
 4. A global's reference to itself that occurs only inside a lambda is no edge. Python
@@ -46,8 +47,11 @@ dependency hierarchy therefore holds only the names on the path taken: for
    - `a = (lambda: a)()` calls the lambda while `a` is being defined, so it gives a
      NameError at evaluation, not a cycle error.
 5. Every global in a cycle of definition-time references, a self-reference included,
-   gets a ValueError naming a cycle through it. Every member of overlapping cycles is
-   found before any global leaves the graph. This fixes upstream bug 2.
+   gets a ValueError. All the globals of a strongly connected component, such as
+   overlapping cycles, are found before any leaves the graph. The error names the
+   whole component: "Globals refer to each other in a cycle: a, b, c". A
+   self-reference keeps upstream's "Global a refers to itself". This fixes upstream
+   bug 2.
 6. A global that refers to a failed global fails as Python fails it: a NameError, or
    for `globals()[name]` a KeyError. The fork adds no guard of its own.
    - A global refused by an expansion check keeps its value in the namespace, as
@@ -56,7 +60,9 @@ dependency hierarchy therefore holds only the names on the path taken: for
 7. An expression that does not compile holds its SyntaxError. That includes a syntax
    error, and `yield`.
 8. The hierarchy maps each global to every global it refers to, in the expression and
-   its nested scopes, on every branch.
+   its nested scopes, on every branch. It leaves out requirement 4's dropped
+   self-edge. #163's analysis reads each expression's full references, kept
+   separately, and they include it.
 9. A global named like a namespace name shadows it, and is evaluated before the
    globals that refer to it. So `x = 2*pi` with `pi = 3` gives 6. The exception: a
    shadowing global that fails is not in the namespace, so the namespace name stays
@@ -84,7 +90,9 @@ dependency hierarchy therefore holds only the names on the path taken: for
     - iterators turned into tuples;
     - #163's warnings, which now read requirement 3's references;
     - the frozen and JIT globals of the queue's compile path.
-12. Each expression is compiled, walked for references and evaluated at most once.
+12. Each expression is compiled at most once and evaluated at most once. It is also
+    walked for references: once through its symbol table, and once through its syntax
+    tree for `:=` targets. Both walks are bounded by the expression's size.
     For G globals and E dependency edges, ordering costs O(G + E). Each cycle costs
     one `CycleError` and one search of its strongly connected component, so C cycles
     cost O(C (G + E)) at worst. Besides that, the cost is the expressions' own work.
@@ -106,15 +114,18 @@ The three upstream bugs, each offered upstream on `UpstreamBugFixes` once built:
 1. **Walrus.** `_global_references` counts a name read in a nested scope even when the
    expression itself binds it with `:=`. So `a = ((a := 2), (lambda: a)())[1]` makes
    an invented self-cycle. The fix finds the expression's real `:=` targets from its
-   syntax tree: `ast.NamedExpr` nodes outside any lambda, which bind in the
-   expression's own scope. It subtracts them from the references. The symbol table
+   syntax tree: the `ast.NamedExpr` nodes in the expression's own scope. The walk goes
+   into a lambda's default arguments, which run in that scope, and skips only lambda
+   bodies. So `a = z + 1` with `z = (lambda x=(a := 2): a)()` gives `a = 3` and
+   `z = 2`, as the fork does today, with no invented `a`–`z` cycle. It subtracts them from the references. The symbol table
    cannot be used, since on Python 3.12 and later it also marks comprehension
    targets as assigned in the expression's scope.
 2. **Overlapping cycles.** On a `CycleError`, only the reported cycle's members get
    the ValueError and leave the graph. With `a = b`, `b = a + c` and `c = b`, `c` then
    gets a NameError instead. The fix first takes all of the reported cycle's strongly
    connected component: the globals reachable from the cycle that can also reach
-   back to it. All of them get the ValueError, and then they leave.
+   back to it. All of them get one ValueError naming the component, and then they
+   leave.
 3. **Recursive lambdas.** `f = lambda n: 1 if n < 2 else n*f(n-1)` is refused as a
    self-reference, although Python binds `f` before the body runs. The fix is one
    condition where the dependencies are made. `_global_references` gains an option
@@ -188,6 +199,14 @@ These are stated in `usage.rst` too.
     any branch. Such a global leaves its tab's "Scanned over" tooltip, and a tab whose
     only scanned global it was loses its scan icon.
   - **#163's warning** covers a pylab name in a branch not taken.
+- A static reference through an unscanned helper changes what is inferred. Take a
+  scanned `x`, an unscanned `f = lambda: x*2` and a scanned `y = f()`.
+  - Today `y`'s evaluation traces `x` through `f`, so the guesser zips `y` with `x`.
+    With static references `y` refers only to `f`, so `y` stays `outer` beside `x`,
+    and the scan grows to their product.
+  - If `f` uses a pylab name, #163's warning moves from `y` to `f`.
+
+  The guesser's policy is the settled one, unchanged; only its input changes.
 - Evaluation is faster for long chains of globals.
 
 ## Tests
@@ -209,9 +228,11 @@ cover only essential behaviour. New ones, in `tests/test_scans.py`:
 - **R3:**
   - the walrus case evaluates to 2;
   - `z = ([a for a in range(2)], lambda: a)[1]` depends on `a`;
-  - a lambda parameter named like a global gives no dependency.
+  - a lambda parameter named like a global gives no dependency;
+  - `a = z + 1` with `z = (lambda x=(a := 2): a)()` gives `a = 3` and `z = 2`.
 - **R5:** a self-reference, a two-global cycle, and the overlapping case each give
-  every member the ValueError. A global that refers to a cycle member gets a
+  every member the ValueError. In the overlapping case its text names `a`, `b` and
+  `c`. A global that refers to a cycle member gets a
   NameError.
 - **R6 to R9:**
   - a SyntaxError is held;
@@ -224,7 +245,11 @@ cover only essential behaviour. New ones, in `tests/test_scans.py`:
     evaluate.
   - A namespace file that raises gives every global without an earlier error the
     load's exception, and keeps a SyntaxError.
-- **Step 2:** an outer `x` and a zip group named `x` stay two axes.
+- **Step 2:**
+  - An outer `x` and a zip group named `x` stay two axes.
+  - Its counterpart: an outer `x = [1, 2]` and `y = np.array(x)*2` in zip group `x`
+    make `y` an ExpansionError, depending on another axis. Upstream's check, which
+    takes them as one axis, would fail this test.
 - **#163 from the references:** a pylab name only in a branch not taken still warns.
 - **The frozen and JIT path:** a JIT global's expression changed after freezing
   compiles to the new value, while the frozen globals keep theirs. This goes through
