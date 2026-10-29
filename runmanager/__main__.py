@@ -132,6 +132,7 @@ from qtutils import (
 from labscript_utils.qtwidgets.outputbox import OutputBox
 import labscript_utils.qtwidgets.file_dialogs as file_dialogs
 import qtutils.icons
+from qtutils.icons import Icon
 
 
 runmanager_dir = RUNMANAGER_DIR
@@ -320,13 +321,13 @@ class GroupTab:
             self.ui.treeView_globals.setItemDelegateForColumn(column, self.check_delegate)
         self.ui.treeView_globals.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
         self.action_globals_delete_selected = QtWidgets.QAction(
-            QtGui.QIcon(':qtutils/fugue/minus'), 'Delete selected global(s)', self.ui
+            Icon(':qtutils/fugue/minus'), 'Delete selected global(s)', self.ui
         )
         self.action_globals_set_selected_true = QtWidgets.QAction(
-            QtGui.QIcon(':qtutils/fugue/ui-check-box'), 'Set selected Booleans True', self.ui
+            Icon(':qtutils/fugue/ui-check-box'), 'Set selected Booleans True', self.ui
         )
         self.action_globals_set_selected_false = QtWidgets.QAction(
-            QtGui.QIcon(':qtutils/fugue/ui-check-box-uncheck'),
+            Icon(':qtutils/fugue/ui-check-box-uncheck'),
             'Set selected Booleans False',
             self.ui,
         )
@@ -386,7 +387,7 @@ class GroupTab:
 
     def set_tab_icon(self, icon_string):
         index = self.tabWidget.indexOf(self.ui)
-        icon = QtGui.QIcon(icon_string) if icon_string is not None else QtGui.QIcon()
+        icon = Icon(icon_string) if icon_string is not None else QtGui.QIcon()
         if self.tabWidget.tabIcon(index).cacheKey() != icon.cacheKey():
             logger.debug('setting tab icon')
             self.tabWidget.setTabIcon(index, icon)
@@ -613,13 +614,13 @@ class GroupTab:
                 item.setToolTip('Enable Scan? to set an expansion mode.')
                 item.setData(None, QtCore.Qt.DecorationRole)
             elif expansion == 'outer':
-                item.setIcon(QtGui.QIcon(':qtutils/custom/outer'))
+                item.setIcon(Icon(':qtutils/custom/outer'))
                 item.setToolTip(
                     'This global will be interpreted as a list of values, and will be '
                     'outer producted with other lists to form a larger parameter space.'
                 )
             elif expansion:
-                item.setIcon(QtGui.QIcon(':qtutils/custom/zip'))
+                item.setIcon(Icon(':qtutils/custom/zip'))
                 item.setToolTip(
                     'This global will be interpreted as a list of values, and will be '
                     "iterated over in lock-step with other globals in the '%s' zip group."
@@ -806,7 +807,7 @@ class GroupTab:
             self.update_expression_item_metadata(
                 active_item,
                 active_tooltip + ' Expression is empty.',
-                QtGui.QIcon(':qtutils/fugue/exclamation'),
+                Icon(':qtutils/fugue/exclamation'),
             )
         else:
             self.update_expression_backgrounds(global_name)
@@ -862,7 +863,7 @@ class GroupTab:
         if icon is not None:
             item.setIcon(icon)
         elif hidden_unicode_issues(item.text()):
-            item.setIcon(QtGui.QIcon(':qtutils/fugue/exclamation-red'))
+            item.setIcon(Icon(':qtutils/fugue/exclamation-red'))
         elif not item.icon().isNull():
             item.setData(None, QtCore.Qt.DecorationRole)
         if hidden_unicode_issues(item.text()) and item.index().parent().isValid():
@@ -972,7 +973,7 @@ class GroupTab:
         previous_icon = item.icon()
         self.show_global_field(item, field, new_value)
         if field == 'default':
-            item.setIcon(QtGui.QIcon(':qtutils/fugue/hourglass'))
+            item.setIcon(Icon(':qtutils/fugue/hourglass'))
 
         def write():
             try:
@@ -1098,7 +1099,7 @@ class GroupTab:
                     self.update_expression_item_metadata(
                         active_item,
                         '%s: %s' % (value.__class__.__name__, str(value)),
-                        QtGui.QIcon(':qtutils/fugue/exclamation'),
+                        Icon(':qtutils/fugue/exclamation'),
                     )
                     self.tab_contains_errors = True
                 else:
@@ -1206,6 +1207,7 @@ class RunManager(LabscriptGuiApplication):
         self.ui = loader.load(
             os.path.join(runmanager_dir, 'main.ui'), RunmanagerMainWindow()
         )
+        self.ui.label_non_default_folder.setIcon(Icon(':/qtutils/fugue/exclamation-white'))
         self.init_config_window_title()
 
         self.output_box = OutputBox(self.ui.verticalLayout_output_tab)
@@ -1213,7 +1215,7 @@ class RunManager(LabscriptGuiApplication):
         # Add a 'pop-out' button to the output tab:
         output_tab_index = self.ui.tabWidget.indexOf(self.ui.tab_output)
         self.output_popout_button = TabToolButton(self.ui.tabWidget.parent())
-        self.output_popout_button.setIcon(QtGui.QIcon(':/qtutils/fugue/arrow-out'))
+        self.output_popout_button.setIcon(Icon(':/qtutils/fugue/arrow-out'))
         self.output_popout_button.setToolTip('Toggle whether the output box is in a separate window')
         self.ui.tabWidget.tabBar().setTabButton(output_tab_index, QtWidgets.QTabBar.RightSide, self.output_popout_button)
         # Fix the first four tabs in place:
@@ -1404,7 +1406,7 @@ class RunManager(LabscriptGuiApplication):
 
         shuffle_header_item = QtGui.QStandardItem('Shuffle')
         shuffle_header_item.setToolTip('Whether or not the order of the axis should be randomised')
-        shuffle_header_item.setIcon(QtGui.QIcon(':qtutils/fugue/arrow-switch'))
+        shuffle_header_item.setIcon(Icon(':qtutils/fugue/arrow-switch'))
         self.axes_model.setHorizontalHeaderItem(self.AXES_COL_SHUFFLE, shuffle_header_item)
 
         self.ui.treeView_axes.setModel(self.axes_model)
@@ -1445,17 +1447,17 @@ class RunManager(LabscriptGuiApplication):
 
         # Make the actions for the context menu:
         self.action_groups_set_selection_active = QtWidgets.QAction(
-            QtGui.QIcon(':qtutils/fugue/ui-check-box'), 'Set selected group(s) active', self.ui)
+            Icon(':qtutils/fugue/ui-check-box'), 'Set selected group(s) active', self.ui)
         self.action_groups_set_selection_inactive = QtWidgets.QAction(
-            QtGui.QIcon(':qtutils/fugue/ui-check-box-uncheck'), 'Set selected group(s) inactive', self.ui)
+            Icon(':qtutils/fugue/ui-check-box-uncheck'), 'Set selected group(s) inactive', self.ui)
         self.action_groups_delete_selected = QtWidgets.QAction(
-            QtGui.QIcon(':qtutils/fugue/minus'), 'Delete selected group(s)', self.ui)
+            Icon(':qtutils/fugue/minus'), 'Delete selected group(s)', self.ui)
         self.action_groups_open_selected = QtWidgets.QAction(
-            QtGui.QIcon(':/qtutils/fugue/plus'), 'Open selected group(s)', self.ui)
+            Icon(':/qtutils/fugue/plus'), 'Open selected group(s)', self.ui)
         self.action_groups_close_selected_groups = QtWidgets.QAction(
-            QtGui.QIcon(':/qtutils/fugue/cross'), 'Close selected group(s)', self.ui)
+            Icon(':/qtutils/fugue/cross'), 'Close selected group(s)', self.ui)
         self.action_groups_close_selected_files = QtWidgets.QAction(
-            QtGui.QIcon(':/qtutils/fugue/cross'), 'Close selected file(s)', self.ui)
+            Icon(':/qtutils/fugue/cross'), 'Close selected file(s)', self.ui)
 
         # A counter for keeping track of the recursion depth of
         # self._groups_model_active_changed(). This is used so that some
@@ -1657,11 +1659,11 @@ class RunManager(LabscriptGuiApplication):
         if self.output_box_is_popped_out:
             self.ui.verticalLayout_output_tab.addWidget(self.output_box.output_textedit)
             self.output_box_window.hide()
-            self.output_popout_button.setIcon(QtGui.QIcon(':/qtutils/fugue/arrow-out'))
+            self.output_popout_button.setIcon(Icon(':/qtutils/fugue/arrow-out'))
         else:
             # pop it out
             self.output_box_window_verticalLayout.addWidget(self.output_box.output_textedit)
-            self.output_popout_button.setIcon(QtGui.QIcon(':/qtutils/fugue/arrow-in'))
+            self.output_popout_button.setIcon(Icon(':/qtutils/fugue/arrow-in'))
             self.output_box_window.show()
         self.output_box_is_popped_out = not self.output_box_is_popped_out
 
@@ -2212,10 +2214,10 @@ class RunManager(LabscriptGuiApplication):
         menu.addAction(self.action_groups_close_selected_groups)
         menu.addAction(self.action_groups_close_selected_files)
         copy_menu = QtWidgets.QMenu('Copy selected group(s) to...', menu)
-        copy_menu.setIcon(QtGui.QIcon(':/qtutils/fugue/blue-document-copy'))
+        copy_menu.setIcon(Icon(':/qtutils/fugue/blue-document-copy'))
         menu.addMenu(copy_menu)
         move_menu = QtWidgets.QMenu('Move selected group(s) to...', menu)
-        move_menu.setIcon(QtGui.QIcon(':/qtutils/fugue/blue-document--arrow'))
+        move_menu.setIcon(Icon(':/qtutils/fugue/blue-document--arrow'))
         menu.addMenu(move_menu)
 
         # Create a dict of all filepaths -> filenames
@@ -2610,10 +2612,10 @@ class RunManager(LabscriptGuiApplication):
         # we temporarily disconnect the signal whilst we set the icons.
         with self.groups_model_item_changed_disconnected:
             if group_is_open:
-                item.setIcon(QtGui.QIcon(':qtutils/fugue/cross'))
+                item.setIcon(Icon(':qtutils/fugue/cross'))
                 item.setToolTip('Close globals group.')
             else:
-                item.setIcon(QtGui.QIcon(':qtutils/fugue/plus'))
+                item.setIcon(Icon(':qtutils/fugue/plus'))
                 item.setToolTip('Load globals group into runmanager.')
             self.do_model_sort()
             # If this changed the sort order, ensure the item is still visible:
@@ -2736,9 +2738,9 @@ class RunManager(LabscriptGuiApplication):
         name_item = QtGui.QStandardItem(name)
         name_item.setData(expansion_name, self.AXES_ROLE_NAME)
         if expansion_type == 'outer':
-            name_item.setIcon(QtGui.QIcon(':qtutils/custom/outer'))
+            name_item.setIcon(Icon(':qtutils/custom/outer'))
         else:
-            name_item.setIcon(QtGui.QIcon(':qtutils/custom/zip'))
+            name_item.setIcon(Icon(':qtutils/custom/zip'))
         items.append(name_item)
         
         length = 'Unknown'
@@ -2992,7 +2994,7 @@ class RunManager(LabscriptGuiApplication):
         file_delete_item.setData(False, self.GROUPS_ROLE_SORT_DATA)
 
         file_close_item = QtGui.QStandardItem()
-        file_close_item.setIcon(QtGui.QIcon(':qtutils/fugue/cross'))
+        file_close_item.setIcon(Icon(':qtutils/fugue/cross'))
         file_close_item.setEditable(False)
         file_close_item.setToolTip('Close globals file.')
 
@@ -3057,14 +3059,14 @@ class RunManager(LabscriptGuiApplication):
             'Whether or not the globals within this group should be used by runmanager for compilation.')
 
         group_delete_item = QtGui.QStandardItem()
-        group_delete_item.setIcon(QtGui.QIcon(':qtutils/fugue/minus'))
+        group_delete_item.setIcon(Icon(':qtutils/fugue/minus'))
         # Must be set to something so that the dummy row doesn't get sorted first:
         group_delete_item.setData(False, self.GROUPS_ROLE_SORT_DATA)
         group_delete_item.setEditable(False)
         group_delete_item.setToolTip('Delete globals group from file.')
 
         group_open_close_item = QtGui.QStandardItem()
-        group_open_close_item.setIcon(QtGui.QIcon(':qtutils/fugue/plus'))
+        group_open_close_item.setIcon(Icon(':qtutils/fugue/plus'))
         group_open_close_item.setData(False, self.GROUPS_ROLE_GROUP_IS_OPEN)
         # Sort column by whether group is open - must keep this manually
         # updated when the state changes:

@@ -17,6 +17,7 @@ import unicodedata
 
 from qtutils.qt import QtCore, QtGui, QtWidgets
 from qtutils.qt.QtCore import Qt
+from qtutils.icons import Icon
 
 from labscript_utils.qtwidgets.leftclick import LeftClickMixin, MovableRowsMixin
 from labscript_utils.qtwidgets.themed_window import best_contrast
@@ -349,7 +350,7 @@ class FingerTabWidget(QtWidgets.QTabWidget):
             if not right_button:
                 # Make one:
                 close_button = TabToolButton(self.parent())
-                close_button.setIcon(QtGui.QIcon(':/qtutils/fugue/cross'))
+                close_button.setIcon(Icon(':/qtutils/fugue/cross'))
                 self.tabBar().setTabButton(
                     index, _RIGHT_SIDE, close_button
                 )
