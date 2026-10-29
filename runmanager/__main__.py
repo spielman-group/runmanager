@@ -2205,6 +2205,7 @@ class RunManager(LabscriptGuiApplication):
         for (globals_file, group_name), tab in self.currently_open_groups.items():
             if tab.ui is current_tab_widget:
                 self.close_group(globals_file, group_name)
+                break
 
     def switch_tabs(self, change):
         current_index = self.ui.tabWidget.currentIndex()
