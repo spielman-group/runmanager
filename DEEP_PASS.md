@@ -882,11 +882,11 @@ These are every branch other than the tiers and `CodeHealth`.
 
 | | Branch | Content | Proposal |
 | --- | --- | --- | --- |
-| W1 | `RunmanagerTOMLGlobals` (local and origin, `6e5db8e`) | Merge commits only; every non-merge commit is in `Development` | delete |
-| W2 | `spielman_merged/Qt6Fixes` (local and origin, `72973e1`) | In `Production`; `Development` has its own Qt6 fixes | delete |
-| W3 | origin `RunmanagerSubmissions` (`b2e4415`) | 19 commits of April's queue generation, which `RunmanagerQueueSimple` superseded in `Development` | delete |
-| W4 | origin `RunmanagerGlobalFormatStrings` (`875edec`), `RunmanagerQueueSubmissionTypes` (`56ce434`), `UpdatedTitleBars` (`6d04b41`) | Each is contained in `Development` | delete |
-| W5 | origin `maintenance/3.0.x` (`61be21f`) | Upstream's 2020 maintenance branch, still upstream | delete from the fork |
+| W1 | `RunmanagerTOMLGlobals` (local and origin, `6e5db8e`) | Merge commits only; every non-merge commit is in `Development` | deleted |
+| W2 | `spielman_merged/Qt6Fixes` (local and origin, `72973e1`) | In `Production`; `Development` has its own Qt6 fixes | deleted |
+| W3 | origin `RunmanagerSubmissions` (`b2e4415`) | 19 commits of April's queue generation, which `RunmanagerQueueSimple` superseded in `Development` | deleted |
+| W4 | origin `RunmanagerGlobalFormatStrings` (`875edec`), `RunmanagerQueueSubmissionTypes` (`56ce434`), `UpdatedTitleBars` (`6d04b41`) | Each is contained in `Development` | deleted |
+| W5 | origin `maintenance/3.0.x` (`61be21f`) | Upstream's 2020 maintenance branch, still upstream | deleted from the fork |
 | W6 | `UpstreamBugFixes` (local and origin, `96ff041`) | Four fixes staged for an upstream pull request | keep |
 
 Ian approved U1 to U12, W1 to W5 and leaving the removed upstream names out.
@@ -895,5 +895,6 @@ subtests. Before deletion, each branch was checked for every non-merge commit
 being in `Development`, or in `Production` for W2. W1, W2 and W4 pass at the tips
 above. W3 has 19 commits that are not in `Development` and are not
 patch-equivalent to any there. W5 has 2, though it is the same as upstream's
-`maintenance/3.0.x`. Both are held for Ian. The deletion of W1, W2 and W4,
-locally and on `origin`, was refused by a permission check, and waits on Ian.
+`maintenance/3.0.x`. Ian deleted all five, at the tips above. W3 went
+because `CodeHealth`'s `.github` matches it, and e4a440f's tree replaced its
+`group.ui` table layout.
