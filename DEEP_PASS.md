@@ -952,6 +952,21 @@ of `conf.py` and Qt offscreen, gives no warning from this step. It shows one bug
 now in `KNOWN_ISSUES.md`: `runmanager.remote` does not import under those mocks, so
 the API reference has no page for it. The suite is 155 tests, with 32 subtests.
 
+Codex's review of step 2.5 found six statements in the docs that the code does
+not bear out, and nothing else. All six are corrected in 2034163, against the
+code after the Upstream stage:
+- what a shot file stores: each global's value, and the expression it was
+  compiled from, a scanned global's being its value in that shot;
+- that Engage queues records at once and compiles them before BLACS has them;
+- that only scanned globals make up the parameter space (`introduction.rst`);
+- the shot count, counting each zip group as one axis;
+- what a saved configuration holds: globals files by location, and queued
+  shots with the globals they were engaged with;
+- the retry of a default shot that fails to compile, pointing to
+  `KNOWN_ISSUES.md`.
+
+The docs build gives only the known `runmanager.remote` warning.
+
 ## Upstream adoption review
 
 Upstream's 93 non-merge commits in `master..upstream/master` (to `d5842a2`), read
