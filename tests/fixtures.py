@@ -28,6 +28,7 @@ The tests that hand shots to lyse share the few functions at the end, which
 serve a real lyse and submit to it through a real ``AnalysisSubmission``.
 """
 import os
+import socket
 import sys
 import threading
 import time
@@ -148,8 +149,19 @@ def wait_for(condition, timeout=10):
         time.sleep(0.001)
 
 
+def free_port():
+    """A loopback port nothing is listening on."""
+    with socket.socket() as probe:
+        probe.bind(('127.0.0.1', 0))
+        return probe.getsockname()[1]
+
+
 def serve_lyse(testcase, lyse_app, port=None):
-    """A real LyseServer for lyse_app, a stand-in for the window lyse builds."""
+    """A real LyseServer for lyse_app, a stand-in for the window lyse builds.
+
+    On a free port unless given one, never lyse's own."""
+    if port is None:
+        port = free_port()
     server = LyseServer(lyse_app, port=port, bind_address='tcp://127.0.0.1')
     testcase.addCleanup(server.shutdown)
     return server

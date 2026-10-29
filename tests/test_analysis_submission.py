@@ -17,7 +17,6 @@ lyse's application is a stand-in holding the queue its server puts shots on,
 because lyse's startup builds the whole window.
 """
 import queue
-import socket
 import tempfile
 import types
 import unittest
@@ -25,7 +24,7 @@ from pathlib import Path
 
 from qtutils.qt import QtWidgets
 
-from fixtures import serve_lyse, submit_to_lyse, wait_for
+from fixtures import free_port, serve_lyse, submit_to_lyse, wait_for
 
 
 class RefusingQueue:
@@ -109,9 +108,7 @@ class AnalysisSubmissionTests(unittest.TestCase):
             self.assertTrue(outcomes[0][2], 'a shot that is not sent says why')
 
         with self.subTest('cleared while lyse is away'):
-            with socket.socket() as probe:
-                probe.bind(('127.0.0.1', 0))
-                port = probe.getsockname()[1]
+            port = free_port()
             submission, outcomes = self.submit_recording(port)
             submission.notify_shot_complete(self.path)
             wait_for(lambda: submission.server_online == 'offline')
@@ -123,9 +120,7 @@ class AnalysisSubmissionTests(unittest.TestCase):
             self.assertTrue(outcomes[0][2], 'a shot that is not sent says why')
 
     def test_a_shot_waits_while_lyse_is_away_and_goes_once_it_is_back(self):
-        with socket.socket() as probe:
-            probe.bind(('127.0.0.1', 0))
-            port = probe.getsockname()[1]
+        port = free_port()
         submission = submit_to_lyse(self, port)
         submission.notify_shot_complete(self.path)
         wait_for(lambda: submission.server_online == 'offline')

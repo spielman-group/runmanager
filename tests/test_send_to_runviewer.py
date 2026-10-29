@@ -7,7 +7,6 @@ would.
 import functools
 import os
 import queue
-import socket
 import types
 import unittest
 from unittest import mock
@@ -17,7 +16,7 @@ from runviewer.client import RunviewerClient
 # fixtures stubs the splash and does the guarded imports of runmanager's and
 # runviewer's applications, once, for every test module. Importing either
 # __main__ here instead would show a startup banner.
-from fixtures import RunManager, main_module, runviewer_main
+from fixtures import RunManager, free_port, main_module, runviewer_main
 
 
 class RefusingQueue:
@@ -38,9 +37,7 @@ class SendToRunviewerTests(unittest.TestCase):
 
         # runviewer's server puts shots on this:
         self.shots = queue.Queue()
-        with socket.socket() as probe:
-            probe.bind(('127.0.0.1', 0))
-            self.port = probe.getsockname()[1]
+        self.port = free_port()
         # send_to_runviewer builds its own client; this one finds the test's server:
         patcher = mock.patch.object(
             main_module, 'RunviewerClient', functools.partial(RunviewerClient, port=self.port)
