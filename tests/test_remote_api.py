@@ -341,7 +341,7 @@ class SubmitShotsTests(RemoteCommandTestCase):
         # sequence's own folder.
         first = self.submit({'x': 1}, {'x': 2})
 
-        second = self.submit({'x': 3}, sequence=first[0]['sequence_id'])
+        second = self.submit({'x': 3}, sequence_id=first[0]['sequence_id'])
 
         self.assertEqual(second[0]['sequence_id'], first[0]['sequence_id'])
         self.assertEqual(second[0]['run_number'], 2)
@@ -368,7 +368,7 @@ class SubmitShotsTests(RemoteCommandTestCase):
             )
             second = self.submit(
                 {'x': 2},
-                sequence=first[0]['sequence_id'],
+                sequence_id=first[0]['sequence_id'],
                 sequence_index=first[0]['sequence_index'],
             )
 
@@ -390,7 +390,7 @@ class SubmitShotsTests(RemoteCommandTestCase):
 
         second = self.submit(
             {'x': 5},
-            sequence=first[0]['sequence_id'],
+            sequence_id=first[0]['sequence_id'],
             sequence_index=first[0]['sequence_index'],
         )
 
@@ -412,7 +412,7 @@ class SubmitShotsTests(RemoteCommandTestCase):
         with self.assertRaises(SequenceRefused):
             self.submit(
                 {'x': 2},
-                sequence=first[0]['sequence_id'],
+                sequence_id=first[0]['sequence_id'],
                 sequence_index=first[0]['sequence_index'],
             )
 
@@ -422,7 +422,7 @@ class SubmitShotsTests(RemoteCommandTestCase):
         # Refused rather than started afresh, which would split the session
         # quietly in two; the caller stops on this refusal.
         with self.assertRaises(SequenceRefused):
-            self.submit({'x': 1}, sequence='20260923T101112_experiment')
+            self.submit({'x': 1}, sequence_id='20260923T101112_experiment')
 
         self.assertEqual(self.app.batches, [], 'nothing reached the queue')
 

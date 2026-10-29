@@ -536,7 +536,7 @@ class RunmanagerClient(ZMQClient):
         """Reset the shot output folder to the default path"""
         return self.request('reset_shot_output_folder')
 
-    def submit_shots(self, entries, sequence=None, sequence_index=None):
+    def submit_shots(self, entries, sequence_id=None, sequence_index=None):
         """Submit one shot per entry, each with the globals that entry names.
 
         ``entries`` is a list of ``{global_name: value}`` dicts; one entry is
@@ -548,9 +548,9 @@ class RunmanagerClient(ZMQClient):
         ``{'shot_id', 'sequence_id', 'sequence_index', 'run_number', 'path'}``.
         The queue is never cleared.
 
-        A remote session is one sequence. With no ``sequence`` the shots start
-        a sequence of their own. Pass a ``sequence_id`` from an earlier
-        submission as ``sequence`` to add to that sequence instead, numbered
+        A remote session is one sequence. With no ``sequence_id`` the shots
+        start a sequence of their own. Pass the ``sequence_id`` of an earlier
+        submission to add to that sequence instead, numbered
         after every shot of it runmanager has made, whatever ran in between.
         Pass its ``sequence_index`` too: two sequences started in the same
         second share an id, and runmanager refuses to guess between them.
@@ -576,7 +576,7 @@ class RunmanagerClient(ZMQClient):
         refused this way, as a scan left on a global can make it do. So are a
         labscript file or output folder that is not set, globals that cannot
         be evaluated, entries that do not all name the same globals, a name no
-        active group has, and a ``sequence`` runmanager has no record of, of
+        active group has, and a ``sequence_id`` runmanager has no record of, of
         another labscript file, or sharing its id with another when no
         ``sequence_index`` is given. A batch refused while its entries are
         evaluated sets no global, and one refused as it is queued is left at
@@ -590,7 +590,7 @@ class RunmanagerClient(ZMQClient):
         return self.request(
             'submit_shots',
             list(entries),
-            sequence=sequence,
+            sequence_id=sequence_id,
             sequence_index=sequence_index,
         )
 

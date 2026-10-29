@@ -5106,7 +5106,7 @@ class RunmanagerServer(ZMQServer):
     def handle_reset_shot_output_folder(self):
         app.on_reset_shot_output_folder_clicked(None)
 
-    def handle_submit_shots(self, entries, sequence=None, sequence_index=None):
+    def handle_submit_shots(self, entries, sequence_id=None, sequence_index=None):
         """Submit one shot per entry, each with the globals that entry names.
 
         An entry is a dict of global name to value, and every entry names the
@@ -5119,9 +5119,9 @@ class RunmanagerServer(ZMQServer):
         Returns one descriptor per entry -- shot_id, sequence_id,
         sequence_index, run_number and path -- in the order submitted.
 
-        A remote session is one sequence. With no ``sequence`` the batch
-        starts a sequence of its own; ``sequence`` is the sequence_id of an
-        earlier submission, and the batch joins it whatever ran in between.
+        A remote session is one sequence. With no ``sequence_id`` the batch
+        starts a sequence of its own; given the sequence_id of an earlier
+        submission, the batch joins it whatever ran in between.
         ``sequence_index`` tells it from a sequence started in the same second.
 
         Every entry is evaluated before any shot is made, and the whole batch
@@ -5199,11 +5199,11 @@ class RunmanagerServer(ZMQServer):
         # the session's later shots into the operator's sequence.
         records = inmain(
             app.compile_and_queue_shots,
-            SUBMISSION_MODE_NEW_SEQUENCE if sequence is None else SUBMISSION_MODE_LAST_SEQUENCE,
+            SUBMISSION_MODE_NEW_SEQUENCE if sequence_id is None else SUBMISSION_MODE_LAST_SEQUENCE,
             True,
             send_to_runviewer,
             batch,
-            sequence=None if sequence is None else (sequence, sequence_index),
+            sequence=None if sequence_id is None else (sequence_id, sequence_index),
         )
         return [shot_receipt(record) for record in records]
 
