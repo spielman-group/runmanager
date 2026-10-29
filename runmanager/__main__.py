@@ -69,7 +69,7 @@ from labscript_utils.qtwidgets.application import (
     exec_qapplication,
 )
 from labscript_utils.file_utils import next_available_indexed_filepath
-from labscript_utils.lookup_format import format_lookup_string, unescape_braces
+from labscript_utils.lookup_format import unescape_braces
 from labscript_utils.setup_logging import setup_logging
 import labscript_utils.shared_drive as shared_drive
 from labscript_utils.qtwidgets.leftclick import LeftClickMixin, MovableRowsMixin
@@ -2515,12 +2515,14 @@ class RunManager(LabscriptGuiApplication):
                     )
             else:
                 folder, prefix = name_format
-                shot_globals = {'globals': run_file_info['shot_globals']}
-                basename = os.path.join(folder, format_lookup_string(prefix, shot_globals))
-                run_file = '%s_%0*d.h5' % (basename, width, next_index)
-                while os.path.exists(run_file) or os.path.abspath(run_file) in compiling:
-                    next_index += 1
-                    run_file = '%s_%0*d.h5' % (basename, width, next_index)
+                run_file, next_index = runmanager.next_run_file(
+                    folder,
+                    prefix,
+                    run_file_info['shot_globals'],
+                    next_index,
+                    width,
+                    compiling,
+                )
             run_file_info['path'] = run_file
             # A shot file is named after the run number written into it, and
             # a run number is unique within its sequence, so renumbering the
@@ -4458,26 +4460,11 @@ class RunManager(LabscriptGuiApplication):
                     subdirectory_in_prefix=True,
                 )
             )
-            # The prefix is a template, as make_run_files receives it. Formatting
-            # it with the shot's globals is the pass that undoes its brace escaping.
-            run_file_base = os.path.join(
-                output_folder,
-                format_lookup_string(filename_prefix, {'globals': runglobals}) + '.h5',
-            )
-            run_file_folder = os.path.dirname(run_file_base)
             key = (sequence_attrs['sequence_id'], sequence_attrs['sequence_index'])
-            if key in self.sequences:
-                start = self.sequences[key][2]
-            else:
-                # After a restart the day's files are counted from one listing
-                # of the folder, not a stat per number.
-                names = os.listdir(run_file_folder) if os.path.isdir(run_file_folder) else []
-                ends = [os.path.splitext(n)[0].rpartition('_')[2] for n in names]
-                start = 1 + max((int(end) for end in ends if end.isdigit()), default=-1)
-            run_file, default_index = next_available_indexed_filepath(
-                run_file_base,
-                '_{index}',
-                start=start,
+            # After a restart, numbered on from the folder's files:
+            start = self.sequences[key][2] if key in self.sequences else None
+            run_file, default_index = runmanager.next_run_file(
+                output_folder, filename_prefix, runglobals, start
             )
             self.sequences[key] = (run_file, sequence_attrs, default_index + 1, None)
             # No shot_id, deliberately: a file without one is visibly not a shot

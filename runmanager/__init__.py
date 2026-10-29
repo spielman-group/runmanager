@@ -36,6 +36,7 @@ from labscript_utils.dict_diff import dict_diff
 from labscript_utils.versions import package_version
 from labscript_utils.ls_zprocess import ProcessTree, zmq_push_multipart
 from labscript_utils.labconfig import LabConfig
+from labscript_utils.file_utils import next_available_indexed_filepath
 from labscript_utils.lookup_format import format_lookup_string
 import labscript_utils.shot_utils
 process_tree = ProcessTree.instance()
@@ -670,12 +671,11 @@ def make_run_files(
     ndigits = int(np.ceil(np.log10(n_runs)))
     if shuffle:
         random.shuffle(indexed_shots)
-    for run_no, (_, shot_globals) in enumerate(indexed_shots):
-        basename = os.path.join(
-            output_folder,
-            format_lookup_string(filename_prefix, {'globals': shot_globals}),
+    run_no = 0
+    for _, shot_globals in indexed_shots:
+        runfilename, run_no = next_run_file(
+            output_folder, filename_prefix, shot_globals, run_no, ndigits
         )
-        runfilename = ('%s_%0' + str(ndigits) + 'd.h5') % (basename, run_no)
         if create_files:
             make_single_run_file(
                 runfilename, sequence_globals, shot_globals, sequence_attrs, run_no, n_runs
@@ -690,6 +690,33 @@ def make_run_files(
             }
         else:
             yield runfilename
+        run_no += 1
+
+
+def next_run_file(output_folder, filename_prefix, shot_globals, run_no=None, width=1, taken=()):
+    """The file of a sequence's next run, and its run number.
+
+    The file is ``filename_prefix``, formatted with the shot's globals, in
+    ``output_folder``, numbered with the first run number from ``run_no`` whose
+    file does not exist and is not in ``taken``, zero-padded to ``width``
+    digits. With no ``run_no``, numbering starts after the highest run number in
+    the file's folder."""
+    basename = os.path.join(
+        output_folder, format_lookup_string(filename_prefix, {'globals': shot_globals})
+    )
+    if run_no is None:
+        # One listing of the folder, not a stat per number:
+        folder = os.path.dirname(basename)
+        names = os.listdir(folder) if os.path.isdir(folder) else []
+        ends = [os.path.splitext(name)[0].rpartition('_')[2] for name in names]
+        run_no = 1 + max((int(end) for end in ends if end.isdigit()), default=-1)
+    while True:
+        path, run_no = next_available_indexed_filepath(
+            basename + '.h5', '_{index:0%dd}' % width, start=run_no, strip_suffix=False
+        )
+        if os.path.abspath(path) not in taken:
+            return path, run_no
+        run_no += 1
 
 
 def make_single_run_file(

@@ -102,6 +102,14 @@ class DefaultSequenceTests(unittest.TestCase):
 
         self.assertFalse(os.path.exists(row['path']))
 
+    def test_a_default_shot_keeps_the_digits_its_script_name_ends_in(self):
+        self.labscript_file = os.path.join(self.directory, 'scan_2.py')
+        open(self.labscript_file, 'w').close()
+
+        row = self.default_shot(self.default_shot_app())
+
+        self.assertTrue(row['path'].endswith('_scan_2_0.h5'), row['path'])
+
     def test_default_shots_named_by_a_global_are_numbered_through_a_restart(self):
         # Named after a global, the day's default files differ in more than
         # their number, and a restart forgets the count; the run number is
