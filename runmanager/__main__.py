@@ -1687,6 +1687,7 @@ class GroupTab(object):
                 next_item = None
             if (
                 next_item is not None
+                and next_item.isEditable()
                 and not next_item.text()
                 and self.ui.treeView_globals.state()
                 != QtWidgets.QAbstractItemView.EditingState
