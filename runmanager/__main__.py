@@ -15,6 +15,7 @@
 
 import collections
 import queue
+import html
 import logging
 import os
 import random
@@ -1115,10 +1116,12 @@ class GroupTab:
                     self.tab_contains_errors = True
                 elif global_name in deprecations:
                     self.update_expression_backgrounds(global_name, deprecated=True)
+                    # Rich text, so that the tooltip wraps:
                     self.update_expression_item_metadata(
                         active_item,
-                        f'{value!r}\n\nWarning: {deprecations[global_name]} '
-                        f'{runmanager.evaluator.PYLAB_NAMESPACE_NOTE}',
+                        f'<p style="white-space:pre">{html.escape(repr(value))}</p>'
+                        + f'<p>Warning: {html.escape(deprecations[global_name])}</p>'
+                        + f'<p>{html.escape(runmanager.evaluator.PYLAB_NAMESPACE_NOTE)}</p>',
                         Icon(':qtutils/fugue/exclamation-diamond'),
                     )
                     tab_contains_deprecations = True
