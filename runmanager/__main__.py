@@ -4396,6 +4396,7 @@ class RunManager(LabscriptGuiApplication):
                 runviewer.say_hello(timeout=15)
             except Exception as e:
                 self.output_box.output('Couldn\'t submit shot to runviewer: %s\n\n' % str(e), red=True)
+                return
 
         try:
             runviewer.add_shot(agnostic_path)
