@@ -1090,7 +1090,7 @@ class QueueManager(QtCore.QObject):
         changed, still_queued = self.controller.finish_compile(item, success, message)
         if not still_queued:
             # It failed, or was deleted while it compiled, so its file goes.
-            self._delete_queue_files([item['path']])
+            self.delete_shot_files([item['path']])
         if not success and changed:
             self.output(
                 'Queued shot %s could not be compiled, and has left the queue.\n'
@@ -1104,8 +1104,11 @@ class QueueManager(QtCore.QObject):
         if self.controller.set_last_sent_from_queue(value, sequence_attrs):
             self.queueChanged.emit()
 
-    def _delete_queue_files(self, paths):
-        """Delete the files of shots the queue has finished with."""
+    def delete_shot_files(self, paths):
+        """Delete the files of shots runmanager has finished with.
+
+        A file already gone is passed over; one that cannot be deleted is
+        reported."""
         for path in paths:
             try:
                 os.remove(path)
@@ -1113,7 +1116,7 @@ class QueueManager(QtCore.QObject):
                 continue
             except Exception as exc:
                 self.output(
-                    'Could not delete queued shot %s: %s\n'
+                    'Could not delete shot %s: %s\n'
                     % (os.path.basename(path), str(exc)),
                     red=True,
                 )
@@ -1166,7 +1169,7 @@ class QueueManager(QtCore.QObject):
                 red=True,
             )
         if removed_paths:
-            self._delete_queue_files(removed_paths)
+            self.delete_shot_files(removed_paths)
             self.queueChanged.emit()
         return removed_paths
 
@@ -1179,10 +1182,10 @@ class QueueManager(QtCore.QObject):
     def offer_next(self):
         cancelled = self.controller.drop_cancelled_head()
         if cancelled:
-            self._delete_queue_files(cancelled)
+            self.delete_shot_files(cancelled)
         overtaken = self.controller.drop_overtaken_default_shots()
         if overtaken:
-            self._delete_queue_files(overtaken)
+            self.delete_shot_files(overtaken)
         item = self.controller.offer_next()
         if item is not None:
             if item['reclaimed']:

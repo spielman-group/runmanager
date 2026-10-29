@@ -4410,10 +4410,7 @@ class RunManager(LabscriptGuiApplication):
             row = self._default_shot_ready
             self._default_shot_ready = None
         if row is not None:
-            try:
-                os.remove(row['path'])
-            except OSError:
-                pass
+            self.queue_manager.delete_shot_files([row['path']])
 
     def take_default_shot(self, labscript_file):
         """Return a compiled default shot's queue row, or None while one is
@@ -4505,10 +4502,7 @@ class RunManager(LabscriptGuiApplication):
                 'Could not produce a default shot: %s\n' % str(e), red=True
             )
             if run_file is not None:
-                try:
-                    os.remove(run_file)
-                except OSError:
-                    pass
+                self.queue_manager.delete_shot_files([run_file])
         finally:
             with self._default_shot_lock:
                 self._default_shot_ready = row
