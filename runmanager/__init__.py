@@ -804,7 +804,9 @@ def make_single_run_file(
     so that a result coming back can be matched to the shot that was submitted. A file
     written without one carries no such attribute at all, which is how a shot that
     nobody submitted is told apart from one that was."""
-    os.makedirs(os.path.dirname(filename), exist_ok=True)
+    directory = os.path.dirname(filename)
+    if directory:
+        os.makedirs(directory, exist_ok=True)
     with h5py.File(filename, 'w') as f:
         f.attrs.update(sequence_attrs)
         f.attrs['run number'] = run_no

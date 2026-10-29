@@ -5,5 +5,4 @@
 - `docs/source/conf.py`: `autodoc_mock_imports = ['labscript_utils']` mocks the base class of `RunmanagerClient`, so `runmanager.remote` fails to import in the docs build (`RunmanagerClient.instance()` is missing), and the API reference has no page for the remote client users import.
 - `__init__.py`, `globals_diff_groups`: with nothing differing and `return_string=False`, `df` is unbound, raising UnboundLocalError (upstream 0ba0e2a).
 - `__init__.py`, `find_comments`: offsets after a string spanning lines are too small, so the globals diff and the remote setters' kept comment cut the wrong text (upstream 35ea631).
-- `__init__.py`, `make_single_run_file`: a bare file name makes `os.makedirs('')` raise (upstream 854c5da).
 - `batch_compiler.py`, `BatchProcessor.compile`: `os.chdir` is outside the `try` and `SystemExit` is not caught, so a missing script directory or a script calling `sys.exit` kills the compiler while runmanager waits for its reply (upstream 5bb5e3c).
