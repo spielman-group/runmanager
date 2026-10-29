@@ -1006,8 +1006,8 @@ class QueueManager(QtCore.QObject):
         """Ask the worker to compile the queued eager rows not yet compiled."""
         self.command_queue.put(('compile_ahead', ()))
 
-    def compile_shots(self, records, send_to_BLACS, send_to_runviewer):
-        """Queue these records if send_to_BLACS, and compile them.
+    def compile_shots(self, records, send_to_blacs, send_to_runviewer):
+        """Queue these records if send_to_blacs, and compile them.
 
         Returns the records, each now carrying its shot id and its batch's
         ``send_to_runviewer``. A batch not bound for the queue is compiled for
@@ -1019,7 +1019,7 @@ class QueueManager(QtCore.QObject):
             # the row's id.
             record['shot_id'] = new_shot_id()
             record['send_to_runviewer'] = send_to_runviewer
-        if send_to_BLACS:
+        if send_to_blacs:
             self.enqueue(records)
             self.compile_ahead()
             return records

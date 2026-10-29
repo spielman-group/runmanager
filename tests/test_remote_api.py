@@ -202,9 +202,9 @@ class SubmittingApp(object):
         )
         submit_batch = self.queue_manager.compile_shots
 
-        def compile_shots(records, send_to_BLACS, send_to_runviewer):
+        def compile_shots(records, send_to_blacs, send_to_runviewer):
             self.batches.append(records)
-            return submit_batch(records, send_to_BLACS, send_to_runviewer)
+            return submit_batch(records, send_to_blacs, send_to_runviewer)
 
         self.queue_manager.compile_shots = compile_shots
 

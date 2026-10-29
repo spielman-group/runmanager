@@ -2549,10 +2549,10 @@ class RunManager(LabscriptGuiApplication):
         """Make the batch the Engage button makes, returning its queue records."""
         if submission_mode not in SUBMISSION_MODES:
             raise ValueError(f'Unknown submission mode {submission_mode!r}.')
-        send_to_BLACS = self.ui.checkBox_run_shots.isChecked()
+        send_to_blacs = self.ui.checkBox_run_shots.isChecked()
         send_to_runviewer = self.ui.checkBox_view_shots.isChecked()
         mode = SUBMISSION_MODES[submission_mode]
-        if (mode.joins_sequence or mode.clears_queue) and not send_to_BLACS:
+        if (mode.joins_sequence or mode.clears_queue) and not send_to_blacs:
             # A mode that reads the queue for a sequence to join, or
             # empties it, is about the queue -- so with nothing going to
             # BLACS there is nothing for it to do.
@@ -2561,7 +2561,7 @@ class RunManager(LabscriptGuiApplication):
             )
         return self.compile_and_queue_shots(
             submission_mode,
-            send_to_BLACS,
+            send_to_blacs,
             send_to_runviewer,
             self.expand_pending_shots(),
         )
@@ -2595,7 +2595,7 @@ class RunManager(LabscriptGuiApplication):
         return pending
 
     def compile_and_queue_shots(
-        self, submission_mode, send_to_BLACS, send_to_runviewer, batch, sequence=None
+        self, submission_mode, send_to_blacs, send_to_runviewer, batch, sequence=None
     ):
         """Make the shots of one batch and put them in the queue.
 
@@ -2624,7 +2624,7 @@ class RunManager(LabscriptGuiApplication):
         if not labscript_file:
             raise ValueError('No labscript file is selected.')
         output_folder = self.ui.lineEdit_shot_output_folder.text()
-        if send_to_BLACS and not output_folder:
+        if send_to_blacs and not output_folder:
             raise ValueError('No output folder is selected.')
         active_groups = self.get_active_groups(interactive=False)
         index_start = None
@@ -2677,7 +2677,7 @@ class RunManager(LabscriptGuiApplication):
         if mode.clears_queue:
             self.queue_manager.clear()
         logger.info('Making h5 files')
-        if not send_to_BLACS:
+        if not send_to_blacs:
             # Shots that will never run are not a sequence: they claim no
             # sequence index, and leave nothing in the shot output folder.
             output_folder = tempfile.mkdtemp(dir=self.scratch_dir.name)
@@ -2689,7 +2689,7 @@ class RunManager(LabscriptGuiApplication):
             index_start=index_start,
             sequence_attrs=sequence_attrs,
             name_format=name_format,
-            increment_sequence_index=send_to_BLACS,
+            increment_sequence_index=send_to_blacs,
         )
         compile_mode = self.queue_compile_mode_combo.currentData()
         queue_records = []
@@ -2711,14 +2711,14 @@ class RunManager(LabscriptGuiApplication):
         # For a later batch to join. Its next run number is kept here rather
         # than read from files, which shots still being compiled do not have,
         # and never goes down, though a replacement numbers from 0 again.
-        if send_to_BLACS:
+        if send_to_blacs:
             last = queue_records[-1]
             attrs = last['sequence_attrs']
             key = (attrs['sequence_id'], attrs['sequence_index'])
             next_run = max(last['run_no'] + 1, self.sequences.get(key, (None, None, 0))[2])
             self.sequences[key] = (last['path'], last['sequence_attrs'], next_run, name_format)
         return self.queue_manager.compile_shots(
-            queue_records, send_to_BLACS, send_to_runviewer
+            queue_records, send_to_blacs, send_to_runviewer
         )
 
     def on_abort_clicked(self):

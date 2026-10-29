@@ -709,7 +709,7 @@ class SubmittedShotTests(unittest.TestCase):
         compiles = self.compiles and path not in self.failing
         return compiles, ('' if compiles else COMPILE_ERROR)
 
-    def submit(self, count=1, send_to_BLACS=True):
+    def submit(self, count=1, send_to_blacs=True):
         records = self.manager.compile_shots(
             [
                 {
@@ -722,7 +722,7 @@ class SubmittedShotTests(unittest.TestCase):
                 }
                 for n in range(count)
             ],
-            send_to_BLACS,
+            send_to_blacs,
             False,
         )
         return [record['shot_id'] for record in records]
@@ -786,7 +786,7 @@ class SubmittedShotTests(unittest.TestCase):
         # Compiling a batch for a look at it in runviewer queues nothing, but
         # its shots still say how their compile is going.
         self.release.clear()
-        [shot_id] = self.submit(send_to_BLACS=False)
+        [shot_id] = self.submit(send_to_blacs=False)
         self.assertTrue(
             self.wait_until(self.compiling.is_set), 'the worker has the batch'
         )
