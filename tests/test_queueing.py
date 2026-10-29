@@ -59,15 +59,15 @@ class QueueIdentityTests(unittest.TestCase):
     def test_queued_shots_have_distinct_ids_that_survive_save_and_restore(self):
         controller = QueueController()
         controller.enqueue([queued_shot('/tmp/shot_a.h5'), queued_shot('/tmp/shot_b.h5')])
-        state = controller.export_state()
+        state = controller.get_save_data()
         shot_ids = [item['shot_id'] for item in state['items']]
         self.assertTrue(all(shot_ids), 'every queued shot needs an id')
         self.assertEqual(len(set(shot_ids)), 2, 'ids must distinguish rows')
 
         restored = QueueController()
-        restored.restore_state(state)
+        restored.restore_save_data(state)
         self.assertEqual(
-            [item['shot_id'] for item in restored.export_state()['items']], shot_ids
+            [item['shot_id'] for item in restored.get_save_data()['items']], shot_ids
         )
 
     def test_running_and_failing_a_shot_does_not_change_the_saved_queue(self):
@@ -76,10 +76,10 @@ class QueueIdentityTests(unittest.TestCase):
         # offer to save the configuration again after every single shot.
         controller = QueueController()
         controller.enqueue([queued_shot('/tmp/shot_a.h5')])
-        before = controller.export_state()
+        before = controller.get_save_data()
         offered = controller.offer_next()
         controller.shot_finished(offered['shot_id'], 'failed', 'Device error')
-        self.assertEqual(controller.export_state(), before)
+        self.assertEqual(controller.get_save_data(), before)
 
     def test_a_restored_record_without_an_id_is_given_one_and_keeps_the_rest(self):
         # A queue saved before shot ids existed, or with a setting since
@@ -95,7 +95,7 @@ class QueueIdentityTests(unittest.TestCase):
             'n_runs': 5,
         }
         controller = QueueController()
-        controller.restore_state({'failure_policy': 'drop', 'items': [legacy]})
+        controller.restore_save_data({'failure_policy': 'drop', 'items': [legacy]})
 
         offered = controller.offer_next()
 
@@ -108,7 +108,7 @@ class QueueIdentityTests(unittest.TestCase):
         self.assertEqual(offered['frozen_globals'], legacy['frozen_globals'])
         self.assertEqual((offered['run_no'], offered['n_runs']), (2, 5))
         self.assertEqual(
-            controller.export_state()['items'][0]['shot_id'],
+            controller.get_save_data()['items'][0]['shot_id'],
             offered['shot_id'],
             'and the id it was given is stable from then on',
         )
@@ -126,7 +126,7 @@ class SavedQueueSettingsTests(unittest.TestCase):
         )
         self.addCleanup(manager.shutdown)
 
-        manager.restore_state(
+        manager.restore_save_data(
             {
                 'compile_mode': 'eagre',
                 'empty_queue_policy': 'default_shott',
@@ -155,7 +155,7 @@ class QueuePauseTests(unittest.TestCase):
         # stopped.
         controller = QueueController()
         controller.set_paused(True)
-        controller.restore_state({'items': [queued_shot('/tmp/shot_a.h5')]})
+        controller.restore_save_data({'items': [queued_shot('/tmp/shot_a.h5')]})
         self.assertFalse(controller.get_queue_state()['paused'])
 
     def test_a_paused_queue_offers_no_shot_until_it_is_resumed(self):
@@ -278,7 +278,7 @@ class QueueOutcomeTests(unittest.TestCase):
                 )
                 self.assertIn('Device error', rows[0]['tooltip'])
                 self.assertEqual(
-                    [item['shot_id'] for item in controller.export_state()['items']][0],
+                    [item['shot_id'] for item in controller.get_save_data()['items']][0],
                     offered['shot_id'],
                     'the row keeps the id it was offered under',
                 )
@@ -542,7 +542,7 @@ class DefaultShotTests(unittest.TestCase):
         app.offer_shot()
         app.queue_manager.enqueue([queued_shot(engaged)])
 
-        saved = app.queue_controller.export_state()
+        saved = app.queue_controller.get_save_data()
 
         self.assertEqual(
             [item['path'] for item in saved['items']],
@@ -550,7 +550,7 @@ class DefaultShotTests(unittest.TestCase):
             'the queue is saved as the work still to do',
         )
         restored = QueueController()
-        restored.restore_state(saved)
+        restored.restore_save_data(saved)
         self.assertEqual(
             [row['path'] for row in restored.get_queue_display_items()], [engaged]
         )
@@ -887,7 +887,7 @@ class ContinuingSequenceAnchorTests(unittest.TestCase):
     def test_loading_a_configuration_mid_session_keeps_the_anchor(self):
         self.run_a_shot_and_let_blacs_ask_again(self.app)
 
-        self.app.queue_manager.restore_state({}, restore_rows=False)
+        self.app.queue_manager.restore_save_data({}, restore_rows=False)
 
         self.assertEqual(
             self.app.get_submission_anchor(main_module.SUBMISSION_MODE_LAST_SEQUENCE),
@@ -1109,7 +1109,7 @@ class QueueEditingTests(unittest.TestCase):
         self.app.offer_shot()
 
         restarted = QueueController()
-        restarted.restore_state(self.app.queue_controller.export_state())
+        restarted.restore_save_data(self.app.queue_controller.get_save_data())
 
         rows = restarted.get_queue_display_items()
         self.assertEqual([row['path'] for row in rows], [running])
@@ -1632,7 +1632,7 @@ class LostRowTests(unittest.TestCase):
         # Neither Delete nor Clear can take the running row. Only restoring
         # the queue at startup replaces the whole of it, and the shot BLACS is
         # running can still go that way.
-        app.queue_manager.restore_state({})
+        app.queue_manager.restore_save_data({})
 
         app.queue_exchange(
             outcome={

@@ -655,7 +655,7 @@ class QueueController(object):
             self.last_sent_from_queue = value
             return True
 
-    def export_state(self):
+    def get_save_data(self):
         with self._lock:
             return {
                 'empty_queue_policy': self.empty_queue_policy,
@@ -665,7 +665,7 @@ class QueueController(object):
                 # Without what this session made of each row: a saved queue is
                 # a list of work still to do, so writing out that BLACS was
                 # running a row, or the paragraph explaining why it could not,
-                # would only put back something restore_state discards -- and
+                # would only put back something restore_save_data discards -- and
                 # would make the configuration differ from the saved one, and
                 # so prompt to be saved again, after every offer:
                 #
@@ -691,7 +691,7 @@ class QueueController(object):
                 ],
             }
 
-    def restore_state(self, state, restore_rows=True):
+    def restore_save_data(self, state, restore_rows=True):
         with self._lock:
             self.empty_queue_policy = state.get('empty_queue_policy', EMPTY_QUEUE_NOTHING)
             default_labscript_file = state.get('default_labscript_file', '')
@@ -1226,7 +1226,7 @@ class QueueManager(QtCore.QObject):
         self.queueChanged.emit()
         return record
 
-    def restore_state(self, state, restore_rows=True):
+    def restore_save_data(self, state, restore_rows=True):
         state = dict(state or {})
         state['items'] = [
             dict(item) if isinstance(item, dict) else item
@@ -1253,7 +1253,7 @@ class QueueManager(QtCore.QObject):
                         red=True,
                     )
                     record[key] = default
-        self.controller.restore_state(state, restore_rows)
+        self.controller.restore_save_data(state, restore_rows)
         self.queueChanged.emit()
 
     def mainloop(self):

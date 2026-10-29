@@ -3919,7 +3919,7 @@ class RunManager(LabscriptGuiApplication):
                      'send_to_blacs': send_to_blacs,
                      'shuffle': shuffle,
                      'axes': axes,
-                     'queue_state': self.queue_controller.export_state(),
+                     'queue_state': self.queue_controller.get_save_data(),
                      'analysis_submission': self.analysis_submission.get_save_data()}
         save_data.update(self.geometry_save_data())
         return save_data
@@ -4021,7 +4021,7 @@ class RunManager(LabscriptGuiApplication):
         if isinstance(queue_state, dict):
             # The queue's shots come back only when runmanager starts. A load
             # during a session applies the queue's settings and leaves its shots:
-            self.queue_manager.restore_state(queue_state, restore_rows=at_startup)
+            self.queue_manager.restore_save_data(queue_state, restore_rows=at_startup)
             restored_queue_state = self.queue_controller.get_queue_state()
             if at_startup and restored_queue_state['n_items']:
                 # Restored rows that were not compiled yet are compiled ahead,

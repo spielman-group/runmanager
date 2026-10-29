@@ -631,7 +631,7 @@ class ShotStatusTests(RemoteCommandTestCase):
         Replacing what is there rather than adding to it, because what is in front
         of a row is half of its answer.
         """
-        self.app.queue_manager.restore_state({})
+        self.app.queue_manager.restore_save_data({})
         for shot_id, state in rows:
             self.enqueue(shot_id, state=state)
 
@@ -992,7 +992,7 @@ class SubmissionAnchorTests(RemoteCommandTestCase):
         # Clear would delete its file.
         path = os.path.join(self.directory, 'experiment_007.h5')
         open(path, 'w').close()
-        self.app.queue_manager.restore_state({'items': [path]})
+        self.app.queue_manager.restore_save_data({'items': [path]})
 
         with self.assertRaises(SequenceRefused):
             self.app.engage(main_module.SUBMISSION_MODE_LAST_SEQUENCE_CLEAR_QUEUE)
