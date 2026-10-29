@@ -34,10 +34,11 @@ dependencies = [
     "labscript_utils>=3.3.0",
     "lyse",
     "pandas>=0.13",
-    "qtutils>=4.1.3",
+    "qtutils>=4.4.1",
     "runviewer",
     "matplotlib",
     "tomli-w",
+    "zprocess>=3.0.1",
 ]
 dynamic = ["version"]
 
@@ -65,3 +66,6 @@ runmanager = "desktop_app:entry_point"
 
 [project.gui-scripts]
 runmanager-gui = "desktop_app:entry_point"
+
+[tool.ruff.lint]
+ignore = ["DTZ005", "I001"]
