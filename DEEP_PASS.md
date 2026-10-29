@@ -813,3 +813,78 @@ window's close calls it; `notify_shot_complete`'s `if not filepath`
 no-QApplication fallback (`__main__.py:204-207`), its one caller passing none
 under a QApplication; `selected_global_names`'s `name_item is not None`
 (`__main__.py:1305`).
+
+## Step 2.4: dead code and compatibility leftovers
+
+Searched: each of the 522 names runmanager's package defines, counted as a word
+in every tracked text file of every repo's `CodeHealth` and `Development` (or
+`main`), docs and tests included, and of the meta repo's `tools` and `issues`;
+each remote handler by its command name; attributes set and never read; imports
+never used; the step-4 notes left by steps 2.1 to 2.3; and, for each name found,
+whether upstream (`master`) defines or documents it. Line references are to
+`8b10b9f`. **No bugs were found.**
+
+### Candidates
+
+| | What | Evidence | Removal visible to |
+| --- | --- | --- | --- |
+| U1 | `nested` (`__main__.py:244-251`), a context manager | No caller; upstream's copy in `__main__` has none either | no one |
+| U2 | `log_if_global` (`__main__.py:173-189`) and its three calls (`:4212`, `:4220`, `:4226`) | Every call passes `[]`, and the list it then falls back on is empty, so it never logs. Upstream's is the same | no one |
+| U3 | Unused imports: `ast`, `pprint` and `Path` (`__main__.py:42`, `:43`, `:48`); `PROVIDER_NONE`, `PROVIDER_PAUSED`, `PROVIDER_SHOT` and `SHOT_OUTCOME_STATUSES` (`queueing.py:52-59`) | Nothing in their modules uses them. `test_queueing.py:43-44` takes two of the constants from `queueing`; it would take them from `runmanager.client`, where they are defined and where it already takes `PROVIDER_PAUSED` | no one |
+| U4 | `RunManager.shared_drive_prefix` (`__main__.py:1938`) | Set from the labconfig, read nowhere; upstream the same | no one |
+| U5 | `remote.py`'s `if __name__ == '__main__'` block (`:53-61`), with its `import time` | A manual check from upstream that needs a global named `test` in a running runmanager, then Engages; no test runs it | anyone who runs `python -m runmanager.remote` |
+| U6 | `prepare_queue_shot`'s `if active_groups is None: raise` (`__main__.py:4365-4366`) | `get_active_groups(interactive=False)` raises rather than returning `None` | no one |
+| U7 | The `None` returns of `on_queue_empty_policy_changed` and `on_queue_compile_mode_changed` (`__main__.py:2265-2266`, `:2271-2272`) | The dropdowns are filled before their signals are connected and never cleared, and since R1 every value set is one they hold | no one |
+| U8 | `AnalysisSubmission.shutdown`'s condition on the join (`analysis_submission.py:167-170`) | Its callers, the window's close and the tests' `submit_to_lyse`, are never the mainloop thread, which `__init__` starts; joining a finished thread returns at once | no one |
+| U9 | `notify_shot_complete`'s `if not filepath: return` and `return 'queued'` (`analysis_submission.py:155-156`, `:159`) | Its one caller checks the path first (`__main__.py:4575`), and nothing reads the return | no one |
+| U10 | `expression_cell_colors`'s `palette` parameter and no-QApplication fallback (`__main__.py:204-207`) | Its one caller, `set_colors` (`:1407`), passes no palette and runs under the QApplication | no one |
+| U11 | `selected_global_names`'s `name_item is not None` (`__main__.py:1305`) | `selectedRows` gives valid indexes, whose Name sibling always holds an item | no one |
+| U12 | `get_queue_paths`'s `include_default_shots` (`queueing.py:445-455`) | The one caller passes `False` (`__main__.py:2448`); the default `True` serves only ten test calls, none about default shots. Proposal: drop the parameter and always leave default shots out | no one |
+
+### Not candidates
+
+- `compile_multishot_async` (`__init__.py:846`): no caller in any repo, but it is
+  upstream's public compile API, beside `compile_labscript_async`. `CODEX.md`'s
+  `AgentEngage` row says BLACS's `compile_and_restart` and labscript-utils'
+  `labscript_profile/create.py` call it; they call
+  `compile_labscript_with_globals_files_async` and `compile_labscript_async`.
+- `drop_times` (`functions.py:35`): no repo uses it, but `runmanager.functions` is
+  star-imported where globals are evaluated (`__init__.py:326`), so a globals file
+  may name it.
+- The 44 `RunmanagerServer.handle_*` methods: each is reached by its command name
+  from `runmanager.client`, the public client, including `is_output_folder_default`
+  and `reset_shot_output_folder`, which only the client names. So are `remote.py`'s
+  `Client` and `DEFAULT_PORT`.
+- `last_save_config_file`, `last_save_data` and `_pressed_index`: labscript-utils'
+  application mixin and `LeftClickMixin` read them.
+- Reading and converting legacy HDF5 globals files: still the only way to open a
+  globals file from before TOML.
+
+### Upstream names already removed
+
+These names were removed on `Development` on 2026-09-29, before the 2026-10-16 rule
+that keeps public interfaces. They are recorded here for Ian:
+
+- b083388 and 610f9a4 removed `runmanager.new_globals_file`, `get_grouplist`,
+  `get_globalslist`, `copy_group`, `delete_group`, `delete_global`, `get_value`,
+  `set_value`, `get_units`, `set_units`, `get_expansion`, `set_expansion`,
+  `add_expansion_groups` and `dict_diff`. `runmanager.globals_file` offers each job.
+- 4cd262d removed `runmanager.remote.set_globals`, upstream's name for `set_values`,
+  which upstream's FunctionRunner docstring shows.
+
+No repo uses these names. A lab script that does stops with an `AttributeError`.
+Proposal: leave them out. Restoring them would make them aliases, which is the open
+question on shims.
+
+### Branches
+
+These are every branch other than the tiers and `CodeHealth`.
+
+| | Branch | Content | Proposal |
+| --- | --- | --- | --- |
+| W1 | `RunmanagerTOMLGlobals` (local and origin, `6e5db8e`) | Merge commits only; every non-merge commit is in `Development` | delete |
+| W2 | `spielman_merged/Qt6Fixes` (local and origin, `72973e1`) | In `Production`; `Development` has its own Qt6 fixes | delete |
+| W3 | origin `RunmanagerSubmissions` (`b2e4415`) | 19 commits of April's queue generation, which `RunmanagerQueueSimple` superseded in `Development` | delete |
+| W4 | origin `RunmanagerGlobalFormatStrings` (`875edec`), `RunmanagerQueueSubmissionTypes` (`56ce434`), `UpdatedTitleBars` (`6d04b41`) | Each is contained in `Development` | delete |
+| W5 | origin `maintenance/3.0.x` (`61be21f`) | Upstream's 2020 maintenance branch, still upstream | delete from the fork |
+| W6 | `UpstreamBugFixes` (local and origin, `96ff041`) | Four fixes staged for an upstream pull request | keep |
