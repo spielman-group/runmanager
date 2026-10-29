@@ -88,6 +88,28 @@ class ShotCountTests(unittest.TestCase):
                 )
 
 
+class ScannedGlobalsTests(unittest.TestCase):
+    def test_a_global_derived_from_another_on_its_axis_is_not_counted_as_scanned(self):
+        sequence_globals = {
+            'group': {
+                name: (expression, '', expansion)
+                for name, expression, expansion in [
+                    ('x', '[1, 2, 3]', 'x'),
+                    ('x2', '[2 * v for v in x]', 'x'),
+                    ('y', '[4, 5]', 'outer'),
+                    ('a', '[6, 7]', 'pair'),
+                    ('b', '[8, 9]', 'pair'),
+                    ('c', '10', ''),
+                ]
+            }
+        }
+        results, hierarchy, _ = runmanager.evaluate_globals(sequence_globals)
+
+        self.assertEqual(
+            runmanager.scanned_globals(sequence_globals, results, hierarchy),
+            {'x': 'zip x', 'y': 'outer y', 'a': 'zip pair', 'b': 'zip pair'},
+        )
+
 class ExpansionGuessTests(unittest.TestCase):
     def setUp(self):
         directory = tempfile.mkdtemp()
