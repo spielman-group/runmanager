@@ -38,3 +38,15 @@ class ZipGroupTests(unittest.TestCase):
         _, results = evaluate({'x': ('5', 'outer'), 'y': ('2*x', '')})
         self.assertIsInstance(results['group']['x'], runmanager.ExpansionError)
         self.assertEqual(results['group']['y'], 10)
+
+    def test_a_zip_group_of_unequal_lengths_is_refused(self):
+        for a in ('[1, 2, 3]', 'iter([1, 2, 3])'):
+            with self.subTest(a=a):
+                sequence_globals, results = evaluate(
+                    {'a': (a, 'z'), 'b': ('[4, 5]', 'z'), 'c': ('[6, 7]', 'outer')}
+                )
+                self.assertIsInstance(results['group']['a'], ValueError)
+                self.assertIsInstance(results['group']['b'], ValueError)
+                self.assertEqual(results['group']['c'], [6, 7])
+                with self.assertRaises(ValueError):
+                    runmanager.evaluate_globals(sequence_globals)

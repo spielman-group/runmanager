@@ -295,7 +295,9 @@ provides four features for managing parameter space scans:
 #.  The ability to define what we term ‘zip groups’ after the Python function `zip`. Two (or
     more) globals (specified as lists) can be grouped together so that they iterate through
     values in lockstep. In this instance, the zip group is used as a single axis of the outer
-    product rather than one axis for each global.
+    product rather than one axis for each global. The globals in a zip group must have
+    equal lengths: if they do not, each of them shows an error and Engage refuses the
+    sequence, rather than leaving out the values beyond the shortest.
 #.  The third feature is the ability to define the order in which the axes of the parameter
     space are iterated over when producing individual shots (see the ‘Axes’ tab discussed
     previously in :ref:`usage:The graphical interface`).
