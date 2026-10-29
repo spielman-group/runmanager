@@ -476,14 +476,17 @@ class ItemView(LeftClickMixin):
         set_selection_highlight(self)
 
     def keyPressEvent(self, event):
-        if event.key() in [QtCore.Qt.Key_Space, QtCore.Qt.Key_Enter, QtCore.Qt.Key_Return]:
-            item = self.model().itemFromIndex(self.currentIndex())
-            if item.isEditable():
+        index = self.currentIndex()
+        if (
+            event.key() in [QtCore.Qt.Key_Space, QtCore.Qt.Key_Enter, QtCore.Qt.Key_Return]
+            and index.isValid()
+        ):
+            if self.model().itemFromIndex(index).isEditable():
                 # Space/enter edits editable items:
-                self.edit(self.currentIndex())
+                self.edit(index)
             else:
                 # Space/enter on non-editable items simulates a left click:
-                self.leftClicked.emit(self.currentIndex())
+                self.leftClicked.emit(index)
         return super(ItemView, self).keyPressEvent(event)
 
     def moveCursor(self, cursor_action, keyboard_modifiers):
@@ -2815,16 +2818,18 @@ class RunManager(LabscriptGuiApplication):
             filepath = self.groups_model.item(index, self.GROUPS_COL_NAME).text()
             filenames[filepath] = filepath.split(os.sep)[-1]
 
-        # expand duplicate filenames until there is nomore duplicates
-        new_filename = {}
+        # Add parent folders to duplicate file names until there are none:
         i = 2
-        while new_filename != filenames:
-            for filepath, filename in filenames.items():
-                if list(filenames.values()).count(filename) > 1:
-                    new_filename[filepath] = os.sep.join(filepath.split(os.sep)[-i:])
-                else:
-                    new_filename[filepath] = filename
-            filenames = new_filename
+        while True:
+            all_filenames = list(filenames.values())
+            duplicates = [
+                filepath for filepath, filename in filenames.items()
+                if all_filenames.count(filename) > 1
+            ]
+            if not duplicates:
+                break
+            for filepath in duplicates:
+                filenames[filepath] = os.sep.join(filepath.split(os.sep)[-i:])
             i += 1
 
         # add all filenames to the copy and move submenu
