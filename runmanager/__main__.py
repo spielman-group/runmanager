@@ -3317,7 +3317,7 @@ class RunManager(LabscriptGuiApplication):
         
         items = []
         
-        expansion_type, name = expansion_name.split()
+        expansion_type, name = expansion_name.split(None, 1)
         name_item = QtGui.QStandardItem(name)
         name_item.setData(expansion_name, self.AXES_ROLE_NAME)
         if expansion_type == 'outer':

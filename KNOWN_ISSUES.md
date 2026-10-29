@@ -6,5 +6,4 @@
 - `__init__.py`, `globals_diff_groups`: with nothing differing and `return_string=False`, `df` is unbound, raising UnboundLocalError (upstream 0ba0e2a).
 - `__init__.py`, `find_comments`: offsets after a string spanning lines are too small, so the globals diff and the remote setters' kept comment cut the wrong text (upstream 35ea631).
 - `__init__.py`, `make_single_run_file`: a bare file name makes `os.makedirs('')` raise (upstream 854c5da).
-- `__main__.py`, the axes tab's `expansion_name.split()`: a zip group named with a space raises ValueError (upstream 03b54f9).
 - `batch_compiler.py`, `BatchProcessor.compile`: `os.chdir` is outside the `try` and `SystemExit` is not caught, so a missing script directory or a script calling `sys.exit` kills the compiler while runmanager waits for its reply (upstream 5bb5e3c).
