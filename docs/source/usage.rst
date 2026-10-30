@@ -51,7 +51,7 @@ in a toolbar at the top of the runmanager interface, which is always visible. Th
     anything at all. The light beside it shows whether BLACS is answering and the text
     beside that what BLACS is doing; both stay live whether the checkbox is ticked or not.
     BLACS's hostname and port come from the ``servers`` and ``ports`` sections of the
-    laboratory PC configuration file (see labconfig in the glossary). BLACS must be
+    laboratory PC configuration file (see :doc:`labconfig <labscript-utils:labconfig>`). BLACS must be
     running on that PC, and the network (including firewalls and other network access
     controls) must let runmanager reach it.
     Its remote methods are named ``get_run_shots``/``set_run_shots``.
@@ -323,7 +323,7 @@ Runmanager provides four features for managing parameter space scans:
     scanned. The number of shots to be generated, which is the product of the lengths of
     the axes (each ‘outer’ global is an axis, and each zip group is one axis), is
     displayed next to the engage button.
-#.  The ability to define what we term ‘zip groups’ after the Python function `zip`. Two (or
+#.  The ability to define ‘zip groups’, named after the Python function `zip`. Two (or
     more) globals (specified as lists) can be grouped together so that they iterate through
     values in lockstep. In this instance, the zip group is used as a single axis of the outer
     product rather than one axis for each global. The globals in a zip group must have
@@ -437,10 +437,9 @@ up when it runs:
 
 The hierarchy of global interdependencies is then used to determine automatic zip group
 names, which are based on the name of the global in the hierarchy that does not depend on
-any other. If a global depends on multiple other globals, then the zip group name is chosen
-semi-randomly based on the order of the items in the Python dictionary (which depends on
-a hash of the dictionary key names and the size of the dictionary). However, it is of course
-always possible to overwrite the automatic zip group name with something else should our algorithm choose incorrectly.
+any other. If a global depends on several such globals, the zip group is named after the
+first of them in alphabetical order. An automatic zip group name can be replaced with
+another.
 
 Shot creation
 -------------
