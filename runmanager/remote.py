@@ -1,3 +1,10 @@
+"""A function for each method of ``RunmanagerClient`` but ``queue_exchange``.
+
+They call the client the process shares, ``RunmanagerClient.instance()``; see
+:class:`runmanager.client.RunmanagerClient` for what each does. This module also
+gives the names of ``runmanager.client``, and ``Client`` for ``RunmanagerClient``.
+"""
+
 from .client import *
 from .client import RunmanagerClient as Client
 
