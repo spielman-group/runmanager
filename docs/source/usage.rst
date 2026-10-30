@@ -397,7 +397,7 @@ a different axis (an ‘outer’ global or a global in another zip group), eithe
 through globals that are not scanned. A quantity that depends on several axes of a scan can
 be computed in the experiment script, where each global has a single value.
 
-To implement this, each expression is parsed with the Python ``ast`` module to find the
+To implement this, each expression is read with the Python ``symtable`` module to find the
 names of the other globals that it refers to, and the expressions are then evaluated in an
 order in which every global comes after the globals it refers to, each in a namespace that
 also holds the names described in :ref:`usage:Managing global variables`. This gives a
@@ -407,6 +407,29 @@ should be combined into zip groups.
 Each expression is evaluated once. Globals that refer to each other in a cycle are reported
 as an error naming the cycle, and a global that refers to a global with an error gets an
 error of its own.
+
+The globals that an expression refers to are the names in its text, not the names it looks
+up when it runs:
+
+- A global named on any branch of an expression is a dependency, even on a branch that is
+  never taken. So ``a = 1 if True else b`` with ``b = a + 1`` is a cycle, and both globals
+  are refused. Such a reference also counts for the automatic zip groups, the check of
+  zipped globals, and the scan icons of the group tabs.
+- A global used only through another global is not a dependency. With a scanned ``x``, an
+  unscanned ``f = lambda: x*2`` and a scanned ``y = f()``, ``y`` refers only to ``f``, so it
+  is not put in a zip group with ``x`` automatically.
+- A name looked up dynamically, as by ``globals()['a']`` or ``eval('a')``, is not a
+  dependency. It works only if that global happens to be evaluated earlier.
+- A name that the expression binds itself, as a lambda's argument, a comprehension's
+  variable or the target of ``:=``, is not a dependency. So a name read before the ``:=``
+  that binds it, as in ``(x2, (x2 := 1))[1]``, gives a NameError unless the name is already
+  in the namespace.
+- A lambda may call itself by the name of its global, as in
+  ``factorial = lambda n: 1 if n < 2 else n * factorial(n - 1)``. Lambdas that call each
+  other are a cycle, and ``a = (lambda: a)()`` gives a NameError.
+- A global with a name of the namespace, such as ``pi``, replaces that name for every
+  global, including those defined before it. If the global has an error, the namespace's
+  value is used.
 
 The hierarchy of global interdependencies is then used to determine automatic zip group
 names, which are based on the name of the global in the hierarchy that does not depend on
