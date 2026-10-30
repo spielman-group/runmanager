@@ -4,7 +4,7 @@
 #                                                                   #
 # Copyright 2013, Monash University                                 #
 #                                                                   #
-# This file is part of the program BLACS, in the labscript suite    #
+# This file is part of the program runmanager, in the labscript     #
 # (see http://labscriptsuite.org), and is licensed under the        #
 # Simplified BSD License. See the license.txt file in the root of   #
 # the project for the full license.                                 #
@@ -43,19 +43,11 @@ def set_icon_label_pixmap(label, icon_path, size=16):
     label.setMaximumSize(size + 4, size + 4)
 
 
-class AnalysisSubmission(object):
-    """Send completed shots to lyse.
-
-    Parameters
-    ----------
-    ui
-        runmanager's main window.
-    on_lyse_outcome : callable
-        Called as ``on_lyse_outcome(path, lyse, message)``, from the submission's
-        thread, once a shot's file is settled: ``lyse`` is ``'sent'``,
-        ``'rejected'`` or ``'not sent'``, and ``message`` says why. A file lyse
-        could not be reached for is not reported, because it is retried.
-    """
+class AnalysisSubmission:
+    """Sends completed shots to lyse. on_lyse_outcome(path, lyse, message) is called
+    from the submission's thread once a shot's file is settled, with lyse one of
+    LYSE_SENT, LYSE_REJECTED and LYSE_NOT_SENT and message saying why. A file lyse
+    cannot be reached for is retried, not reported."""
 
     def __init__(self, ui, on_lyse_outcome):
         self.on_lyse_outcome = on_lyse_outcome
@@ -73,7 +65,7 @@ class AnalysisSubmission(object):
         elide_label(
             self.ui.resend_shots_label,
             self.ui.failed_to_send_frame.layout(),
-            Qt.ElideRight,
+            Qt.TextElideMode.ElideRight,
         )
 
         self.ui.send_to_server.toggled.connect(self._set_send_to_server)
@@ -89,8 +81,7 @@ class AnalysisSubmission(object):
         self.server_online = ''
         self.send_to_server = False
 
-        self.mainloop_thread = threading.Thread(target=self.mainloop)
-        self.mainloop_thread.daemon = True
+        self.mainloop_thread = threading.Thread(target=self.mainloop, daemon=True)
         self.mainloop_thread.start()
 
     def get_save_data(self):
@@ -136,10 +127,10 @@ class AnalysisSubmission(object):
             self.ui.failed_to_send_frame.show()
             if self.server_online == 'checking':
                 self.ui.retry_button.hide()
-                text = 'Sending %s shot(s)...' % len(self._waiting_for_submission)
+                text = f'Sending {len(self._waiting_for_submission)} shot(s)...'
             else:
                 self.ui.retry_button.show()
-                text = '%s shot(s) to send' % len(self._waiting_for_submission)
+                text = f'{len(self._waiting_for_submission)} shot(s) to send'
             self.ui.resend_shots_label.setText(text)
         else:
             self.ui.failed_to_send_frame.hide()
@@ -204,7 +195,7 @@ class AnalysisSubmission(object):
                 elif signal == 'close':
                     break
                 else:
-                    raise ValueError('Invalid signal: %s' % str(signal))
+                    raise ValueError(f'Invalid signal: {signal}')
 
                 self._mainloop_logger.debug('Processed signal: %s', signal)
             except Exception:
