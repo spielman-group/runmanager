@@ -37,7 +37,7 @@ dependencies = [
     "labscript_utils>=3.5.0rc1",
     "lyse",
     "pandas>=0.13",
-    "qtutils>=4.4.1",
+    "qtutils>=4.4.3",
     "runviewer",
     "matplotlib",
     "tomli-w",
