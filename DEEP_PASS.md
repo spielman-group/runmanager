@@ -25,7 +25,8 @@ lab commits, which are not the campaign's; `--first-parent` leaves them out.
 | Evaluator | design `bdad81a..6b08931`, build `6b08931..ac7eacc` | `d9f3d64`, the build's record |
 | 2.6, style | `d9f3d64..c6e4385` | |
 | Whole-campaign review | `454a2fb..90f4eb7` | |
-| Records | `90f4eb7..` this file's commit | the frozen-globals design and its removal |
+| Records | `90f4eb7..9fbc677` | the frozen-globals design and its removal |
+| Upstream port | `9fbc677..` this file's commit | upstream `d5842a2..057e6f8` |
 
 ## Decisions that hold
 
@@ -63,8 +64,7 @@ lab commits, which are not the campaign's; `--first-parent` leaves them out.
 - **Public though unused:** `compile_multishot_async`, upstream's compile API;
   `functions.drop_times`, which a globals file may name; every
   `RunmanagerServer.handle_*`, reached by its command name from the client.
-- **Docs:** `usage.rst` holds what `LAZY_COMPILE.md` held. `docs/using_runmanager.docx`
-  and `.pdf` are upstream's 2014 manual and stay.
+- **Docs:** `usage.rst` holds what `LAZY_COMPILE.md` held.
 - **Frozen globals:** Ian stopped the redesign of how globals are resolved, since it
   gives no clear benefit in the lab today. The faults it was to fix, Codex's
   whole-campaign items 1 to 3 among them, are in `KNOWN_ISSUES.md`. The design is in
@@ -72,7 +72,7 @@ lab commits, which are not the campaign's; `--first-parent` leaves them out.
 
 ## Upstream
 
-`master` is upstream's `d5842a2`. CodeHealth takes upstream's fixes in upstream's
+`master` is upstream's `057e6f8`. CodeHealth takes upstream's fixes in upstream's
 form, each commit naming its upstream commit: the zip checks, the small bugs, the
 compiler child, the parse races, the module split, #163 with 0a0ceb7 and 8ae14c0,
 interrupting the compile (d053c40), and the style, lint, theme and release commits on
@@ -81,14 +81,31 @@ fork's four fixes (73650a9, 193856a, 9884cbd, ac7eacc), which go upstream as one
 pull request from `UpstreamEvaluator`. The evaluator's design and build record are in
 history at a9078eb.
 
+- **Port of `d5842a2..057e6f8`:** each commit picked with `-x`, in order. Where the
+  fork differs, the pick says how in its message, and a fork commit follows:
+  - 77dc943 keeps `requires-python` at 3.13 and no `__version__.py`, since the version
+    comes from labscript-utils; e4a4180 drops the 3.11 and 3.12 classifiers.
+  - 0adb3a8 lists the fork's PyQt6 inventory; fa4069c adds `runmanager.client` and
+    `runmanager.globals_file`, the fork's public modules, to the API reference.
+  - 4513df4 is merged into the fork's usage page, and deletes upstream's 2013 manual;
+    4c174cc corrects the fork's own text the same way, and says the automatic zip
+    group is named after the alphabetically first global, not by dictionary hashes.
+  - 4cdda6b's docstring was already right, on `client.py`; e08a576 says globals file,
+    not HDF file, in the groups tab's tooltips.
+  - f03d7b3, a0f4b7a, 188cd85, 1cf5844, d1e73df and 2ca0300 are ported onto the
+    fork's tree of globals, queue and `exec_qapplication`. ae0dbfc drops a deleted
+    view from f03d7b3's click-off filter, which otherwise raises on every click once
+    a view's wrapper outlives it; upstream has the same fault.
+- **Already in:** a844749, 32bead0, 3a7b271, 1035d06, 27d61e3 and 8e7d7f7, upstream's
+  style commits whose lines the fork has changed or removed.
 - **Deferred by Ian:** the custom and automatic expansion settings (a658642 and its
   follow-ups, 7528a82), the value history (9c5d2bc) and the Bool toggle (076fbf8).
 - **Not possible:** 9ff38d5, since the fork writes no HDF5 globals file; b42e389,
-  since Empty queue does its job; dc0d18f, upstream's screenshots; and the style
-  hunks on lines the fork has changed.
-- **Offered upstream:** a9cf986 on `UpstreamBugFixes`, which starts runviewer with
-  zprocess's `start_daemon`, the one fork cleanup that stands in the way of
-  upstream's form, with four small fixes.
+  since Empty queue does its job; dc0d18f and 357376e, and d0aab69's images,
+  upstream's screenshots; and the style hunks on lines the fork has changed.
+- **Offered upstream:** fef75a0 on `UpstreamBugFixes`, on `057e6f8`, which starts
+  runviewer with zprocess's `start_daemon`, the one fork cleanup that stands in the
+  way of upstream's form, with three small fixes; upstream's 4cdda6b made a fourth.
 
 ## Compatibility
 
@@ -127,8 +144,10 @@ compiles while `pylab_namespace` is True.
   `track_unqueued` and `drop_overtaken_default_shots`; `differ.py`'s `_shortened`;
   `widgets.py`'s `mix_colors`; `globals_file.py`'s `new_globals_file` and
   `get_field`.
-- Two test gaps: no queueing test sees a lyse outcome arrive before its row retires,
-  and the remote tour never reaches a failed compile.
+- Test gaps: no queueing test sees a lyse outcome arrive before its row retires, the
+  remote tour never reaches a failed compile, and no test sees the ported window
+  behaviour: the click-off clearing, the add rows sorted last and the output tab's
+  error icon.
 
 ## Lab checks
 
