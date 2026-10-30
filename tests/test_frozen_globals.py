@@ -66,6 +66,7 @@ class FrozenGlobalsTests(unittest.TestCase):
         globals_file.set_field(path, 'group', 'y', 'default', '3 * x')
         globals_file.set_field(path, 'group', 'z', 'default', '6')
 
+        self.assertEqual([shot['x'] for shot, _ in pending], [1, 2])
         for shot, frozen in pending:
             _, compiled = runmanager.get_queue_compile_globals(groups, frozen)
             self.assertEqual((compiled['x'], compiled['y'], compiled['z']), (shot['x'], 3 * shot['x'], 5))
