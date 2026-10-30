@@ -111,6 +111,23 @@ class EvaluationTests(unittest.TestCase):
         })
         self.assertEqual(hierarchy, {'z': ['flag', 'x', 'y'], 'g': ['x']})
 
+    def test_every_global_in_a_cycle_holds_an_error_naming_the_cycle(self):
+        values, _ = self.evaluate({
+            'apple': 'pear',
+            'pear': 'apple + plum',
+            'plum': 'pear',
+            'quince': 'plum',
+            'counter': 'counter + 1',
+            'left': 'right',
+            'right': 'left',
+        })
+        for cycle in [['apple', 'pear', 'plum'], ['counter'], ['left', 'right']]:
+            for name in cycle:
+                self.assertIsInstance(values[name], ValueError)
+                for other in cycle:
+                    self.assertIn(other, str(values[name]))
+        self.assertIsInstance(values['quince'], NameError)
+
     def test_a_name_the_expression_binds_with_walrus_is_not_a_reference(self):
         values, _ = self.evaluate({
             'a': '((a := 2), (lambda: a)())[1]',

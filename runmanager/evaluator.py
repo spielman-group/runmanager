@@ -81,6 +81,18 @@ def _walrus_targets(node):
     return names
 
 
+def _reachable(name, graph):
+    """Returns the names reached from name by one or more edges of graph."""
+    reached = set()
+    stack = [name]
+    while stack:
+        for other in graph.get(stack.pop(), ()):
+            if other not in reached:
+                reached.add(other)
+                stack.append(other)
+    return reached
+
+
 def _numpy_name(name, value):
     """The name of value in numpy, as np.<name> or np.<submodule>.<name>, or None if
     numpy does not have it under that name."""
@@ -231,18 +243,26 @@ def _evaluate_globals(sequence_globals, raise_exceptions=True):
     global_hierarchy = {name: sorted(deps) for name, deps in dependencies.items() if deps}
 
     # Order the globals so that each comes after the globals it refers to. The globals
-    # of a cycle of references get an error and are taken out of the ordering:
+    # of a cycle of references get an error and are taken out of the ordering, together
+    # with every global in a cycle overlapping it:
     while True:
         try:
             order = list(graphlib.TopologicalSorter(dependencies).static_order())
             break
         except graphlib.CycleError as e:
-            cycle = e.args[1]
-            if len(cycle) == 2:
-                exception = ValueError(f'Global {cycle[0]} refers to itself')
+            name = e.args[1][0]
+            referrers = {}
+            for global_name, names in dependencies.items():
+                for other in names:
+                    referrers.setdefault(other, set()).add(global_name)
+            component = _reachable(name, dependencies) & _reachable(name, referrers)
+            if len(component) == 1:
+                exception = ValueError(f'Global {name} refers to itself')
             else:
-                exception = ValueError('Globals refer to each other in a cycle: ' + ' -> '.join(cycle))
-            for global_name in set(cycle):
+                exception = ValueError(
+                    'Globals refer to each other in a cycle: ' + ', '.join(sorted(component))
+                )
+            for global_name in component:
                 errors[global_name] = exception
                 del dependencies[global_name]
 
