@@ -423,7 +423,8 @@ class ItemView(LeftClickMixin):
     behaviour and custom selection highlighting to LeftClickMixin. The current index
     and selection are cleared when the user tabs out of the view or clicks elsewhere in
     its window, including on an empty area of the view, except on the widgets passed to
-    set_selection_controls()."""
+    set_selection_controls(). Clicking the header of a column passed to
+    set_unsortable_columns() does not sort the view."""
 
     def __init__(self, *args):
         super().__init__(*args)
@@ -433,6 +434,7 @@ class ItemView(LeftClickMixin):
         # that is, with the keyboard:
         self._keyboard_commit = False
         self._pending_edit = None
+        self._unsortable_columns = set()
         self.setAutoScroll(False)
         set_selection_palette(self)
         ClickOffFilter.register(self)
@@ -440,6 +442,30 @@ class ItemView(LeftClickMixin):
     def set_selection_controls(self, widgets):
         """Set the widgets that act on the selection, clicks on which do not clear it"""
         self._selection_controls = list(widgets)
+
+    def _header(self):
+        if isinstance(self, QtWidgets.QTreeView):
+            return self.header()
+        return self.horizontalHeader()
+
+    def set_unsortable_columns(self, columns):
+        """Set the columns by which clicking the header does not sort the view"""
+        self._unsortable_columns = set(columns)
+        self._header().viewport().installEventFilter(self)
+
+    def eventFilter(self, obj, event):
+        header = self._header()
+        if obj is header.viewport() and event.type() in [
+            QtCore.QEvent.Type.HoverMove,
+            QtCore.QEvent.Type.MouseButtonPress,
+            QtCore.QEvent.Type.MouseButtonDblClick,
+        ]:
+            # The header sorts by a section that is clicked only if the sections are
+            # clickable when the mouse button is pressed. Resizing a section does not
+            # require them to be clickable:
+            column = header.logicalIndexAt(event.position().toPoint())
+            header.setSectionsClickable(column not in self._unsortable_columns)
+        return super().eventFilter(obj, event)
 
     def is_click_off(self, widget):
         """Whether a mouse press on the widget clears the current index and selection"""
@@ -608,10 +634,45 @@ class TableView(ItemView, QtWidgets.QTableView):
             self.resizeRowToContents(row)
 
 
-class AlternatingColorModel(QtGui.QStandardItemModel):
+class DummyRowModel(QtGui.QStandardItemModel):
+    """Model that sorts the dummy rows, which are the rows that have data True in
+    the role dummy_row_role, after the other rows with the same parent, in both sort
+    orders. Each item of the model must be a ModelItem."""
 
-    def __init__(self, view):
-        QtGui.QStandardItemModel.__init__(self)
+    def __init__(self, dummy_row_role):
+        super().__init__()
+        self.dummy_row_role = dummy_row_role
+        self.sort_order = QtCore.Qt.SortOrder.AscendingOrder
+
+    def sort(self, column, order=QtCore.Qt.SortOrder.AscendingOrder):
+        self.sort_order = order
+        super().sort(column, order)
+
+
+class ModelItem(QtGui.QStandardItem):
+    """Item of a DummyRowModel"""
+
+    def __lt__(self, other):
+        model = self.model()
+        if self.data(model.dummy_row_role):
+            return model.sort_order == QtCore.Qt.SortOrder.DescendingOrder
+        if other.data(model.dummy_row_role):
+            return model.sort_order == QtCore.Qt.SortOrder.AscendingOrder
+        # QStandardItem.__lt__() calls this method in PySide6, so we compare the sort
+        # data here. As in Qt, items with no sort data are greater than all others:
+        left = self.data(model.sortRole())
+        right = other.data(model.sortRole())
+        if left is None:
+            return False
+        if right is None:
+            return True
+        return left < right
+
+
+class AlternatingColorModel(DummyRowModel):
+
+    def __init__(self, view, dummy_row_role):
+        super().__init__(dummy_row_role)
         self.view = view
 
         # Brushes already made, so that they are not recalculated:
