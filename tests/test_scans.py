@@ -199,12 +199,12 @@ class ShotCountTests(unittest.TestCase):
                     (len(shots), dimensions),
                 )
 
-
     def test_a_scan_with_no_values_is_refused_before_any_file_is_made(self):
         sequence_globals, results = evaluate({'x': ('[]', 'outer')})
         shots = runmanager.expand_globals(sequence_globals, results)
         with self.assertRaises(ValueError):
             runmanager.make_run_files('folder', sequence_globals, shots, {}, 'prefix')
+
 
 class FrozenGlobalsTests(unittest.TestCase):
     def test_a_frozen_value_evaluates_back_to_itself_with_only_numpy(self):
@@ -243,6 +243,7 @@ class FrozenGlobalsTests(unittest.TestCase):
                     np.testing.assert_array_equal(thawed, value)
                 else:
                     self.assertEqual(thawed, value)
+
 
 class NamespaceTests(unittest.TestCase):
     def evaluate_with_labconfig(self, expressions, **runmanager_settings):
@@ -321,6 +322,7 @@ class NamespaceTests(unittest.TestCase):
         self.assertEqual(results['b'], 3)
         self.assertEqual(results['c'], 4)
 
+
 class ScannedGlobalsTests(unittest.TestCase):
     def test_a_global_derived_from_another_on_its_axis_is_not_counted_as_scanned(self):
         sequence_globals = {
@@ -342,6 +344,7 @@ class ScannedGlobalsTests(unittest.TestCase):
             runmanager.scanned_globals(sequence_globals, results, hierarchy),
             {'x': 'zip x', 'y': 'outer y', 'a': 'zip pair', 'b': 'zip pair'},
         )
+
 
 class ExpansionGuessTests(unittest.TestCase):
     def setUp(self):
