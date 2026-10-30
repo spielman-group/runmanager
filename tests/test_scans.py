@@ -84,6 +84,55 @@ class ZipGroupTests(unittest.TestCase):
         self.assertIsInstance(results['group']['y'], runmanager.ExpansionError)
 
 
+class EvaluationTests(unittest.TestCase):
+    def evaluate(self, expressions):
+        """Evaluate ``{name: expression}`` as one group of globals not scanned, without
+        raising. Returns the values and the hierarchy."""
+        sequence_globals = {
+            'group': {name: (expression, '', '') for name, expression in expressions.items()}
+        }
+        results, hierarchy, _ = runmanager.evaluate_globals(sequence_globals, raise_exceptions=False)
+        return results['group'], hierarchy
+
+    def test_an_expression_that_does_not_compile_holds_its_syntax_error(self):
+        values, _ = self.evaluate({'a': '1 +', 'b': '(yield)', 'c': '2'})
+        self.assertIsInstance(values['a'], SyntaxError)
+        self.assertIsInstance(values['b'], SyntaxError)
+        self.assertEqual(values['c'], 2)
+
+    def test_the_hierarchy_holds_the_globals_an_expression_refers_to_on_every_branch(self):
+        _, hierarchy = self.evaluate({
+            'flag': 'True',
+            'x': '1',
+            'y': '2',
+            'z': 'x if flag else y',
+            'f': 'lambda x: x',
+            'g': '([x for x in range(2)], lambda: x)[1]',
+        })
+        self.assertEqual(hierarchy, {'z': ['flag', 'x', 'y'], 'g': ['x']})
+
+    def test_with_raise_exceptions_one_error_names_every_failed_global(self):
+        with self.assertRaises(Exception) as context:
+            runmanager.evaluate_globals(
+                {'group': {'a': ('1 / 0', '', ''), 'b': ('undefined', '', ''), 'c': ('1', '', '')}}
+            )
+        self.assertIn('a: ZeroDivisionError', str(context.exception))
+        self.assertIn('b: NameError', str(context.exception))
+
+    def test_a_global_defined_in_two_groups_is_refused_before_any_other_error(self):
+        sequence_globals = {
+            'one': {'a': ('1', '', ''), 'b': ('1 +', '', '')},
+            'two': {'a': ('2', '', ''), 'c': ('3', '', '')},
+        }
+        with self.assertRaisesRegex(ValueError, 'multiple active groups'):
+            runmanager.evaluate_globals(sequence_globals)
+        results, _, _ = runmanager.evaluate_globals(sequence_globals, raise_exceptions=False)
+        self.assertIsInstance(results['one']['a'], ValueError)
+        self.assertIs(results['two']['a'], results['one']['a'])
+        self.assertIsInstance(results['one']['b'], SyntaxError)
+        self.assertEqual(results['two']['c'], 3)
+
+
 class ShotCountTests(unittest.TestCase):
     def test_the_shot_count_is_the_number_of_shots_engage_makes(self):
         for scan in [
@@ -158,6 +207,51 @@ class NamespaceTests(unittest.TestCase):
         with self.assertWarnsRegex(FutureWarning, r'np\.linspace'):
             results = self.evaluate_with_labconfig({'x': ('linspace(0, 1, 3)', '')})
         np.testing.assert_array_equal(results['x'], np.linspace(0, 1, 3))
+
+    def test_a_pylab_name_in_a_branch_not_taken_still_warns(self):
+        with self.assertWarnsRegex(FutureWarning, r'np\.linspace'):
+            self.evaluate_with_labconfig({'x': ('1 if True else linspace(0, 1, 3)', '')})
+
+    def test_a_global_named_like_a_namespace_name_shadows_it_unless_it_fails(self):
+        results = self.evaluate_with_labconfig({'x': ('2 * pi', ''), 'pi': ('3', '')})
+        self.assertEqual(results['x'], 6)
+        results = self.evaluate_with_labconfig({'x': ('2 * pi', ''), 'pi': ('1 / 0', '')})
+        self.assertIsInstance(results['pi'], ZeroDivisionError)
+        self.assertEqual(results['x'], 2 * np.pi)
+
+    def namespace_file(self, source):
+        directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, directory, True)
+        path = os.path.join(directory, 'namespace.py')
+        with open(path, 'w') as f:
+            f.write(source)
+        return path
+
+    def test_each_global_is_evaluated_once_after_the_globals_it_refers_to(self):
+        path = self.namespace_file(
+            'calls = []\n\ndef mark(value):\n    calls.append(value)\n    return value\n'
+        )
+        results = self.evaluate_with_labconfig(
+            {
+                'g0': ('mark(g1)', ''),
+                'g1': ('mark(g2)', ''),
+                'g2': ('mark(2)', ''),
+                'bad': ('mark(0) / 0', ''),
+                'calls_made': ('calls', ''),
+            },
+            globals_namespace=path,
+        )
+        self.assertEqual(results['g0'], 2)
+        self.assertIsInstance(results['bad'], ZeroDivisionError)
+        self.assertEqual(sorted(results['calls_made']), [0, 2, 2, 2])
+
+    def test_a_namespace_file_that_fails_gives_its_error_to_each_global_without_one(self):
+        path = self.namespace_file('raise RuntimeError("broken")\n')
+        results = self.evaluate_with_labconfig(
+            {'a': ('1 +', ''), 'b': ('1', '')}, globals_namespace=path
+        )
+        self.assertIsInstance(results['a'], SyntaxError)
+        self.assertIsInstance(results['b'], RuntimeError)
 
     def test_without_pylab_its_names_are_gone_and_a_namespace_file_adds_names(self):
         directory = tempfile.mkdtemp()

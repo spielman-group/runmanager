@@ -47,3 +47,25 @@ class FrozenGlobalsTests(unittest.TestCase):
         for shot, frozen in pending:
             _, compiled = runmanager.get_queue_compile_globals(groups, frozen)
             np.testing.assert_array_equal(compiled['x'], shot['x'])
+
+    def test_a_jit_global_compiles_from_its_expression_at_compile_time(self):
+        directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, directory, True)
+        path = os.path.join(directory, 'globals.toml')
+        globals_file.new_globals_file(path)
+        runmanager.new_group(path, 'group')
+        globals_file.new_globals(path, 'group', {
+            'x': {'scan': '[1, 2]', 'scan_enabled': True},
+            'y': {'default': '2 * x', 'jit_enabled': True},
+            'z': {'default': '5'},
+        })
+        groups = {'group': path}
+        pending, _, _ = runmanager.get_shots_with_frozen_globals(
+            globals_file.get_globals_details(groups)
+        )
+        globals_file.set_field(path, 'group', 'y', 'default', '3 * x')
+        globals_file.set_field(path, 'group', 'z', 'default', '6')
+
+        for shot, frozen in pending:
+            _, compiled = runmanager.get_queue_compile_globals(groups, frozen)
+            self.assertEqual((compiled['x'], compiled['y'], compiled['z']), (shot['x'], 3 * shot['x'], 5))
