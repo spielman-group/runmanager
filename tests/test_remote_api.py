@@ -7,8 +7,7 @@ Each is sent by the real RunmanagerClient to a real RunmanagerServer on a free
 port, so a command reaches its handler under the name the client sends it by,
 and an exception the handler returns is raised by the client, as for any caller.
 The exceptions are the tests that drive Engage on the application, as the
-operator's Engage button does: all of SubmissionAnchorTests but its last,
-ShuffledEngageTests and CompileOnlyEngageTests.
+operator's Engage button does.
 """
 import datetime
 import os
@@ -55,7 +54,7 @@ from runmanager.queueing import (
 )
 
 
-class FakeApp(object):
+class FakeApp:
     """The application over a real QueueManager, which is all these commands read."""
 
     def __init__(self):
@@ -121,7 +120,7 @@ class RemoteCommandTestCase(unittest.TestCase):
 _qapplication = None
 
 
-class SubmittingApp(object):
+class SubmittingApp:
     """The application over the whole path a submission takes.
 
     Globals files, shot naming and numbering, the sequence a batch joins and the
@@ -650,7 +649,7 @@ class ShotStatusTests(RemoteCommandTestCase):
         self.addCleanup(shutil.rmtree, self.directory, True)
 
     def enqueue(self, shot_id, state=''):
-        path = os.path.join(self.directory, '%s.h5' % shot_id)
+        path = os.path.join(self.directory, f'{shot_id}.h5')
         self.app.queue_manager.enqueue(
             [{'path': path, 'shot_id': shot_id, 'compiled': True}]
         )
@@ -693,7 +692,7 @@ class ShotStatusTests(RemoteCommandTestCase):
         for shot_id, outcome_first in (('before', True), ('after', False)):
             with self.subTest(shot_id=shot_id):
                 self.queue((shot_id, 'running'))
-                path = os.path.join(self.directory, '%s.h5' % shot_id)
+                path = os.path.join(self.directory, f'{shot_id}.h5')
                 self.app.queue_controller.expect_lyse(shot_id, path)
                 if outcome_first:
                     self.app.queue_controller.record_lyse(path, 'rejected', 'No room.')
@@ -734,10 +733,9 @@ class ShotStatusTests(RemoteCommandTestCase):
         )
 
     def test_a_shots_record_advances_step_by_step_and_is_always_a_legal_one(self):
-        # Four shots are taken through every end the queue has, and at each
-        # stage the records shot_status and get_queue give are checked against
-        # the table in RunmanagerClient.shot_status, and pending against
-        # whether BLACS can still complete the shot.
+        # Four shots go through every end the queue has. At each stage their
+        # records must fit the table in RunmanagerClient.shot_status, and pending
+        # must say whether BLACS can still complete the shot.
         manager = self.app.queue_manager
         ids = ['retried', 'behind', 'cancelled', 'emptied']
         held, release = threading.Event(), threading.Event()
@@ -755,7 +753,7 @@ class ShotStatusTests(RemoteCommandTestCase):
             manager.enqueue(
                 [
                     {
-                        'path': os.path.join(self.directory, '%s.h5' % shot_id),
+                        'path': os.path.join(self.directory, f'{shot_id}.h5'),
                         'shot_id': shot_id,
                         'compile_mode': COMPILE_MODE_EAGER,
                         'compiled': False,
