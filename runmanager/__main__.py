@@ -1240,6 +1240,9 @@ class RunManager(LabscriptGuiApplication):
             QtWidgets.QTabBar.ButtonPosition.RightSide,
             self.output_popout_button,
         )
+        # The output tab's icon and tooltip when it shows no error:
+        self.output_tab_icon = self.ui.tabWidget.tabIcon(output_tab_index)
+        self.output_tab_tooltip = self.ui.tabWidget.tabToolTip(output_tab_index)
         # Fix the first four tabs in place:
         for index in range(4):
             self.ui.tabWidget.tabBar().setMovable(False, index=index)
@@ -1260,6 +1263,9 @@ class RunManager(LabscriptGuiApplication):
         # queue manager starts its worker thread, as that thread compiles
         # shots via self.compile_run_file():
         self.compiler_lock = threading.Lock()
+        # Set by Empty queue and Restart subprocess, whose interrupted compile is no
+        # error to flag on the output tab:
+        self.compile_interrupted = threading.Event()
         # For shot files that never run: test compiles, and batches compiled with
         # BLACS unticked. Removed when runmanager exits, since Windows never clears
         # %TEMP%; a file runviewer still holds open on Windows is left behind.
@@ -1675,6 +1681,20 @@ class RunManager(LabscriptGuiApplication):
             self.queue_controller.get_queue_display_items()
         )
 
+    @inmain_decorator()  # Can be called from a compiling thread
+    def set_output_tab_error(self, message):
+        """Show an error icon on the output tab, with the message as its tooltip. If
+        message is None, show the output tab's usual icon and tooltip."""
+        index = self.ui.tabWidget.indexOf(self.ui.tab_output)
+        if message is None:
+            self.ui.tabWidget.setTabIcon(index, self.output_tab_icon)
+            self.ui.tabWidget.setTabToolTip(index, self.output_tab_tooltip)
+        else:
+            self.ui.tabWidget.setTabIcon(index, Icon(':qtutils/fugue/exclamation'))
+            self.ui.tabWidget.setTabToolTip(
+                index, f'<p style="white-space:pre-wrap">{html.escape(message)}</p>'
+            )
+
     def on_output_popout_button_clicked(self):
         if self.output_box_is_popped_out:
             self.ui.verticalLayout_output_tab.addWidget(self.output_box.output_textedit)
@@ -1917,10 +1937,12 @@ class RunManager(LabscriptGuiApplication):
 
     def on_engage_clicked(self, checked=False, submission_mode=SUBMISSION_MODE_NEW_SEQUENCE):
         logger.info('Engage')
+        self.set_output_tab_error(None)
         try:
             self.engage(submission_mode)
         except Exception as e:
             self.output_box.output(f'{e!s}\n\n', red=True)
+            self.set_output_tab_error(str(e))
         logger.info('end engage')
 
     def engage(self, submission_mode=SUBMISSION_MODE_NEW_SEQUENCE):
@@ -2103,6 +2125,7 @@ class RunManager(LabscriptGuiApplication):
         # During a restart there is no compile to interrupt, and the old
         # compiler may be gone:
         if self.child_ready.is_set():
+            self.compile_interrupted.set()
             self.to_child.put(['abort', None])
 
     def on_restart_subprocess_clicked(self):
@@ -2111,6 +2134,7 @@ class RunManager(LabscriptGuiApplication):
         # old child to go on to the next shot. That shot must wait for the new
         # child rather than be sent to this one.
         self.child_ready.clear()
+        self.compile_interrupted.set()
         self.to_child.put(['quit', None])
         self.from_child.put(
             ['done', False, 'The compiler subprocess was restarted during the compile.']
@@ -3313,9 +3337,17 @@ class RunManager(LabscriptGuiApplication):
         """Return ``(success, error)``: whether the file compiled and, if not, its traceback."""
         with self.compiler_lock:
             self.child_ready.wait()
-            return runmanager.compile_with(
+            self.compile_interrupted.clear()
+            success, error = runmanager.compile_with(
                 self.to_child, self.from_child, labscript_file, run_file
             )
+            interrupted = self.compile_interrupted.is_set()
+        if not success and not interrupted:
+            self.set_output_tab_error(
+                f'Compilation of {os.path.basename(run_file)} failed. '
+                'The output shows the error.'
+            )
+        return success, error
 
     def test_compile(self):
         """Compile the window's first shot into a scratch file, queueing nothing."""

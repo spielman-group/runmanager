@@ -234,6 +234,9 @@ class SubmittingApp:
     def check_output_folder_update(self):
         pass
 
+    def set_output_tab_error(self, message):
+        pass
+
     def globals_changed(self):
         # Only the preparse updates the axes, so one the globals no longer
         # produce stays until it runs, and expanding along it is what breaks.

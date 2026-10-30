@@ -89,6 +89,7 @@ class RestartDuringCompileTests(unittest.TestCase):
         app.compiler_lock = threading.Lock()
         app.child_ready = threading.Event()
         app.child_ready.set()
+        app.compile_interrupted = threading.Event()
         app.to_child, app.from_child, app.child = old.to_child, old.from_child, old
         app.output_box = types.SimpleNamespace(output=lambda *args, **kwargs: None, port=0)
         app.ui = types.SimpleNamespace(pushButton_restart_subprocess=QPushButton())
