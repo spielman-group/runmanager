@@ -4,6 +4,26 @@ The code-health campaign's pass over runmanager (`issues/code_health_campaign.md
 in the meta repo), on `CodeHealth`. Line references are to `57d3d21`, the merge of
 Development's lab fixes into CodeHealth.
 
+## Ranges
+
+Each step's commits on `CodeHealth`, as `git log --first-parent A..B`. The whole
+campaign is `57d3d21..` the commit that records step 2.6. `7ede9b5` merges seven of
+Development's lab commits, which are not the campaign's; `--first-parent` leaves them out.
+
+| Step | Range | Also |
+| --- | --- | --- |
+| 1, contract | `57d3d21..72baf75` | |
+| 2.1, behaviour no one asked for | `72baf75..1e80564` | reviewed as `7ede9b5..86de3e4` |
+| 2.2, duplication | `1e80564..e73b137`, but for `c411689` | reviewed as `0b324ce..3f569c1`, `bb8b2cd..3c42c11`, `c411689..bee15b7` |
+| 2.3, root causes | `e73b137..8b10b9f` | `c411689`, its list |
+| 2.4, dead code | `8b10b9f..c36421f` | |
+| 2.5, documents | `c36421f..6dd3dfd` | corrections `2034163`, `fff4f32` |
+| Upstream stage | `6dd3dfd..1e5fae1` | `519e2ed`, the tests' error windows |
+| Upstream revisit | `fff4f32..fc29258` | |
+| Compatibility audit | `fc29258..bdad81a` | |
+| Evaluator | design `bdad81a..6b08931`, build `6b08931..ac7eacc` | `d9f3d64`, the build's record |
+| 2.6, style | `d9f3d64..c6e4385` | |
+
 ## Step 1: contract
 
 What each existing test protects. Marks: **keep**, **rename** (the name does not
@@ -1177,3 +1197,72 @@ runmanager has no copy of it.
 
 Ian keeps 1, 2, 3 and 5. Items 1 and 2 were already his decisions, and he decided 3 and
 5 in this audit's batch. No code changes.
+
+## Step 2.6: style
+
+Whole-file passes under labscript-style, in `d9f3d64..c6e4385`, 22 commits:
+- `cffa4fa`, the sample: `analysis_submission.py`, done first and looked at.
+- 19 commits, one a file: `__main__.py`, `queueing.py`, `compiler.py`,
+  `batch_compiler.py`, `blacs_status.py`, `remote.py`, `widgets.py`,
+  `globals_file.py`, `differ.py`, `tokenizer.py`, `expander.py`, `group_manager.py`,
+  `client.py`, and six test files. Four Sonnet workers did them after the sample,
+  each in its own worktree of `cffa4fa`, and their commits were cherry-picked here.
+- `5b4e5ef`: the licence banner on the eight fork test files that had none.
+- `c6e4385`: `get_shot_globals`' FutureWarning names its caller (`stacklevel=2`),
+  not `group_manager.py`.
+
+What changed:
+- Docstrings: internal ones cut to a line or dropped. Public ones say what a caller
+  needs, and those found false are corrected, such as `compiler.py`'s: `stream_port`
+  is a port number, not a socket.
+- Comments: four lines or more cut to three or fewer; those that restate the code
+  removed. Those that were false corrected, such as a queue called a `threading.Event`
+  and a method that does not exist.
+- Code, only in these forms:
+  - `class Foo:`;
+  - zero-argument `super()`;
+  - f-strings outside logging calls;
+  - `Thread(daemon=True)`;
+  - scoped Qt enums;
+  - `__main__.py`'s unused `import qtutils.icons`;
+  - `get_queue_compile_globals`' error made one sentence, matched nowhere in the
+    suite.
+  - No definition is added, removed or renamed, and no signature or `__all__`
+    changes.
+
+How it was checked:
+- An AST comparison of each file with `cffa4fa`, ignoring docstrings, comments and
+  layout. It shows 124 changed blocks, each one of the forms above, named in its
+  commit's body.
+- Every Qt name on an added line resolves in PyQt6, 59 in all. The workers checked
+  that each scoped enum is the same object as the name it replaces.
+- Suite: 185 passed, 55 subtests.
+- No test runs `RunManager.__init__`, and no app was started beside Ian's: a started
+  RunManager shares their saved queue and links.
+
+Left as they are:
+- `evaluator.py` and `exceptions.py`: upstream's text, so that the evaluator differs
+  from upstream only by the fork's fixes, which go upstream.
+- `functions.py`, identical to upstream's. `globals_diff.py` and `remote.py`, a few
+  lines from upstream's. `client.py`, upstream's `remote.py` renamed. None gets a
+  banner.
+- `.ui` files and the docs.
+- Single-use helpers (rule 4), since the pass changes forms only:
+  - `__main__.py`'s `setup_*` methods, `can_use_alternate_submission_mode`,
+    `reindex_run_file_infos`, `swap_value_items` and `test_compile`;
+  - `queueing.py`'s `_sent_to_blacs_row`, `track_unqueued` and
+    `drop_overtaken_default_shots`;
+  - `differ.py`'s `_shortened`;
+  - `widgets.py`'s `mix_colors`;
+  - `globals_file.py`'s `new_globals_file` and `get_field`.
+- `tests/test_sequence_attrs.py`'s `setattr` loop, which sets three stand-ins on a
+  test's app. No rule-16 probe is on the suite's own objects.
+
+Seen, not bugs:
+- `__main__.py`'s `qapplication` is bound only when the module runs as `__main__`. Two
+  click handlers read it; only an import without a run, which no test clicks, reaches
+  them unbound.
+- `get_queued_sequence_attrs` matches rows by path as given and the last sent shot by
+  `abspath`. Its one caller passes a queue row's path, which is absolute.
+- `__main__.py`'s `copy_group` sets `source_globals_file = dest_globals_file` only when
+  they are already equal, so the line does nothing.
