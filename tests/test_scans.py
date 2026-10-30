@@ -128,6 +128,22 @@ class EvaluationTests(unittest.TestCase):
                     self.assertIn(other, str(values[name]))
         self.assertIsInstance(values['quince'], NameError)
 
+    def test_a_lambda_may_call_itself_by_its_global_name(self):
+        values, hierarchy = self.evaluate({
+            'factorial': 'lambda n: 1 if n < 2 else n * factorial(n - 1)',
+            'x': 'factorial(4)',
+            'f': 'lambda n: g(n)',
+            'g': 'lambda n: f(n)',
+            'a': '(lambda: a)()',
+            'default': 'lambda x=default: x',
+            'pair': '(pair, lambda: pair)[1]',
+        })
+        self.assertEqual(values['x'], 24)
+        self.assertNotIn('factorial', hierarchy)
+        for name in ['f', 'g', 'default', 'pair']:
+            self.assertIsInstance(values[name], ValueError)
+        self.assertIsInstance(values['a'], NameError)
+
     def test_a_name_the_expression_binds_with_walrus_is_not_a_reference(self):
         values, _ = self.evaluate({
             'a': '((a := 2), (lambda: a)())[1]',

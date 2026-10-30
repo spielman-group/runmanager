@@ -49,9 +49,10 @@ def iterator_to_tuple(iterator, max_length=1000000):
     return tuple(temp_list)
 
 
-def _global_references(table):
+def _global_references(table, lambdas=True):
     """Returns the names that the code of a symbol table, and of the tables nested in
-    it, reads from the global namespace."""
+    it, reads from the global namespace. If lambdas is False, the tables of lambdas
+    and the tables in them are left out."""
     # On Python 3.12 and later, the variables of a comprehension are in the table of the
     # enclosing scope, where they are global and assigned:
     names = {
@@ -59,7 +60,8 @@ def _global_references(table):
         if symbol.is_global() and symbol.is_referenced() and not symbol.is_assigned()
     }
     for child in table.get_children():
-        names |= _global_references(child)
+        if lambdas or child.get_name() != 'lambda':
+            names |= _global_references(child, lambdas)
     return names
 
 
@@ -240,6 +242,11 @@ def _evaluate_globals(sequence_globals, raise_exceptions=True):
             ast.parse(expression, mode='eval')
         )
         dependencies[global_name] = references[global_name] & all_globals.keys()
+        # A global that refers to itself only in the body of a lambda is a recursive
+        # function, whose name is bound before the lambda is called:
+        self_reference = global_name in dependencies[global_name]
+        if self_reference and global_name not in _global_references(table, lambdas=False):
+            dependencies[global_name].remove(global_name)
     global_hierarchy = {name: sorted(deps) for name, deps in dependencies.items() if deps}
 
     # Order the globals so that each comes after the globals it refers to. The globals
