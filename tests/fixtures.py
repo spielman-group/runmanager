@@ -1,31 +1,16 @@
 """Stand-ins shared by runmanager's tests.
 
-Importing ``runmanager.__main__`` builds a ``Splash`` and calls ``show()`` on it
-at module scope, and the ``splash.hide()`` that would take it down again runs
-only under ``if __name__ == '__main__'``. So a test that imports the module puts
-the startup banner on the screen of whoever ran the suite and leaves it there,
-for the life of the process.
+Importing ``runmanager.__main__`` builds a ``Splash`` and shows it at module
+scope, and only ``if __name__ == '__main__'`` hides it again, so a test that
+imported it would leave the startup banner on screen. This module stubs
+``labscript_utils.splash`` and then imports the application, so no
+``QApplication`` is built either, and re-exports what the tests borrow from
+``runmanager.__main__``. Tests import those names from here and never from
+``runmanager.__main__``, which keeps the stub installed before the import.
 
-Stubbing ``labscript_utils.splash`` before that import fixes it at the source
-rather than papering over it: with the stub in place no ``QApplication`` is
-created at all, so there is no window to leak. Hiding the splash afterwards
-would not do as well, because the application would still have been built and
-the banner would still have flickered up.
-
-The stub only works if it is installed *before* ``runmanager.__main__`` is
-imported, which is an ordering constraint no test file should have to carry --
-a reordered import block would quietly bring the banner back. So this module
-owns both the stub and the import, and re-exports what the suite borrows from
-the application. Tests import those names from here and never from
-``runmanager.__main__`` directly, which is the same arrangement BLACS uses in
-``blacs/tests/fixtures.py``.
-
-Tests that need a ``QApplication`` build their own; ``test_queueing`` and
-``test_analysis_submission`` both already do. Nothing here creates one, and
-nothing here shows a widget.
-
-The tests that hand shots to lyse share the few functions at the end, which
-serve a real lyse and submit to it through a real ``AnalysisSubmission``.
+Nothing here creates a ``QApplication`` or shows a widget: tests that need a
+``QApplication`` build their own. The functions at the end serve a real lyse and
+submit to it through a real ``AnalysisSubmission``.
 """
 import os
 import socket
@@ -39,12 +24,9 @@ from qtutils import UiLoader
 import tomli_w
 
 
-class Splash(object):
-    """Enough of ``labscript_utils.splash.Splash`` to be imported and called.
-
-    The real one builds the ``QApplication`` in its ``__init__``, which is the
-    thing being avoided, so every method here does nothing.
-    """
+class Splash:
+    """Stands in for ``labscript_utils.splash.Splash``, whose ``__init__`` builds a
+    ``QApplication``; every method here does nothing."""
 
     def __init__(self, *args, **kwargs):
         pass
@@ -60,20 +42,15 @@ class Splash(object):
 
 
 def _stub_splash_module():
-    """Put a splash module in ``sys.modules`` that cannot build a window.
+    """Put a splash module that cannot build a window in ``sys.modules``, for good.
 
-    This is not undone afterwards. ``runmanager.__main__`` stays imported for
-    the life of the test process, so restoring the real module would leave the
-    application holding a reference to the stub while anything importing it
-    later got the real one -- two different ``Splash`` classes for one process.
-    Nothing in the suite wants the real splash.
+    It is not restored: ``runmanager.__main__`` stays imported holding the stub,
+    so restoring the real module would give later importers a second ``Splash``.
     """
     module = types.ModuleType('labscript_utils.splash')
     module.Splash = Splash
-    # runmanager's and runviewer's __main__ import Splash and nothing else from
-    # here. BLACS's also imports get_qapplication, so a stub shared with blacs
-    # would need that name as well; this one is deliberately only what these two
-    # ask for, so that it fails loudly if that changes.
+    # Only what runmanager's and runviewer's __main__ import, so that it fails
+    # loudly if they import more; BLACS's __main__ also imports get_qapplication.
     sys.modules['labscript_utils.splash'] = module
 
 
@@ -96,10 +73,8 @@ from qtutils.qt.QtWidgets import QApplication  # noqa: E402
 from runmanager.analysis_submission import AnalysisSubmission  # noqa: E402
 from runmanager.widgets import Editor  # noqa: E402
 
-# The module itself, for the tests that patch names in its namespace rather
-# than borrow a method from it. Exported for the same reason the classes are:
-# so that no test file names runmanager.__main__ and inherits the ordering
-# constraint along with it.
+# main_module is for the tests that patch names in its namespace rather than
+# borrow a method from it.
 __all__ = [
     'Editor',
     'FingerTabWidget',
@@ -144,7 +119,7 @@ def wait_for(condition, timeout=10):
     deadline = time.monotonic() + timeout
     while not condition():
         if time.monotonic() > deadline:
-            raise AssertionError('Timed out waiting for %s' % condition)
+            raise AssertionError(f'Timed out waiting for {condition}')
         QApplication.processEvents()
         time.sleep(0.001)
 
