@@ -277,7 +277,7 @@ class GroupTab:
         loader.registerCustomWidget(GlobalsTreeView)
         self.ui = loader.load(os.path.join(runmanager_dir, 'group.ui'))
         self.ui.gridLayout.setColumnStretch(1, 1)
-        self.tabWidget.addTab(self.ui, group_name, closable=True, icon_on_right=True)
+        self.tabWidget.addTab(self.ui, group_name, closable=True)
 
         self.set_colors()
         # The globals of this group that are scanned over, for the tab's tooltip:
@@ -385,9 +385,10 @@ class GroupTab:
     def set_tab_icon(self, icon_string):
         index = self.tabWidget.indexOf(self.ui)
         icon = Icon(icon_string) if icon_string is not None else QtGui.QIcon()
-        if self.tabWidget.tabIcon(index).cacheKey() != icon.cacheKey():
+        tab_bar = self.tabWidget.tabBar()
+        if tab_bar.tabStatusIcon(index).cacheKey() != icon.cacheKey():
             logger.debug('setting tab icon')
-            self.tabWidget.setTabIcon(index, icon)
+            tab_bar.setTabStatusIcon(index, icon)
 
     def populate_model(self):
         dummy_scan_enabled_item = ModelItem()
@@ -1240,8 +1241,7 @@ class RunManager(LabscriptGuiApplication):
             QtWidgets.QTabBar.ButtonPosition.RightSide,
             self.output_popout_button,
         )
-        # The output tab's icon and tooltip when it shows no error:
-        self.output_tab_icon = self.ui.tabWidget.tabIcon(output_tab_index)
+        # The output tab's tooltip when it shows no error:
         self.output_tab_tooltip = self.ui.tabWidget.tabToolTip(output_tab_index)
         # Fix the first four tabs in place:
         for index in range(4):
@@ -1684,13 +1684,15 @@ class RunManager(LabscriptGuiApplication):
     @inmain_decorator()  # Can be called from a compiling thread
     def set_output_tab_error(self, message):
         """Show an error icon on the output tab, with the message as its tooltip. If
-        message is None, show the output tab's usual icon and tooltip."""
+        message is None, remove the error icon and show the output tab's usual
+        tooltip."""
         index = self.ui.tabWidget.indexOf(self.ui.tab_output)
+        tab_bar = self.ui.tabWidget.tabBar()
         if message is None:
-            self.ui.tabWidget.setTabIcon(index, self.output_tab_icon)
+            tab_bar.setTabStatusIcon(index, None)
             self.ui.tabWidget.setTabToolTip(index, self.output_tab_tooltip)
         else:
-            self.ui.tabWidget.setTabIcon(index, Icon(':qtutils/fugue/exclamation'))
+            tab_bar.setTabStatusIcon(index, Icon(':qtutils/fugue/exclamation'))
             self.ui.tabWidget.setTabToolTip(
                 index, f'<p style="white-space:pre-wrap">{html.escape(message)}</p>'
             )
