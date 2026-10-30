@@ -405,8 +405,10 @@ mapping of each global variable to the names of the global variables that it dep
 which is used for descriptive error messages and for automatically detecting which globals
 should be combined into zip groups.
 Each expression is evaluated once. Globals that refer to each other in a cycle are reported
-as an error naming the cycle, and a global that refers to a global with an error gets an
-error of its own.
+as an error naming the cycle. A global that reads a global that failed to evaluate gets an
+error of its own, but only if it reads it when it runs: with ``a = 1/0``,
+``b = a if False else 2`` is 2. A global that evaluates but cannot be scanned holds an
+error, but the globals that read it get its value.
 
 The globals that an expression refers to are the names in its text, not the names it looks
 up when it runs:
@@ -428,8 +430,9 @@ up when it runs:
   ``factorial = lambda n: 1 if n < 2 else n * factorial(n - 1)``. Lambdas that call each
   other are a cycle, and ``a = (lambda: a)()`` gives a NameError.
 - A global with a name of the namespace, such as ``pi``, replaces that name for every
-  global, including those defined before it. If the global has an error, the namespace's
-  value is used.
+  global, including those defined before it. If the global fails to evaluate, the
+  namespace's value is used; if it only cannot be scanned, its own value is, so with
+  ``pi = 3`` set to outer, ``x = 2*pi`` is 6.
 
 The hierarchy of global interdependencies is then used to determine automatic zip group
 names, which are based on the name of the global in the hierarchy that does not depend on
