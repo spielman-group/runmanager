@@ -45,8 +45,8 @@ again. Eager and lazy compiles both go this way, and three faults follow:
    text.
 5. A restored row not yet compiled whose values do not load is refused: it leaves
    the queue, the output box names its shot file, and the other rows restore.
-6. `submit_shots` passes the values it is given to the evaluation as values, not as
-   text.
+6. `submit_shots` passes the values it is given to the evaluation as evaluated
+   objects, not as text.
 7. `set_values`, `set_scans` and `submit_shots` write a value into a globals file as
    `value_expression`'s text. A value whose text does not evaluate back to it is
    refused, naming the global, and nothing is written. The caller can pass
@@ -83,31 +83,38 @@ again. Eager and lazy compiles both go this way, and three faults follow:
 
 ## Architecture
 
-- **`evaluator.py`:** `_evaluate_globals` takes `values`, a dict from name to value.
-  Those names go into the namespace as given and are not evaluated. This adds a few
+- **`evaluator.py`:** `_evaluate_globals` takes `frozen`, a dict from name to value.
+  Those names go into the namespace as given and are not evaluated. In runmanager,
+  "values" means the Value column's text, so the keyword is named after the
+  record's `frozen_globals`. The evaluator's `_namespace()` builds the only
+  namespace, so no other mechanism can do this. This adds a few
   lines to upstream's file, and `evaluate_globals` is unchanged.
 - **`expander.py`:**
   - `get_shots_with_frozen_globals(globals_details, expansion_order=None,
-    values=None)` returns, from one evaluation, each shot's globals with the values
+    frozen=None)` returns, from one evaluation, each shot's globals with the values
     it keeps (requirement 1), and the sequence globals at Engage.
   - `get_frozen_globals` returns values.
   - `value_expression` gains the round-trip check.
 - **`compiler.py`:** `get_queue_compile_globals(groups, frozen=None,
   sequence_globals=None, default_globals=False)`.
   - With `frozen`, it takes the JIT expressions from the files of `groups`, and
-    evaluates the globals that `frozen` does not hold with `values=frozen`. It
+    evaluates the globals that `frozen` does not hold, with `frozen` passed on. It
     returns the `/globals` record and the shot.
   - Without `frozen`, it works as now, for a default shot and for
     `make_run_file_from_globals_files`.
 - **`__main__.py`:**
   - Engage, `test_compile` and `submit_shots` put `frozen_globals` (values) and
     `sequence_globals` (the expressions at Engage) on each record, and
-    `prepare_queue_shot` passes both on.
-  - `submit_shots` passes its entry as `values`, and writes text only into the
+    `prepare_queue_shot` passes both on. `sequence_globals` has `get_globals`' shape,
+    `{group: {name: (expression, units, expansion)}}`, as the name means everywhere
+    in runmanager and upstream.
+  - `submit_shots` passes its entry as `frozen`, and writes text only into the
     record and the file.
 - **`queueing.py`:**
   - `get_save_data` writes an uncompiled row's `frozen_globals` as a base64 pickle,
-    and leaves them out for a compiled row.
+    and leaves them out for a compiled row. lyse keeps base64 text in its app config
+    the same way, for its routine layout. `labscript_utils.properties`' JSON and
+    base64 is for HDF5 attributes, and keeps neither dtype nor shape.
   - `restore_save_data` loads them. It refuses a row whose values fail to load, and
     reports it as it reports a setting it does not know.
 - **Docs:** `usage.rst` says that a queued shot keeps its values.
