@@ -1298,6 +1298,16 @@ class OutputTabErrorTests(RemoteCommandTestCase):
 
         wait_for(lambda: self.shown_error() is not None)
 
+    def test_a_remote_engage_that_fails_shows_its_error_until_one_succeeds(self):
+        globals_file.set_field(self.app.globals_file, 'group', 'x', 'default', '1/0')
+        with self.assertRaises(Exception):
+            self.request(self.client.engage)
+        self.assertIsNotNone(self.shown_error())
+
+        globals_file.set_field(self.app.globals_file, 'group', 'x', 'default', '1')
+        self.request(self.client.engage)
+        self.assertIsNone(self.shown_error())
+
 
 class CompileErrorTests(RemoteCommandTestCase):
     """What a remote caller is told when a compile fails.

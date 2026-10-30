@@ -1940,34 +1940,39 @@ class RunManager(LabscriptGuiApplication):
 
     def on_engage_clicked(self, checked=False, submission_mode=SUBMISSION_MODE_NEW_SEQUENCE):
         logger.info('Engage')
-        self.set_output_tab_error(None)
         try:
             self.engage(submission_mode)
         except Exception as e:
             self.output_box.output(f'{e!s}\n\n', red=True)
-            self.set_output_tab_error(str(e))
         logger.info('end engage')
 
     def engage(self, submission_mode=SUBMISSION_MODE_NEW_SEQUENCE):
-        """Make the batch the Engage button makes, returning its queue records."""
-        if submission_mode not in SUBMISSION_MODES:
-            raise ValueError(f'Unknown submission mode {submission_mode!r}.')
-        send_to_blacs = self.ui.checkBox_run_shots.isChecked()
-        send_to_runviewer = self.ui.checkBox_view_shots.isChecked()
-        mode = SUBMISSION_MODES[submission_mode]
-        if (mode.joins_sequence or mode.clears_queue) and not send_to_blacs:
-            # A mode that reads the queue for a sequence to join, or
-            # empties it, is about the queue -- so with nothing going to
-            # BLACS there is nothing for it to do.
-            raise ValueError(
-                "Alternate queue submission modes require 'BLACS' to be selected."
+        """Make the batch the Engage button makes, returning its queue records.
+
+        An error that stops it is shown on the output tab until the next Engage."""
+        self.set_output_tab_error(None)
+        try:
+            if submission_mode not in SUBMISSION_MODES:
+                raise ValueError(f'Unknown submission mode {submission_mode!r}.')
+            send_to_blacs = self.ui.checkBox_run_shots.isChecked()
+            send_to_runviewer = self.ui.checkBox_view_shots.isChecked()
+            mode = SUBMISSION_MODES[submission_mode]
+            if (mode.joins_sequence or mode.clears_queue) and not send_to_blacs:
+                # A mode that reads the queue for a sequence to join, or
+                # empties it, is about the queue -- so with nothing going to
+                # BLACS there is nothing for it to do.
+                raise ValueError(
+                    "Alternate queue submission modes require 'BLACS' to be selected."
+                )
+            return self.compile_and_queue_shots(
+                submission_mode,
+                send_to_blacs,
+                send_to_runviewer,
+                self.expand_pending_shots(),
             )
-        return self.compile_and_queue_shots(
-            submission_mode,
-            send_to_blacs,
-            send_to_runviewer,
-            self.expand_pending_shots(),
-        )
+        except Exception as e:
+            self.set_output_tab_error(str(e))
+            raise
 
     def expand_pending_shots(self):
         """The window's shot globals, each paired with its globals to freeze, in making order."""
