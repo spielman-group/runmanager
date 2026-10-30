@@ -111,6 +111,22 @@ class EvaluationTests(unittest.TestCase):
         })
         self.assertEqual(hierarchy, {'z': ['flag', 'x', 'y'], 'g': ['x']})
 
+    def test_a_name_the_expression_binds_with_walrus_is_not_a_reference(self):
+        values, _ = self.evaluate({
+            'a': '((a := 2), (lambda: a)())[1]',
+            'b': 'z + 1',
+            'z': '(lambda x=(b := 2): b)()',
+            'early': '(late, lambda: (late := 2))[0]',
+            'late': '5',
+        })
+        self.assertEqual(
+            (values['a'], values['b'], values['z'], values['early']), (2, 3, 2, 5)
+        )
+
+    def test_a_long_expression_evaluates(self):
+        values, _ = self.evaluate({'x': ' + '.join(['1'] * 2000)})
+        self.assertEqual(values['x'], 2000)
+
     def test_with_raise_exceptions_one_error_names_every_failed_global(self):
         with self.assertRaises(Exception) as context:
             runmanager.evaluate_globals(

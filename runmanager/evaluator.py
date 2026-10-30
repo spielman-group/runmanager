@@ -15,6 +15,7 @@
 Evaluating converts strings into python expressions.
 """
 
+import ast
 import builtins
 import graphlib
 import runpy
@@ -59,6 +60,24 @@ def _global_references(table):
     }
     for child in table.get_children():
         names |= _global_references(child)
+    return names
+
+
+def _walrus_targets(node):
+    """Returns the names that := binds in the scope of node. A lambda's body is a scope
+    of its own, but its default arguments are in the enclosing one."""
+    # A stack, not recursion, since a long expression nests deeper than the recursion
+    # limit:
+    names = set()
+    stack = [node]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, ast.NamedExpr):
+            names.add(node.target.id)
+        if isinstance(node, ast.Lambda):
+            stack += node.args.defaults + [d for d in node.args.kw_defaults if d is not None]
+        else:
+            stack += ast.iter_child_nodes(node)
     return names
 
 
@@ -203,7 +222,11 @@ def _evaluate_globals(sequence_globals, raise_exceptions=True):
             errors[global_name] = e
             dependencies[global_name] = set()
             continue
-        references[global_name] = _global_references(table)
+        # A name the expression binds with := is not a reference in the scopes nested in
+        # it either, where the symbol table counts it as one:
+        references[global_name] = _global_references(table) - _walrus_targets(
+            ast.parse(expression, mode='eval')
+        )
         dependencies[global_name] = references[global_name] & all_globals.keys()
     global_hierarchy = {name: sorted(deps) for name, deps in dependencies.items() if deps}
 
