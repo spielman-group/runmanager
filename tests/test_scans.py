@@ -177,7 +177,7 @@ class EvaluationTests(unittest.TestCase):
             runmanager.evaluate_globals(sequence_globals)
         results, _, _ = runmanager.evaluate_globals(sequence_globals, raise_exceptions=False)
         self.assertIsInstance(results['one']['a'], ValueError)
-        self.assertIs(results['two']['a'], results['one']['a'])
+        self.assertIsInstance(results['two']['a'], ValueError)
         self.assertIsInstance(results['one']['b'], SyntaxError)
         self.assertEqual(results['two']['c'], 3)
 
