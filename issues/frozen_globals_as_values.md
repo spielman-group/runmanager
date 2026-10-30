@@ -217,8 +217,9 @@ breaks.
    shot with `x = 1`.
 3. A scanned global that refers to a per-shot global is an error naming both.
 4. With outer `a` and `b`, `p = a*b` is each shot's product.
-5. A scanned global derived from another is zipped with it and has its whole list in
-   its expression, as now.
+5. With Scan? ticked on both, `amplitude = [1, 2, 3]` and
+   `power = [a**2 for a in amplitude]` are zipped, and each shot's `power` is its
+   `amplitude` squared, as now.
 6. An outer scan over an empty `(0, 3)` array, a structured array and `[nan, inf]`,
    with `pylab_namespace = False`: each shot's file, eager and lazy, holds the value
    from Engage, with the same type, dtype, shape and values.
