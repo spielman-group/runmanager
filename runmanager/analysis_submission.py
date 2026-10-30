@@ -210,7 +210,9 @@ class AnalysisSubmission:
             self.server_online = 'checking'
             self.update_waiting_files_message()
             try:
-                self.lyse.add_shot(labscript_utils.shared_drive.path_to_agnostic(path))
+                self.lyse.add_shot(
+                    labscript_utils.shared_drive.path_to_agnostic(path), source='runmanager'
+                )
                 self.lyse_link.show_state(None)
             except (TimeoutError, OSError, AuthenticationFailure):
                 success = False

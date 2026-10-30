@@ -415,7 +415,7 @@ class FakeRunManager:
 
         def marker_arrived():
             while not self.analysed.empty():
-                path = self.analysed.get()
+                path, _ = self.analysed.get()
                 if path == ANALYSED_MARKER:
                     return True
                 paths.append(path)

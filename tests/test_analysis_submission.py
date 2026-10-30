@@ -31,8 +31,8 @@ class RefusingQueue:
     def __init__(self):
         self.offered = []
 
-    def put(self, path):
-        self.offered.append(path)
+    def put(self, shot):
+        self.offered.append(shot)
         raise RuntimeError('lyse cannot take shots')
 
 
@@ -53,13 +53,13 @@ class AnalysisSubmissionTests(unittest.TestCase):
         self.lyse_app.filebox.incoming_queue = incoming_queue
         return serve_lyse(self, self.lyse_app, port)
 
-    def test_a_submitted_shot_reaches_lyse_as_its_local_path(self):
+    def test_a_submitted_shot_reaches_lyse_as_its_local_path_from_runmanager(self):
         incoming = queue.Queue()
         submission = submit_to_lyse(self, self.serve(incoming).port)
         submission.notify_shot_complete(self.path)
         wait_for(lambda: not incoming.empty())
 
-        self.assertEqual(incoming.get(), self.path)
+        self.assertEqual(incoming.get(), (self.path, 'runmanager'))
 
     def test_a_shot_lyse_refuses_is_dropped_not_retried(self):
         refusing = RefusingQueue()
@@ -73,8 +73,8 @@ class AnalysisSubmissionTests(unittest.TestCase):
         submission.notify_shot_complete(later)
         wait_for(lambda: not incoming.empty())
 
-        self.assertEqual(incoming.get(), later)
-        self.assertEqual(refusing.offered, [self.path])
+        self.assertEqual(incoming.get(), (later, 'runmanager'))
+        self.assertEqual(refusing.offered, [(self.path, 'runmanager')])
 
     def submit_recording(self, port):
         """A submission to this port, and the outcomes it reports, in order."""
@@ -129,4 +129,4 @@ class AnalysisSubmissionTests(unittest.TestCase):
         submission.check_retry()
         wait_for(lambda: not incoming.empty())
 
-        self.assertEqual(incoming.get(), self.path)
+        self.assertEqual(incoming.get(), (self.path, 'runmanager'))
