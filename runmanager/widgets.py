@@ -406,6 +406,9 @@ class ClickOffFilter(QtCore.QObject):
             cls._instance = cls()
             QtWidgets.QApplication.instance().installEventFilter(cls._instance)
         cls._instance.views.add(view)
+        # A deleted view's wrapper can outlive it, as where a closed tab's GroupTab
+        # is still referenced:
+        view.destroyed.connect(lambda: cls._instance.views.discard(view))
 
     def eventFilter(self, obj, event):
         if (
