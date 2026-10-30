@@ -92,7 +92,9 @@ dependency hierarchy therefore holds only the names on the path taken: for
     - the frozen and JIT globals of the queue's compile path.
 12. Each expression is compiled at most once and evaluated at most once. It is also
     walked for references: once through its symbol table, and once through its syntax
-    tree for `:=` targets. Both walks are bounded by the expression's size.
+    tree for `:=` targets. An expression that names its own global is walked through
+    its symbol table a second time, leaving out the tables of lambdas. Each walk is
+    bounded by the expression's size.
     For G globals and E dependency edges, ordering costs O(G + E). Each cycle costs
     one `CycleError` and one search of its strongly connected component, so C cycles
     cost O(C (G + E)) at worst. Besides that, the cost is the expressions' own work.
@@ -223,17 +225,20 @@ cover only essential behaviour. New ones, in `tests/test_scans.py`:
 - **R2, R4:**
   - the chain evaluates;
   - a recursive lambda works;
-  - two mutually recursive lambdas hold the cycle error;
+  - two mutually recursive lambdas hold the cycle error, and so do
+    `f = lambda x=f: x` and `f = (f, lambda: f)[1]`, which read `f` when defined;
   - `a = (lambda: a)()` holds a NameError.
 - **R3:**
   - the walrus case evaluates to 2;
   - `z = ([a for a in range(2)], lambda: a)[1]` depends on `a`;
   - a lambda parameter named like a global gives no dependency;
-  - `a = z + 1` with `z = (lambda x=(a := 2): a)()` gives `a = 3` and `z = 2`.
+  - `a = z + 1` with `z = (lambda x=(a := 2): a)()` gives `a = 3` and `z = 2`;
+  - `z = (a, lambda: (a := 2))[0]`, defined before `a = 5`, gives 5: a `:=` in a
+    lambda's body binds nothing in the expression's scope;
+  - an expression too long for a recursive walk evaluates.
 - **R5:** a self-reference, a two-global cycle, and the overlapping case each give
-  every member the ValueError. In the overlapping case its text names `a`, `b` and
-  `c`. A global that refers to a cycle member gets a
-  NameError.
+  every member a ValueError whose text names every member of its cycle, all three in
+  the overlapping case. A global that refers to a cycle member gets a NameError.
 - **R6 to R9:**
   - a SyntaxError is held;
   - the hierarchy lists both branches of a conditional;
