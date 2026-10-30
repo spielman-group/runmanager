@@ -10,8 +10,7 @@
 # the project for the full license.                                 #
 #                                                                   #
 #####################################################################
-"""Widgets for the Runmanager GUI
-"""
+"""Widgets for the runmanager GUI."""
 
 import unicodedata
 
@@ -77,7 +76,7 @@ def composite_colors(r0, g0, b0, a0, r1, g1, b1, a1):
 
 def expression_cell_colors():
     palette = QtWidgets.QApplication.instance().palette()
-    text_color = palette.color(QtGui.QPalette.Text)
+    text_color = palette.color(QtGui.QPalette.ColorRole.Text)
     active_candidates = [QtGui.QColor('#D7ECFF'), QtGui.QColor('#234A75')]
     error_candidates = [QtGui.QColor('#F79494'), QtGui.QColor('#8A2E2E')]
     deprecated_candidates = [QtGui.QColor('#F5D78A'), QtGui.QColor('#7A5A12')]
@@ -99,8 +98,7 @@ def hidden_unicode_issues(text):
             continue
         if not char.isprintable() or category in {'Cf', 'Cc', 'Cs', 'Co'}:
             issues.append(
-                'col %d: U+%04X %s'
-                % (index, ord(char), unicodedata.name(char, 'UNKNOWN'))
+                f'col {index}: U+{ord(char):04X} {unicodedata.name(char, "UNKNOWN")}'
             )
     return issues
 
@@ -116,10 +114,8 @@ def tooltip_with_hidden_unicode_warning(base_tooltip, text):
 
 
 def scroll_view_to_row_if_current(view, item):
-    """Checks to see if the item is in the row of the current item. If it is, scrolls
-    the treeview/tableview vertically to ensure that row is visible. This is done by
-    recording the horizontal scroll position, then using view.scrollTo(), and then
-    restoring the horizontal position"""
+    """Scroll the view vertically to the item's row if that is the current row,
+    leaving the horizontal scroll position as it was."""
     horizontal_scrollbar = view.horizontalScrollBar()
     existing_horizontal_position = horizontal_scrollbar.value()
     index = item.index()
@@ -320,7 +316,7 @@ class TabToolButton(QtWidgets.QToolButton):
         except LookupError:
             return # Things aren't initialised yet
         if self.x() != correct_x or self.y() != correct_y:
-            # Move back! I shall not be moved!
+            # Keep the button where the tab bar puts it:
             self.move(correct_x, correct_y)
         return QtWidgets.QToolButton.moveEvent(self, event)
 
@@ -350,7 +346,6 @@ class FingerTabWidget(QtWidgets.QTabWidget):
         right_button = self.tabBar().tabButton(index, _RIGHT_SIDE)
         if closable:
             if not right_button:
-                # Make one:
                 close_button = TabToolButton(self.parent())
                 close_button.setIcon(Icon(':/qtutils/fugue/cross'))
                 self.tabBar().setTabButton(
@@ -361,7 +356,6 @@ class FingerTabWidget(QtWidgets.QTabWidget):
                 )
         else:
             if right_button:
-                # Get rid of it:
                 self.tabBar().setTabButton(index, _RIGHT_SIDE, None)
 
     def _on_close_button_clicked(self, button):
@@ -375,17 +369,17 @@ def set_selection_palette(widget):
     """Give the widget the highlight colour of the application palette, partly
     transparent, and the window text colour as the highlighted text colour"""
     source = QtWidgets.QApplication.palette(widget)
-    highlight = source.color(QtGui.QPalette.Highlight)
+    highlight = source.color(QtGui.QPalette.ColorRole.Highlight)
     highlight.setAlphaF(SELECTION_FRACTION)
-    text = source.color(QtGui.QPalette.WindowText)
+    text = source.color(QtGui.QPalette.ColorRole.WindowText)
     palette = widget.palette()
-    if palette.color(QtGui.QPalette.Highlight) == highlight and palette.color(
-        QtGui.QPalette.HighlightedText
+    if palette.color(QtGui.QPalette.ColorRole.Highlight) == highlight and palette.color(
+        QtGui.QPalette.ColorRole.HighlightedText
     ) == text:
         return
-    for group in [QtGui.QPalette.Active, QtGui.QPalette.Inactive]:
-        palette.setColor(group, QtGui.QPalette.Highlight, highlight)
-        palette.setColor(group, QtGui.QPalette.HighlightedText, text)
+    for group in [QtGui.QPalette.ColorGroup.Active, QtGui.QPalette.ColorGroup.Inactive]:
+        palette.setColor(group, QtGui.QPalette.ColorRole.Highlight, highlight)
+        palette.setColor(group, QtGui.QPalette.ColorRole.HighlightedText, text)
     widget.setPalette(palette)
 
 
@@ -399,14 +393,18 @@ class ItemView(LeftClickMixin):
         set_selection_palette(self)
 
     def changeEvent(self, event):
-        if event.type() == QtCore.QEvent.PaletteChange:
+        if event.type() == QtCore.QEvent.Type.PaletteChange:
             set_selection_palette(self)
         super().changeEvent(event)
 
     def keyPressEvent(self, event):
         index = self.currentIndex()
         if (
-            event.key() in [QtCore.Qt.Key_Space, QtCore.Qt.Key_Enter, QtCore.Qt.Key_Return]
+            event.key() in [
+                QtCore.Qt.Key.Key_Space,
+                QtCore.Qt.Key.Key_Enter,
+                QtCore.Qt.Key.Key_Return,
+            ]
             and index.isValid()
         ):
             if self.model().itemFromIndex(index).isEditable():
@@ -420,17 +418,17 @@ class ItemView(LeftClickMixin):
     def moveCursor(self, cursor_action, keyboard_modifiers):
         current_index = self.currentIndex()
         current_row, current_column = current_index.row(), current_index.column()
-        if cursor_action == QtWidgets.QAbstractItemView.MoveUp:
+        if cursor_action == QtWidgets.QAbstractItemView.CursorAction.MoveUp:
             return current_index.sibling(current_row - 1, current_column)
-        elif cursor_action == QtWidgets.QAbstractItemView.MoveDown:
+        elif cursor_action == QtWidgets.QAbstractItemView.CursorAction.MoveDown:
             return current_index.sibling(current_row + 1, current_column)
-        elif cursor_action == QtWidgets.QAbstractItemView.MoveLeft:
+        elif cursor_action == QtWidgets.QAbstractItemView.CursorAction.MoveLeft:
             return current_index.sibling(current_row, current_column - 1)
-        elif cursor_action == QtWidgets.QAbstractItemView.MoveRight:
+        elif cursor_action == QtWidgets.QAbstractItemView.CursorAction.MoveRight:
             return current_index.sibling(current_row, current_column + 1)
-        elif cursor_action == QtWidgets.QAbstractItemView.MovePrevious:
+        elif cursor_action == QtWidgets.QAbstractItemView.CursorAction.MovePrevious:
             return current_index.sibling(current_row, current_column - 1)
-        elif cursor_action == QtWidgets.QAbstractItemView.MoveNext:
+        elif cursor_action == QtWidgets.QAbstractItemView.CursorAction.MoveNext:
             return current_index.sibling(current_row, current_column + 1)
         else:
             return super().moveCursor(cursor_action, keyboard_modifiers)
@@ -443,7 +441,7 @@ class TreeView(ItemView, MovableRowsMixin, QtWidgets.QTreeView):
         # Set columns to their minimum size, disabling resizing. Caller may still
         # configure a specific section to stretch:
         self.header().setSectionResizeMode(
-            QtWidgets.QHeaderView.ResizeToContents
+            QtWidgets.QHeaderView.ResizeMode.ResizeToContents
         )
         self.setItemDelegate(ItemDelegate(self))
 
@@ -478,10 +476,10 @@ class TableView(ItemView, QtWidgets.QTableView):
         # Set rows and columns to the minimum size, disabling interactive resizing.
         # Caller may still configure a specific column to stretch:
         self.verticalHeader().setSectionResizeMode(
-            QtWidgets.QHeaderView.ResizeToContents
+            QtWidgets.QHeaderView.ResizeMode.ResizeToContents
         )
         self.horizontalHeader().setSectionResizeMode(
-            QtWidgets.QHeaderView.ResizeToContents
+            QtWidgets.QHeaderView.ResizeMode.ResizeToContents
         )
         self.horizontalHeader().sectionResized.connect(self.on_column_resized)
         self.setItemDelegate(ItemDelegate(self))
@@ -500,7 +498,7 @@ class AlternatingColorModel(QtGui.QStandardItemModel):
         QtGui.QStandardItemModel.__init__(self)
         self.view = view
 
-        # A cache, store brushes so we don't have to recalculate them. Is faster.
+        # Brushes already made, so that they are not recalculated:
         self.bg_brushes = {}
 
     def get_bgbrush(self, normal_brush, alternate, selected):
@@ -511,9 +509,9 @@ class AlternatingColorModel(QtGui.QStandardItemModel):
         # brushes follow a change of theme. Clearing the cache on the window's
         # PaletteChange would refill it before this view has the new palette.
         palette = self.view.palette()
-        normal_color = palette.color(QtGui.QPalette.Base)
-        alternate_color = palette.color(QtGui.QPalette.AlternateBase)
-        highlight_color = palette.color(QtGui.QPalette.Highlight)
+        normal_color = palette.color(QtGui.QPalette.ColorRole.Base)
+        alternate_color = palette.color(QtGui.QPalette.ColorRole.AlternateBase)
+        highlight_color = palette.color(QtGui.QPalette.ColorRole.Highlight)
         key = (
             normal_rgb, alternate, selected,
             normal_color.rgba(), alternate_color.rgba(), highlight_color.rgba(),
@@ -522,7 +520,6 @@ class AlternatingColorModel(QtGui.QStandardItemModel):
             return self.bg_brushes[key]
         except KeyError:
             pass
-        # Get the colour of the cell with alternate row shading:
         if normal_rgb is None:
             # No colour has been set. Use palette colours:
             if alternate:
@@ -532,7 +529,6 @@ class AlternatingColorModel(QtGui.QStandardItemModel):
         else:
             bg_color = normal_brush.color()
             if alternate:
-                # Modify alternate rows:
                 r, g, b, a = normal_rgb
                 nr, ng, nb, na = normal_color.getRgb()
                 ar, ag, ab, aa = alternate_color.getRgb()
@@ -545,7 +541,6 @@ class AlternatingColorModel(QtGui.QStandardItemModel):
         # If parent is a TableView, we handle selection highlighting as part of the
         # background colours:
         if selected and isinstance(self.view, QtWidgets.QTableView):
-            # Overlay highlight colour:
             r_s, g_s, b_s, a_s = highlight_color.getRgb()
             r_0, g_0, b_0, a_0 = bg_color.getRgb()
             rgb = composite_colors(r_0, g_0, b_0, a_0, r_s, g_s, b_s, a_s)
@@ -556,15 +551,14 @@ class AlternatingColorModel(QtGui.QStandardItemModel):
         return brush
 
     def data(self, index, role):
-        """When background color data is being requested, returns modified colours for
-        every second row, according to the palette of the view. This has the effect of
-        making the alternate colours visible even when custom colors have been set - the
-        same shading will be applied to the custom colours. Only really looks sensible
-        when the normal and alternate colors are similar. Also applies selection
-        highlight colour of the view's palette, similarly with alternate-row
-        shading, for the case of a QTableView."""
-        if role == QtCore.Qt.BackgroundRole:
-            normal_brush = QtGui.QStandardItemModel.data(self, index, QtCore.Qt.BackgroundRole)
+        """For the background role, the item's colour with the view palette's shading on
+        alternate rows, custom colours included; this looks right only when the
+        palette's normal and alternate colours are similar. In a QTableView the
+        palette's highlight is composited over selected cells."""
+        if role == QtCore.Qt.ItemDataRole.BackgroundRole:
+            normal_brush = QtGui.QStandardItemModel.data(
+                self, index, QtCore.Qt.ItemDataRole.BackgroundRole
+            )
             selected = self.view.selectionModel().isSelected(index)
             alternate = index.row() % 2
             return self.get_bgbrush(normal_brush, alternate, selected)
@@ -575,25 +569,24 @@ class Editor(QtWidgets.QTextEdit):
     """Popup editor with word wrapping and automatic resizing."""
     def __init__(self, parent):
         QtWidgets.QTextEdit.__init__(self, parent)
-        self.setWordWrapMode(QtGui.QTextOption.WordWrap)
+        self.setWordWrapMode(QtGui.QTextOption.WrapMode.WordWrap)
         self.setAcceptRichText(False)
-        self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
-        self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.textChanged.connect(self.update_size)
         self.initial_height = None
         set_selection_palette(self)
 
     def changeEvent(self, event):
-        if event.type() == QtCore.QEvent.PaletteChange:
+        if event.type() == QtCore.QEvent.Type.PaletteChange:
             set_selection_palette(self)
         super().changeEvent(event)
 
     def update_size(self):
         if self.initial_height is not None:
-            # Temporarily shrink back to the initial height, just so that the document
-            # size below returns the preferred size rather than the current size.
-            # QTextDocument doesn't have a sizeHint of minimumSizeHint method, so this
-            # is the best we can do to get its minimum size.
+            # Shrink back to the initial height so that the document size below is
+            # the preferred size and not the current one; QTextDocument has no
+            # sizeHint or minimumSizeHint to ask.
             self.setFixedHeight(self.initial_height)
         preferred_height = self.document().size().toSize().height()
         # Do not shrink smaller than the initial height:
@@ -628,7 +621,7 @@ class ItemDelegate(QtWidgets.QStyledItemDelegate):
         if size.height() <= self.MIN_ROW_HEIGHT:
             height = self.MIN_ROW_HEIGHT
         else:
-            # Esnure cells with multiple lines of text still have some padding:
+            # Ensure cells with multiple lines of text still have some padding:
             height = size.height() + self.EXTRA_ROW_HEIGHT
         return QtCore.QSize(size.width() + self.EXTRA_COL_WIDTH, height)
 
@@ -636,7 +629,7 @@ class ItemDelegate(QtWidgets.QStyledItemDelegate):
         if isinstance(self.parent(), QtWidgets.QTableView):
             # Disable rendering of selection highlight for TableViews, they handle
             # it themselves with the background colour data:
-            option.state &= ~(QtWidgets.QStyle.State_Selected)
+            option.state &= ~(QtWidgets.QStyle.StateFlag.State_Selected)
         QtWidgets.QStyledItemDelegate.paint(self, painter, option, index)
         if index.column() > 0:
             painter.setPen(self._pen)
@@ -646,20 +639,24 @@ class ItemDelegate(QtWidgets.QStyledItemDelegate):
         """Filter events before they get to the editor, so that editing is ended when
         the user presses tab, shift-tab or enter (which otherwise would not end editing
         in a QTextEdit)."""
-        if event.type() == QtCore.QEvent.KeyPress:
-            if event.key() in [QtCore.Qt.Key_Enter, QtCore.Qt.Key_Return]:
+        if event.type() == QtCore.QEvent.Type.KeyPress:
+            if event.key() in [QtCore.Qt.Key.Key_Enter, QtCore.Qt.Key.Key_Return]:
                 # Allow shift-enter
-                if not event.modifiers() & QtCore.Qt.ShiftModifier:
+                if not event.modifiers() & QtCore.Qt.KeyboardModifier.ShiftModifier:
                     self.commitData.emit(obj)
                     self.closeEditor.emit(obj)
                     return True
-            elif event.key() == QtCore.Qt.Key_Tab:
+            elif event.key() == QtCore.Qt.Key.Key_Tab:
                 self.commitData.emit(obj)
-                self.closeEditor.emit(obj, QtWidgets.QStyledItemDelegate.EditNextItem)
+                self.closeEditor.emit(
+                    obj, QtWidgets.QStyledItemDelegate.EndEditHint.EditNextItem
+                )
                 return True
-            elif event.key() == QtCore.Qt.Key_Backtab:
+            elif event.key() == QtCore.Qt.Key.Key_Backtab:
                 self.commitData.emit(obj)
-                self.closeEditor.emit(obj, QtWidgets.QStyledItemDelegate.EditPreviousItem)
+                self.closeEditor.emit(
+                    obj, QtWidgets.QStyledItemDelegate.EndEditHint.EditPreviousItem
+                )
                 return True
         return QtWidgets.QStyledItemDelegate.eventFilter(self, obj, event)
 
@@ -668,7 +665,7 @@ class ItemDelegate(QtWidgets.QStyledItemDelegate):
 
     def setEditorData(self, editor, index):
         editor.setPlainText(index.data())
-        font = index.data(QtCore.Qt.FontRole)
+        font = index.data(QtCore.Qt.ItemDataRole.FontRole)
         if font is None:
             font = QtWidgets.QApplication.instance().font(self.parent())
         editor.setFont(font)
