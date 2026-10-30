@@ -1,3 +1,16 @@
+#####################################################################
+#                                                                   #
+# /tests/test_remote_api.py                                         #
+#                                                                   #
+# Copyright 2026, JQI                                               #
+# Author: Ian Spielman                                              #
+#                                                                   #
+# This file is part of runmanager, in the labscript suite           #
+# (see http://labscriptsuite.org), and is licensed under the        #
+# Simplified BSD License. See the license.txt file in the root of   #
+# the project for the full license.                                 #
+#                                                                   #
+#####################################################################
 """What runmanager's server answers a remote caller.
 
 These are the commands a plugin or an optimizer sends. BLACS's side of the

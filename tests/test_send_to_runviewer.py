@@ -1,3 +1,16 @@
+#####################################################################
+#                                                                   #
+# /tests/test_send_to_runviewer.py                                  #
+#                                                                   #
+# Copyright 2026, JQI                                               #
+# Author: Ian Spielman                                              #
+#                                                                   #
+# This file is part of runmanager, in the labscript suite           #
+# (see http://labscriptsuite.org), and is licensed under the        #
+# Simplified BSD License. See the license.txt file in the root of   #
+# the project for the full license.                                 #
+#                                                                   #
+#####################################################################
 """Sending shots to runviewer, and starting it when it is not already running.
 
 The shot goes through the real RunviewerClient to a real RunviewerServer; only

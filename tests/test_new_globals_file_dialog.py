@@ -1,3 +1,16 @@
+#####################################################################
+#                                                                   #
+# /tests/test_new_globals_file_dialog.py                            #
+#                                                                   #
+# Copyright 2026, JQI                                               #
+# Author: Ian Spielman                                              #
+#                                                                   #
+# This file is part of runmanager, in the labscript suite           #
+# (see http://labscriptsuite.org), and is licensed under the        #
+# Simplified BSD License. See the license.txt file in the root of   #
+# the project for the full license.                                 #
+#                                                                   #
+#####################################################################
 """The save panel behind *New globals file*.
 
 A save panel decides the extension of the file it returns. Given a name that

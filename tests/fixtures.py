@@ -1,3 +1,16 @@
+#####################################################################
+#                                                                   #
+# /tests/fixtures.py                                                #
+#                                                                   #
+# Copyright 2026, JQI                                               #
+# Author: Ian Spielman                                              #
+#                                                                   #
+# This file is part of runmanager, in the labscript suite           #
+# (see http://labscriptsuite.org), and is licensed under the        #
+# Simplified BSD License. See the license.txt file in the root of   #
+# the project for the full license.                                 #
+#                                                                   #
+#####################################################################
 """Stand-ins shared by runmanager's tests.
 
 Importing ``runmanager.__main__`` builds a ``Splash`` and shows it at module
