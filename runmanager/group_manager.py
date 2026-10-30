@@ -133,6 +133,6 @@ def get_shot_globals(filepath):
     """
     warnings.warn(
         FutureWarning("get_shot_globals has moved to labscript_utils.shot_utils. "
-                      "Please update your code to import it from there."))
+                      "Please update your code to import it from there."), stacklevel=2)
 
     return labscript_utils.shot_utils.get_shot_globals(filepath)
