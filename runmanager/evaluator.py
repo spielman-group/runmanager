@@ -26,7 +26,6 @@ from labscript_utils.labconfig import LabConfig
 
 import runmanager.functions
 from runmanager.exceptions import ExpansionError
-from runmanager.expander import axis_names
 
 PYLAB_NAMESPACE_NOTE = (
     'To evaluate globals without the names of `from pylab import *` now, set '
@@ -279,8 +278,6 @@ def _evaluate_globals(sequence_globals, raise_exceptions=True):
     # Each global is evaluated once for the whole sequence, so a global in a zip group
     # cannot depend on globals expanded on other axes, directly or through globals that
     # are not expanded:
-    axis_of = axis_names(expansions)
-
     def expanded_dependencies(global_name, visited):
         for name in global_hierarchy.get(global_name, []):
             if name not in visited:
@@ -296,15 +293,15 @@ def _evaluate_globals(sequence_globals, raise_exceptions=True):
         zip_key = expansions[global_name]
         other_axes = [
             name for name in expanded_dependencies(global_name, {global_name})
-            if axis_of[name] != 'zip ' + zip_key
+            if expansions[name] != zip_key
         ]
         if other_axes:
             exception = ExpansionError(
                 f"Global '{global_name}' in zip group '{zip_key}' depends on globals on "
                 + 'other axes: '
                 + ', '.join(
-                    f"{name} (outer)" if axis_of[name].startswith('outer ')
-                    else f"{name} (zip group '{axis_of[name][4:]}')"
+                    f"{name} (outer)" if expansions[name] == 'outer'
+                    else f"{name} (zip group '{expansions[name]}')"
                     for name in other_axes
                 )
                 + '. Globals are evaluated once for the whole sequence, not once per '
@@ -319,9 +316,8 @@ def _evaluate_globals(sequence_globals, raise_exceptions=True):
     # iterables without a length are skipped:
     zip_groups = {}
     for global_name, value in evaled_globals.items():
-        axis_name = axis_of.get(global_name, '')
-        if axis_name.startswith('zip ') and hasattr(value, '__len__'):
-            zip_groups.setdefault(axis_name[4:], {})[global_name] = len(value)
+        if expansions[global_name] not in ('', 'outer') and hasattr(value, '__len__'):
+            zip_groups.setdefault(expansions[global_name], {})[global_name] = len(value)
     for zip_key, lengths in zip_groups.items():
         if len(set(lengths.values())) > 1:
             message = (

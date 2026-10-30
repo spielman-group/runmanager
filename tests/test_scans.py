@@ -72,6 +72,17 @@ class ZipGroupTests(unittest.TestCase):
         self.assertIsInstance(results['group']['b'], ValueError)
         self.assertEqual(results['group']['c'], [8, 10])
 
+    def test_an_outer_global_and_a_zip_group_of_its_name_are_two_axes(self):
+        sequence_globals, results = evaluate({'x': ('[1, 2]', 'outer'), 'y': ('[3]', 'x')})
+        self.assertEqual(
+            runmanager.expand_globals(sequence_globals, results),
+            [{'x': 1, 'y': 3}, {'x': 2, 'y': 3}],
+        )
+
+    def test_a_zipped_global_that_depends_on_the_outer_global_of_its_name_is_refused(self):
+        _, results = evaluate({'x': ('[1, 2]', 'outer'), 'y': ('np.array(x) * 2', 'x')})
+        self.assertIsInstance(results['group']['y'], runmanager.ExpansionError)
+
 
 class ShotCountTests(unittest.TestCase):
     def test_the_shot_count_is_the_number_of_shots_engage_makes(self):
