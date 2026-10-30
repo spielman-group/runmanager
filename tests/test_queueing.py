@@ -334,7 +334,7 @@ ANALYSED_MARKER = '/runmanager-tests/marker.h5'
 COMPILE_ERROR = 'NameError: name "x" is not defined'
 
 
-class FakeRunManager(object):
+class FakeRunManager:
     """Runmanager's exchange over only the surface of it that it uses.
 
     RunManager.__init__ builds the whole application, so the methods here are
@@ -717,7 +717,7 @@ class SubmittedShotTests(unittest.TestCase):
         records = self.manager.compile_shots(
             [
                 {
-                    'path': os.path.join(self.directory, 'shot_%d.h5' % n),
+                    'path': os.path.join(self.directory, f'shot_{n}.h5'),
                     'labscript_file': os.path.join(self.directory, 'e.py'),
                     'compile_mode': COMPILE_MODE_EAGER,
                     'compiled': False,
@@ -1571,7 +1571,7 @@ class QueueDisplayTests(unittest.TestCase):
                 'the text has to stand off the fill it sits on',
             )
         self.assertIsNone(
-            model.item(1, 0).data(Qt.ForegroundRole),
+            model.item(1, 0).data(Qt.ItemDataRole.ForegroundRole),
             'an untinted row is left to the theme',
         )
 
