@@ -2,11 +2,9 @@ DEFAULT_PORT = 42523
 
 from labscript_utils.ls_zprocess import ZMQClient
 
-# What an exchange tells BLACS about this runmanager: it offered a shot, its
-# queue is paused, the shot it will offer next is still compiling, or it has
-# nothing to offer right now. Paused and pending are told apart from having
-# nothing so that BLACS can say why no queued work is arriving, or wait for it;
-# neither is a reason for BLACS to stop. Only a shot comes with a path:
+# What queue_exchange tells BLACS: a shot to run (the only answer with a path), a
+# paused queue, a next shot still compiling, or nothing. BLACS can then say why no
+# queued work is arriving, or wait for it; neither is a reason for it to stop:
 PROVIDER_SHOT = 'shot'
 PROVIDER_PAUSED = 'paused'
 PROVIDER_PENDING = 'pending'
