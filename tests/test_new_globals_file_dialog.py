@@ -2,17 +2,15 @@
 
 A save panel decides the extension of the file it returns. Given a name that
 already has one it keeps that one, and typing replaces only the stem. Given a
-bare folder it has no extension to preserve and supplies one of its own, taken
-from the host's type database rather than from the name filter the dialog asked
-for -- so the file that comes back need not be a ``.toml`` file at all.
+bare folder it supplies one of its own, from the host's type database rather
+than from the dialog's name filter, so the file that comes back need not be a
+``.toml`` file at all.
 
-What is pinned here is that the handler hands the panel a filename carrying the
-extension the new globals file is meant to have, and that the guard behind the
-panel still supplies that extension for a name returned without one.
+These tests pin that the handler offers a filename ending in ``.toml``, and that
+a name returned without that extension is given it.
 
 The panel belongs to the operating system and cannot be driven from a test, so
-the seam under test is the call into it: ``getSaveFileName`` is replaced and the
-arguments it was given are read back.
+``getSaveFileName`` is replaced and the arguments it was given are read back.
 """
 import os
 import shutil
@@ -25,12 +23,9 @@ import unittest
 from fixtures import RunManager, main_module
 
 
-class FakeRunManager(object):
-    """Enough of a RunManager for ``on_new_globals_file_clicked`` to run.
-
-    ``RunManager.__init__`` builds the whole application, which this one
-    handler has no use for.
-    """
+class FakeRunManager:
+    """Enough of a RunManager for ``on_new_globals_file_clicked`` to run, without
+    ``RunManager.__init__``'s whole application."""
 
     on_new_globals_file_clicked = RunManager.on_new_globals_file_clicked
 
@@ -86,7 +81,7 @@ class NewGlobalsFileDialogTests(unittest.TestCase):
         self.assertTrue(
             suggested.lower().endswith('.toml'),
             'the panel keeps the extension it is given and replaces only the '
-            'stem, so the name offered has to end in .toml; got %r' % suggested,
+            f'stem, so the name offered has to end in .toml; got {suggested!r}',
         )
 
     def test_the_offered_filename_sits_in_the_last_opened_folder(self):
