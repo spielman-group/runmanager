@@ -11,12 +11,10 @@
 #                                                                   #
 #####################################################################
 
-"""Storage helpers for runmanager globals files.
+"""Reading and writing runmanager globals files.
 
-This module keeps the globals-file schema and CRUD operations in one place.
-Canonical editable globals files are TOML-backed. Legacy HDF5 globals files
-remain readable as migration inputs and can be converted to TOML when the user
-wants to edit them.
+A globals file is TOML. A legacy HDF5 one can be read, and converted to TOML with
+``convert_to_toml``, but not edited.
 """
 
 import copy
@@ -50,11 +48,11 @@ def _locked(function):
 
 
 class GlobalsFileError(Exception):
-    pass
+    """A globals file cannot be read as asked, or refuses the edit."""
 
 
 class LegacyGlobalsFileError(GlobalsFileError):
-    pass
+    """An edit to a legacy HDF5 globals file, which is import-only."""
 
 
 def _blank_record():
@@ -82,10 +80,9 @@ def _normalise_record(record):
     )
     if normalised["scan_enabled"] and normalised["jit_enabled"]:
         normalised["jit_enabled"] = False
-    # The stored expansion is retained while a scan is disabled, so that a
-    # zip group survives a scan off/on cycle. runmanager.get_globals()
-    # reports an empty expansion for globals that are not being scanned, so
-    # retaining it here does not affect how the global is expanded.
+    # A disabled scan keeps its expansion, so that a zip group survives a scan
+    # off/on cycle; get_globals reports none for a global not being scanned. An
+    # enabled scan with none gets 'outer'.
     if normalised["scan_enabled"] and not normalised["expansion"]:
         normalised["expansion"] = "outer"
     return normalised
@@ -127,8 +124,7 @@ def detect_backend(globals_file):
     if ext in LEGACY_HDF5_EXTENSIONS:
         return "legacy_hdf5"
     raise GlobalsFileError(
-        "Unsupported globals file format for %s. Expected .toml, .h5, or .hdf5."
-        % globals_file
+        f"Unsupported globals file format for {globals_file}. Expected .toml, .h5, or .hdf5."
     )
 
 
@@ -154,7 +150,7 @@ def load_toml_document(globals_file):
     document = _normalise_document(data)
     if document["format"] != CANONICAL_FORMAT:
         raise GlobalsFileError(
-            "Unsupported globals TOML format %r in %s." % (document["format"], globals_file)
+            f"Unsupported globals TOML format {document['format']!r} in {globals_file}."
         )
     return document
 
@@ -167,7 +163,7 @@ def load_legacy_hdf5_document(globals_file):
         try:
             globals_root = f["globals"]
         except KeyError as exc:
-            raise GlobalsFileError("%s does not contain a /globals group." % globals_file) from exc
+            raise GlobalsFileError(f"{globals_file} does not contain a /globals group.") from exc
         for group_name in globals_root:
             group = f["globals"][group_name]
             units_group = group.get("units")
@@ -215,6 +211,8 @@ def get_group_names(globals_file):
 
 
 def get_globals_details(groups):
+    """Return ``{group_name: {global_name: record}}`` for ``groups``, a dict of group
+    name to globals file, with each record a copy of the stored one."""
     details = {}
     for filepath in set(groups.values()):
         document = load_document(filepath)
@@ -238,7 +236,7 @@ def _get_group(document, group_name):
     try:
         return document["groups"][group_name]["globals"]
     except KeyError as exc:
-        raise GlobalsFileError('No such group "%s".' % group_name) from exc
+        raise GlobalsFileError(f'No such group "{group_name}".') from exc
 
 
 @_locked
@@ -253,6 +251,11 @@ def new_group(globals_file, group_name):
 
 @_locked
 def copy_group(source_globals_file, source_group_name, dest_globals_file, delete_source_group=False):
+    """Copy a group into ``dest_globals_file``, or the same file if that is None, and
+    return its new name. The name is the group's own if free there, else
+    ``<name>_copy``, else ``<name>(1)``, ``<name>(2)`` and so on; with
+    ``delete_source_group`` it starts at ``<name>(1)``. The source group is not
+    deleted."""
     source_document = load_document(source_globals_file)
     if dest_globals_file is None:
         dest_globals_file = source_globals_file
@@ -262,15 +265,15 @@ def copy_group(source_globals_file, source_group_name, dest_globals_file, delete
         source_group = source_document["groups"][source_group_name]["globals"]
     except KeyError as exc:
         raise GlobalsFileError(
-            'Can\'t copy: there is no group "%s".' % source_group_name
+            f'Can\'t copy: there is no group "{source_group_name}".'
         ) from exc
     i = 0 if not delete_source_group else 1
     dest_group_name = source_group_name
     while dest_group_name in dest_document["groups"]:
         if i == 0:
-            dest_group_name = "%s_copy" % source_group_name
+            dest_group_name = f"{source_group_name}_copy"
         else:
-            dest_group_name = "%s(%d)" % (source_group_name, i)
+            dest_group_name = f"{source_group_name}({i})"
         i += 1
     dest_document["groups"][dest_group_name] = {
         "globals": copy.deepcopy(source_group),
@@ -290,7 +293,7 @@ def rename_group(globals_file, previous_group_name, new_group_name):
     try:
         document["groups"][new_group_name] = document["groups"].pop(previous_group_name)
     except KeyError as exc:
-        raise GlobalsFileError('No such group "%s".' % previous_group_name) from exc
+        raise GlobalsFileError(f'No such group "{previous_group_name}".') from exc
     save_document(globals_file, document)
 
 
@@ -301,7 +304,7 @@ def delete_group(globals_file, group_name):
     try:
         del document["groups"][group_name]
     except KeyError as exc:
-        raise GlobalsFileError('No such group "%s".' % group_name) from exc
+        raise GlobalsFileError(f'No such group "{group_name}".') from exc
     save_document(globals_file, document)
 
 
@@ -315,9 +318,7 @@ def new_globals(globals_file, group_name, records):
     group = _get_group(document, group_name)
     taken = sorted(set(records) & set(group))
     if taken:
-        raise GlobalsFileError(
-            "Can't create globals: %s already exist." % ", ".join(taken)
-        )
+        raise GlobalsFileError(f"Can't create globals: {', '.join(taken)} already exist.")
     for global_name, record in records.items():
         group[global_name] = _normalise_record({**_blank_record(), **record})
     save_document(globals_file, document)
@@ -335,7 +336,7 @@ def rename_global(globals_file, group_name, previous_global_name, new_global_nam
     try:
         group[new_global_name] = group.pop(previous_global_name)
     except KeyError as exc:
-        raise GlobalsFileError('No such global "%s".' % previous_global_name) from exc
+        raise GlobalsFileError(f'No such global "{previous_global_name}".') from exc
     save_document(globals_file, document)
 
 
@@ -347,7 +348,7 @@ def delete_global(globals_file, group_name, global_name):
     try:
         del group[global_name]
     except KeyError as exc:
-        raise GlobalsFileError('No such global "%s".' % global_name) from exc
+        raise GlobalsFileError(f'No such global "{global_name}".') from exc
     save_document(globals_file, document)
 
 
@@ -357,7 +358,7 @@ def get_global_record(globals_file, group_name, global_name):
     try:
         return copy.deepcopy(group[global_name])
     except KeyError as exc:
-        raise GlobalsFileError('No such global "%s".' % global_name) from exc
+        raise GlobalsFileError(f'No such global "{global_name}".') from exc
 
 
 @_locked
@@ -366,7 +367,7 @@ def set_global_record(globals_file, group_name, global_name, record):
     document = load_document(globals_file)
     group = _get_group(document, group_name)
     if global_name not in group:
-        raise GlobalsFileError('No such global "%s".' % global_name)
+        raise GlobalsFileError(f'No such global "{global_name}".')
     group[global_name] = _normalise_record(record)
     save_document(globals_file, document)
 
