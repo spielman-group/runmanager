@@ -77,8 +77,9 @@ form, each commit naming its upstream commit: the zip checks, the small bugs, th
 compiler child, the parse races, the module split, #163 with 0a0ceb7 and 8ae14c0,
 interrupting the compile (d053c40), and the style, lint, theme and release commits on
 the lines the fork shares. The evaluator is upstream's, 2d8129d and 872a36d, with the
-fork's four fixes (`issues/evaluator_build.md`), which go upstream as one pull
-request.
+fork's four fixes (73650a9, 193856a, 9884cbd, ac7eacc), which go upstream as one
+pull request from `UpstreamEvaluator`. The evaluator's design and build record are in
+history at a9078eb.
 
 - **Deferred by Ian:** the custom and automatic expansion settings (a658642 and its
   follow-ups, 7528a82), the value history (9c5d2bc) and the Bool toggle (076fbf8).
