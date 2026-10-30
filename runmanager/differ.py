@@ -10,8 +10,7 @@
 # the project for the full license.                                 #
 #                                                                   #
 #####################################################################
-"""Functions for comparing two globals groups.
-"""
+"""Functions for comparing two globals groups."""
 
 from labscript_utils.dict_diff import dict_diff
 
@@ -21,9 +20,9 @@ from runmanager.tokenizer import remove_comments_and_tokenify
 
 
 def flatten_globals(sequence_globals, evaluated=False):
-    """Flattens the data structure of the globals. If evaluated=False,
-    saves only the value expression string of the global, not the
-    units or expansion."""
+    """Flatten ``{group: {name: value}}`` into ``{name: value}``. With evaluated=False
+    each value is an ``(expression, units, expansion)`` tuple, of which only the
+    expression is kept."""
     flattened_sequence_globals = {}
     for globals_group in sequence_globals.values():
         for name, value in globals_group.items():
@@ -44,33 +43,28 @@ def _shortened(text):
 
 
 def globals_diff_groups(active_groups, other_groups, return_string=True):
-    """Given two sets of globals groups, perform a diff of the raw
-    and evaluated globals. If return_string is True, returns the diff as a
-    string. Otherwise prints it and returns it as a pandas DataFrame, which is
-    empty if there are no differences. In the string, values and expressions
-    over 200 characters are shortened; the DataFrame has them in full."""
+    """Diff the raw and evaluated globals of two sets of groups, each a dict of group
+    name to globals file, with ``other_groups`` shown as Prev and ``active_groups`` as
+    Current. If return_string is True, returns the diff as a string. Otherwise prints
+    it and returns it as a pandas DataFrame, which is empty if there are no
+    differences. In the string, values and expressions over 200 characters are
+    shortened; the DataFrame has them in full."""
     our_sequence_globals = get_globals(active_groups)
     other_sequence_globals = get_globals(other_groups)
 
-    # evaluate globals
     our_evaluated_sequence_globals, _, _, _ = _evaluate_globals(our_sequence_globals, raise_exceptions=False)
     other_evaluated_sequence_globals, _, _, _ = _evaluate_globals(other_sequence_globals, raise_exceptions=False)
 
-    # flatten globals dictionaries
     our_globals = flatten_globals(our_sequence_globals, evaluated=False)
     other_globals = flatten_globals(other_sequence_globals, evaluated=False)
     our_evaluated_globals = flatten_globals(our_evaluated_sequence_globals, evaluated=True)
     other_evaluated_globals = flatten_globals(other_evaluated_sequence_globals, evaluated=True)
 
-    # diff the *evaluated* globals
     value_differences = dict_diff(other_evaluated_globals, our_evaluated_globals)
 
-    # We are interested only in displaying globals where *both* the
-    # evaluated global *and* its unevaluated expression (ignoring comments
-    # and whitespace) differ. This will minimise false positives where a
-    # slight change in an expression still leads to the same value, or
-    # where an object has a poorly defined equality operator that returns
-    # False even when the two objects are identical.
+    # Show a global only if both its evaluated value and its expression (ignoring
+    # comments and whitespace) differ, to avoid false positives from an expression
+    # changed to the same value, or an object whose equality operator is unreliable.
     filtered_differences = {}
     for name, (other_value, our_value) in value_differences.items():
         our_expression = our_globals.get(name, '-')
@@ -104,10 +98,9 @@ def globals_diff_groups(active_groups, other_groups, return_string=True):
 
 
 def globals_diff_shots(file1, file2):
-    # Get file's globals groups
+    """Print, and return as a pandas DataFrame, the difference between the globals of
+    two files: ``file1`` is shown as Current and ``file2`` as Prev."""
     active_groups = get_all_groups(file1)
-
-    # Get other file's globals groups
     other_groups = get_all_groups(file2)
 
     print(f'Globals diff between:\n{file1}\n{file2}\n\n')
