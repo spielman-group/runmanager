@@ -10,9 +10,10 @@
 # the project for the full license.                                 #
 #                                                                   #
 #####################################################################
-"""Functions for managing compilation of labscript shots.
-Actual compilation takes place in batch_compiler.py.
-These functions prepare the sequence and globals.
+"""Prepares labscript shots for compilation: sequence details, run files and globals.
+
+Compilation itself takes place in batch_compiler.py, in a subprocess that
+start_compiler starts.
 """
 
 import datetime
@@ -44,11 +45,12 @@ process_tree = ProcessTree.instance()
 
 
 def next_sequence_index(shot_basedir, dt, increment=True):
-    """Return the next sequence index for sequences in the given base directory (i.e.
-    <experiment_shot_storage>/<script_basename>) and the date of the given datetime
-    object, and increment the sequence index atomically on disk if increment=True. If
-    not setting increment=True, then the result is indicative only and may be used by
-    other code at any time. One must increment the sequence index prior to use."""
+    """Return the next sequence index in ``shot_basedir`` for the date of ``dt``.
+
+    ``shot_basedir`` is ``<experiment_shot_storage>/<script_basename>``. With
+    ``increment`` the index is claimed, by incrementing it atomically on disk, and
+    must be claimed before it is used. Without it the result is indicative only, as
+    other code may use the index at any time."""
     from labscript_utils.ls_zprocess import Lock
     from labscript_utils.shared_drive import path_to_agnostic
 
@@ -69,7 +71,6 @@ def next_sequence_index(shot_basedir, dt, increment=True):
             # File doesn't exist yet, start from zero
             sequence_index = 0
         if increment:
-            # Write the new file with the incremented sequence index
             os.makedirs(os.path.dirname(sequence_index_file), exist_ok=True)
             with open(sequence_index_file, 'w') as f:
                 json.dump([dt.strftime(DATE_FORMAT), sequence_index + 1], f)
@@ -94,23 +95,24 @@ def new_sequence_details(
     default=False,
     subdirectory_in_prefix=False,
 ):
-    """Generate the details for a new sequence: the toplevel attrs sequence_date,
-    sequence_index, sequence_id; and the the output directory and filename prefix for
-    the shot files, according to labconfig settings. If increment_sequence_index=True,
-    then we are claiming the resulting sequence index for use such that it cannot be
-    used by anyone else. This should be done if the sequence details are immediately
-    about to be used to compile a sequence. Otherwise, set increment_sequence_index to
-    False, but in that case the results are indicative only and one should call this
-    function again with increment_sequence_index=True before compiling the sequence, as
-    otherwise the sequence_index may be used by other code in the meantime.
+    """Return a new sequence's ``(sequence_attrs, output_dir, filename_prefix)``.
 
-    With default=True these are the details of the day's default sequence, which every
-    default shot made that day shares: dated from the start of the day, it has
+    ``sequence_attrs`` holds the top-level attributes for the shot files:
+    script_basename, sequence_date, sequence_index and sequence_id. The output
+    directory and filename prefix follow the labconfig settings. With
+    ``increment_sequence_index`` the sequence index is claimed, so that nobody else can
+    use it: do this when the details are about to be used to compile a sequence.
+    Otherwise the results are indicative only, and the function should be called again
+    with it set before compiling, as other code may use the index in the meantime.
+
+    With ``default=True`` these are the details of the day's default sequence, which
+    every default shot made that day shares: dated from the start of the day, it has
     sequence_index -1 and claims no index.
 
-    With subdirectory_in_prefix=True the output directory is the storage folder alone,
-    and the subdirectory the folder format makes leads the filename prefix, so that
-    make_run_files formats it with each shot's globals and never formats the folder."""
+    With ``subdirectory_in_prefix=True`` the output directory is the script's storage
+    folder alone, and the subdirectory the folder format makes leads the filename
+    prefix, so that make_run_files formats it with each shot's globals and never
+    formats the folder."""
     if config is None:
         config = LabConfig()
     script_basename = os.path.splitext(os.path.basename(script_path))[0]
@@ -146,8 +148,7 @@ def new_sequence_details(
         globals={},
     )
 
-    # Dated at the sequence's start, for all its shots; each shot fills in only globals.
-    # Compute the output directory based on labconfig settings:
+    # Dated at the sequence's start, for all its shots; each shot fills in only globals:
     subdir_format = _sequence_format(
         config,
         'output_folder_format',
@@ -155,19 +156,14 @@ def new_sequence_details(
         default,
     )
 
-    # Format the output directory according to the current timestamp, sequence index and
-    # sequence_timestamp, if present in the format string:
     subdir = format_lookup_string(
         subdir_format, context, dt=now, preserve_unresolved_roots=('globals',)
     )
     shot_output_dir = os.path.join(shot_basedir, subdir)
 
-    # Compute the shot filename prefix according to labconfig settings:
     filename_prefix_format = _sequence_format(
         config, 'filename_prefix_format', '{sequence_timestamp}_{script_basename}', default
     )
-    # Format the filename prefix according to the current timestamp, sequence index,
-    # sequence_timestamp, and script_basename, if present in the format string:
     filename_prefix = format_lookup_string(
         filename_prefix_format, context, dt=now, preserve_unresolved_roots=('globals',)
     )
@@ -187,33 +183,29 @@ def make_run_files(
     return_infos=False,
     create_files=True,
 ):
-    """Does what it says. sequence_globals and shots are of the datatypes returned by
-    get_globals and get_shots, one is a nested dictionary with string values, and the
-    other a flat dictionary. sequence_attrs is a dict of the attributes pertaining to
-    this sequence to be initially set at the top-level group of the h5 file, as returned
-    by new_sequence_details. output_folder and filename_prefix determine the directory
-    shot files will be output to, as well as their filenames (this function will
-    generate filenames with the shot number and .h5 extension appended to
-    filename_prefix). Sensible defaults for these are also returned by
-    new_sequence_details(), so preferably these should be used. output_folder is used
-    as it is; filename_prefix, which may name subdirectories, is formatted with each
-    shot's globals.
+    """Create the run files of ``shots``, and return a generator of what they are.
 
-    Shuffle will randomise the order that the run files are generated in with respect to
-    which element of shots they come from. Shuffled or not, what is yielded comes in run
-    number order rather than in the order of shots, and each yielded item describes the
-    shot that went into it: with return_infos the info carries that shot's globals
-    beside its path and run number, and without them the file at the yielded path holds
-    them. So a caller that shuffles needs no separate note of where each element of
-    shots ended up.
+    ``sequence_globals`` is a nested dictionary of the type returned by get_globals and
+    ``shots`` a list of the flat dictionaries that expand_globals returns.
+    ``sequence_attrs``, as returned by new_sequence_details, is a dict of the attributes
+    of this sequence to set on the file's top-level group. That function also returns
+    sensible ``output_folder`` and ``filename_prefix``, which determine where the files
+    go: ``output_folder`` is used as it is, and ``filename_prefix``, which may name
+    subdirectories, is formatted with each shot's globals, with the run number and
+    ``.h5`` appended.
 
-    This function returns a *generator*. The run files are not actually created until
-    you loop over this generator (which gives you the filepaths). This is useful for not
-    having to clean up as many unused files in the event of failed compilation of
-    labscripts. If you want all the run files to be created at some point, simply
-    convert the returned generator to a list. The filenames the run files are given is
-    simply the sequence_id with increasing integers appended. Raises ValueError if shots
-    is empty."""
+    ``shuffle`` randomises the order that the run files are generated in with respect
+    to which element of ``shots`` they come from. Shuffled or not, what is yielded
+    comes in run number order rather than in the order of shots, and each yielded item
+    describes the shot that went into it: with ``return_infos`` the info carries that
+    shot's globals beside its path and run number, and without it the file at the
+    yielded path holds them. So a caller that shuffles needs no separate note of where
+    each element of ``shots`` ended up.
+
+    The files are not created until you loop over the generator, which gives their
+    paths. This leaves fewer unused files to clean up if compiling a labscript fails;
+    convert it to a list to create them all. With ``create_files=False`` none is
+    written. Raises ValueError if ``shots`` is empty."""
     if not shots:
         raise ValueError('No shots to compile: a global that is expanded over has no values.')
     return _make_run_files(
@@ -291,7 +283,7 @@ def next_run_file(output_folder, filename_prefix, shot_globals, run_no=None, wid
         run_no = 1 + max((int(end) for end in ends if end.isdigit()), default=-1)
     while True:
         path, run_no = next_available_indexed_filepath(
-            basename + '.h5', '_{index:0%dd}' % width, start=run_no, strip_suffix=False
+            basename + '.h5', f'_{{index:0{width}d}}', start=run_no, strip_suffix=False
         )
         if os.path.abspath(path) not in taken:
             return path, run_no
@@ -301,26 +293,26 @@ def next_run_file(output_folder, filename_prefix, shot_globals, run_no=None, wid
 def make_single_run_file(
     filename, sequenceglobals, runglobals, sequence_attrs, run_no, n_runs, shot_id=None
 ):
-    """Does what it says. runglobals is a dict of this run's globals, the format being
-    the same as that of one element of the list returned by expand_globals.
-    sequence_globals is a nested dictionary of the type returned by get_globals.
-    sequence_attrs is a dict of attributes pertaining to this sequence, as returned by
-    new_sequence_details, and is identical for every run of one sequence.
+    """Write the run file ``filename`` of one shot.
 
-    run_no is this run's number, which is unique within its sequence. n_runs is how far
-    that sequence reaches as of this file: one more than the highest run number it has
-    once this one is written. For a sequence compiled in one go every file carries the
-    same value, which exceeds the number of runs generated if files already in the
-    folder took some of their numbers. For a sequence that is added
-    to afterwards it is not: the shots written earlier keep the smaller number they were
-    written with, since they may already have run and are not rewritten. So n_runs read
-    off one shot is not the size of its sequence, and the shots of one sequence need not
-    agree on it.
+    ``runglobals`` is a dict of this run's globals, the format being that of one
+    element of the list returned by expand_globals. ``sequenceglobals`` is a nested
+    dictionary of the type returned by get_globals. ``sequence_attrs``, as returned by
+    new_sequence_details, is identical for every run of one sequence.
 
-    shot_id, if given, is the identifier of the queue row this shot was written for,
+    ``run_no`` is this run's number, which is unique within its sequence. ``n_runs`` is
+    how far that sequence reaches as of this file: one more than the highest run number
+    it has once this one is written. For a sequence compiled in one go every file
+    carries the same value, which exceeds the number of runs generated if files already
+    in the folder took some of their numbers. For a sequence that is added to afterwards
+    it does not, as the shots written earlier keep the smaller number they were written
+    with, since they may already have run. So ``n_runs`` read off one shot is not the
+    size of its sequence, and the shots of one sequence need not agree on it.
+
+    ``shot_id``, if given, is the identifier of the queue row this shot was written for,
     so that a result coming back can be matched to the shot that was submitted. A file
-    written without one carries no such attribute at all, which is how a shot that
-    nobody submitted is told apart from one that was."""
+    written without one has no such attribute, which is how a shot that nobody
+    submitted is told apart from one that was."""
     _write_run_file(
         filename,
         _sequence_globals_image(sequenceglobals),
@@ -381,7 +373,7 @@ def _write_run_file(filename, template, runglobals, sequence_attrs, run_no, n_ru
                 value = h5py.Reference()
             try:
                 globals_group.attrs[name] = value
-            except Exception as e: # noqa: BLE001 all global exceptions are value errors
+            except Exception as e:  # noqa: BLE001 all global exceptions are value errors
                 message = (f'Global {name} cannot be saved as an hdf5 attribute. ' +
                            'Globals can only have relatively simple datatypes, with no nested structures. ' +
                            'Original error was:\n' +
@@ -392,9 +384,12 @@ def _write_run_file(filename, template, runglobals, sequence_attrs, run_no, n_ru
     with open(filename, 'wb') as f:
         f.write(image)
 
+
 def make_run_file_from_globals_files(labscript_file, globals_files, output_path, config=None):
-    """Creates a run file output_path, using all the globals from globals_files. Uses
-    labscript_file to determine the sequence_attrs only"""
+    """Create the run file ``output_path`` from all the globals of ``globals_files``.
+
+    ``labscript_file`` determines the sequence_attrs only, and a new sequence index is
+    claimed for them."""
     groups = get_all_groups(globals_files)
     sequence_globals, shot_globals = get_queue_compile_globals(groups)
     sequence_attrs, _, _ = new_sequence_details(
@@ -424,8 +419,8 @@ def get_queue_compile_globals(groups, frozen_globals=None, default_globals=False
     if len(shots) != 1:
         scanning_globals = [name for name, expansion in expansions.items() if expansion]
         raise ValueError(
-            'Cannot compile to a single run file: The following globals are a '
-            'sequence: ' + ', '.join(scanning_globals)
+            'Cannot compile to a single run file, as these globals are a sequence: '
+            + ', '.join(scanning_globals)
         )
     return sequence_globals, shots[0]
 
@@ -453,28 +448,24 @@ def compile_with(to_child, from_child, labscript_file, run_file):
 
 def compile_labscript_async(labscript_file, run_file,
                             stream_port=None, done_callback=None):
-    """Compiles labscript_file with run_file.
-    
-    This function is designed to be called in a thread. 
-    The stdout and stderr from the compilation will be shovelled into
-    stream_port via zmq push as it spews forth, and when compilation is complete,
-    done_callback will be called with a boolean argument indicating success. Note that
-    the zmq communication will be encrypted, or not, according to security settings in
-    labconfig. If you want to receive the data on a zmq socket, do so using a PULL
-    socket created from a :class:`labscript_utils.ls_zprocess.Context`, or using a
-    :class:`labscript_utils.ls_zprocess.ZMQServer`. These subclasses will also be configured
-    with the appropriate security settings and will be able to receive the messages.
+    """Compile ``labscript_file`` into ``run_file``, in a compiler subprocess.
+
+    This function is designed to be called in a thread. The compile's stdout and stderr
+    are pushed to ``stream_port`` over zmq, encrypted or not according to the security
+    settings in labconfig. To receive them, use a PULL socket created from a
+    :class:`labscript_utils.ls_zprocess.Context`, or a
+    :class:`labscript_utils.ls_zprocess.ZMQServer`, which have those settings. When the
+    compile is complete ``done_callback`` is called with whether it succeeded.
 
     Args:
-        labscript_file (str): Path to labscript file to be compiled
-        run_file (str): Path to h5 file where compilation output is stored.
-            This file must already exist with proper globals initialization.
-            See :func:`runmanager.globals_file.new_globals_file` for details.
-        stream_port (zmq.socket, optional): ZMQ socket to push stdout and stderr.
-            If None, defaults to calling process stdout/stderr. Default is None.
-        done_callback (function, optional): Callback function run when compilation finishes.
-            Takes a single boolean argument marking compilation success or failure.
-            If None, callback is skipped. Default is None.
+        labscript_file (str): Path to labscript file to be compiled.
+        run_file (str): Path to h5 file where compilation output is stored. This file
+            must already exist with the globals written to it, as
+            :func:`make_single_run_file` does.
+        stream_port (int, optional): Port to push stdout and stderr to. If None, they
+            go where the calling process's stdout and stderr do. Default is None.
+        done_callback (function, optional): Called with a boolean marking compilation
+            success or failure. If None, no callback is made. Default is None.
     """
     to_child, from_child, child = start_compiler(stream_port)
     try:
@@ -488,27 +479,23 @@ def compile_labscript_async(labscript_file, run_file,
 
 def compile_multishot_async(labscript_file, run_files,
                             stream_port=None, done_callback=None):
-    """Compiles labscript_file with multiple run_files (ie globals).
-    
-    This function is designed to be called in a thread.
-    The stdout and stderr from the compilation will be shovelled into
-    stream_port via zmq push as it spews forth, and when each compilation is complete,
-    done_callback will be called with a boolean argument indicating success. Compilation
-    will stop after the first failure.  If you want to receive the data on a zmq socket,
-    do so using a PULL socket created from a :class:`labscript_utils.ls_zprocess.Context`, or
-    using a :class:`labscript_utils.ls_zprocess.ZMQServer`. These subclasses will also be
-    configured with the appropriate security settings and will be able to receive the
-    messages.
-    
+    """Compile ``labscript_file`` into each of ``run_files`` in turn, in one compiler.
+
+    This function is designed to be called in a thread. The compile's stdout and stderr
+    are pushed to ``stream_port`` as for :func:`compile_labscript_async`.
+    ``done_callback`` is called when each compile is complete, and compilation stops
+    after the first failure. An exception is written to the stream, or to stderr if
+    there is no ``stream_port``, and raised.
+
     Args:
-        labscript_file (str): Path to labscript file to be compiled
-        run_files (list of str): Paths to h5 file where compilation output is stored.
-            These files must already exist with proper globals initialization.
-        stream_port (zmq.socket, optional): ZMQ socket to push stdout and stderr.
-            If None, defaults to calling process stdout/stderr. Default is None.
-        done_callback (function, optional): Callback function run when compilation finishes.
-            Takes a single boolean argument marking compilation success or failure.
-            If None, callback is skipped. Default is None.
+        labscript_file (str): Path to labscript file to be compiled.
+        run_files (list of str): Paths to h5 files where compilation output is stored.
+            These files must already exist with the globals written to them.
+        stream_port (int, optional): Port to push stdout and stderr to. If None, they
+            go where the calling process's stdout and stderr do. Default is None.
+        done_callback (function, optional): Called after each compile with a boolean
+            marking its success or failure. If None, no callback is made. Default is
+            None.
     """
     to_child, from_child, child = start_compiler(stream_port)
     try:
@@ -532,35 +519,35 @@ def compile_multishot_async(labscript_file, run_files,
 
 def compile_labscript_with_globals_files_async(labscript_file, globals_files, output_path,
                                                stream_port, done_callback):
-    """Compiles labscript_file with multiple globals files into a directory.
-    
-    Instead, stderr and stdout will be put to
-    stream_port via zmq push in the multipart message format `['stdout','hello, world\\n']`
-    etc. When compilation is finished, the function done_callback will be called a
-    boolean argument indicating success or failure.  If you want to receive the data on
-    a zmq socket, do so using a PULL socket created from a
-    :external:class:`labscript_utils.ls_zprocess.Context`, or using a
-    :external:class:`labscript_utils.ls_zprocess.ZMQServer`. These subclasses will also be configured with
-    the appropriate security settings and will be able to receive the messages.
-    
+    """Compile ``labscript_file`` into ``output_path``, with the globals of the files.
+
+    The shot file is made first, as :func:`make_run_file_from_globals_files` does, and
+    then compiled in a daemon thread, so this returns without waiting for the compile.
+    stdout and stderr are pushed to ``stream_port`` via zmq in the multipart message
+    format `['stdout','hello, world\\n']` etc. When the compile is finished
+    ``done_callback`` is called, from the thread, with whether it succeeded. If the
+    shot file cannot be made, the traceback is pushed to ``stream_port`` and
+    ``done_callback(False)`` is called.
+
     Args:
-        labscript_file (str): Path to labscript file to be compiled
-        globals_files (list of str): Paths to h5 file where globals values to be used are stored.
-            See :func:`make_run_file_from_globals_files` for details.
+        labscript_file (str): Path to labscript file to be compiled.
+        globals_files (list of str): Paths to h5 files where globals values to be used
+            are stored. See :func:`make_run_file_from_globals_files` for details.
         output_path (str): Path of the shot file to write and compile into.
-        stream_port (zmq.socket): ZMQ socket to push stdout and stderr.
-        done_callback (function): Callback function run when compilation finishes.
-            Takes a single boolean argument marking compilation success or failure.
+        stream_port (int): Port to push stdout and stderr to.
+        done_callback (function): Called with a boolean marking compilation success or
+            failure.
     """
     try:
         make_run_file_from_globals_files(labscript_file, globals_files, output_path)
         thread = threading.Thread(
-            target=compile_labscript_async, args=[labscript_file, output_path, stream_port, done_callback])
-        thread.daemon = True
+            target=compile_labscript_async,
+            args=[labscript_file, output_path, stream_port, done_callback],
+            daemon=True,
+        )
         thread.start()
     except Exception:
         error = traceback.format_exc()
         zmq_push_multipart(stream_port, data=[b'stderr', error.encode('utf-8')])
-        t = threading.Thread(target=done_callback, args=(False,))
-        t.daemon = True
+        t = threading.Thread(target=done_callback, args=(False,), daemon=True)
         t.start()
