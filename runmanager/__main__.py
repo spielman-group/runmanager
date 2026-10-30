@@ -45,10 +45,9 @@ import importlib.metadata
 import importlib.resources
 
 splash.update_text('importing matplotlib')
-# Evaluation of globals happens in a thread with the pylab module imported.
-# Although we don't care about plotting, importing pylab makes Qt calls. We
-# can't have that from a non main thread, so we'll just disable matplotlib's
-# GUI integration:
+# Globals are evaluated in a thread with pylab imported, and importing pylab
+# makes Qt calls, which a non-main thread can't make, so matplotlib's GUI
+# integration is disabled:
 import matplotlib
 matplotlib.use('Agg')
 
@@ -131,24 +130,18 @@ from qtutils import (
 )
 from labscript_utils.qtwidgets.outputbox import OutputBox
 import labscript_utils.qtwidgets.file_dialogs as file_dialogs
-import qtutils.icons
 from qtutils.icons import Icon
 
 
 runmanager_dir = RUNMANAGER_DIR
 
-# Bound here as well as under __main__ below, so that the methods of this
-# module can be called by anything that imports it rather than only by the
-# application. setup_logging() attaches handlers to the logger of this name and
-# hands back that same object, so running runmanager rebinds this to what it
-# already refers to. Getting it here attaches nothing and opens no log file.
+# Bound here as well as under __main__, so that importing this module gives its
+# methods a logger. setup_logging() returns this same object, with handlers.
 logger = logging.getLogger(APPLICATION_NAME)
 
-# The running window, reached by RunmanagerServer's handlers. Bound here
-# for the same reason the logger is: the name this module reads exists in it,
-# so anything importing the module can put its own window there rather than
-# inventing an attribute that was never declared. Running runmanager replaces
-# this with the application it builds.
+# The running window, which the tabs and RunmanagerServer's handlers reach through
+# this name. Bound here so that code importing this module can set its own;
+# running runmanager replaces it with the application it builds.
 app = None
 
 process_tree = ProcessTree.instance()
@@ -256,12 +249,12 @@ class GroupTab:
     GLOBALS_COL_UNITS = 4
     GLOBALS_COL_EXPANSION = 5
 
-    GLOBALS_ROLE_IS_DUMMY_ROW = QtCore.Qt.UserRole + 1
-    GLOBALS_ROLE_SORT_DATA = QtCore.Qt.UserRole + 2
-    GLOBALS_ROLE_PREVIOUS_TEXT = QtCore.Qt.UserRole + 3
-    GLOBALS_ROLE_PREVIOUS_CHECKSTATE = QtCore.Qt.UserRole + 4
-    GLOBALS_ROLE_IS_BOOL = QtCore.Qt.UserRole + 5
-    GLOBALS_ROLE_EXPRESSION = QtCore.Qt.UserRole + 6
+    GLOBALS_ROLE_IS_DUMMY_ROW = QtCore.Qt.ItemDataRole.UserRole + 1
+    GLOBALS_ROLE_SORT_DATA = QtCore.Qt.ItemDataRole.UserRole + 2
+    GLOBALS_ROLE_PREVIOUS_TEXT = QtCore.Qt.ItemDataRole.UserRole + 3
+    GLOBALS_ROLE_PREVIOUS_CHECKSTATE = QtCore.Qt.ItemDataRole.UserRole + 4
+    GLOBALS_ROLE_IS_BOOL = QtCore.Qt.ItemDataRole.UserRole + 5
+    GLOBALS_ROLE_EXPRESSION = QtCore.Qt.ItemDataRole.UserRole + 6
 
     GLOBALS_DUMMY_ROW_TEXT = '<Click to add global>'
 
@@ -298,15 +291,15 @@ class GroupTab:
         self.ui.treeView_globals.setTreePosition(self.GLOBALS_COL_VALUE)
         self.ui.treeView_globals.setRootIsDecorated(True)
         self.ui.treeView_globals.setItemsExpandable(True)
-        self.ui.treeView_globals.setSelectionBehavior(QtWidgets.QTreeView.SelectRows)
-        self.ui.treeView_globals.setSelectionMode(QtWidgets.QTreeView.ExtendedSelection)
+        self.ui.treeView_globals.setSelectionBehavior(QtWidgets.QTreeView.SelectionBehavior.SelectRows)
+        self.ui.treeView_globals.setSelectionMode(QtWidgets.QTreeView.SelectionMode.ExtendedSelection)
         self.ui.treeView_globals.setSortingEnabled(True)
         self.ui.treeView_globals.setEditTriggers(
-            QtWidgets.QTreeView.AnyKeyPressed | QtWidgets.QTreeView.EditKeyPressed
+            QtWidgets.QTreeView.EditTrigger.AnyKeyPressed | QtWidgets.QTreeView.EditTrigger.EditKeyPressed
         )
         self.ui.treeView_globals.header().setStretchLastSection(False)
         self.ui.treeView_globals.header().setSectionResizeMode(
-            self.GLOBALS_COL_VALUE, QtWidgets.QHeaderView.Stretch
+            self.GLOBALS_COL_VALUE, QtWidgets.QHeaderView.ResizeMode.Stretch
         )
         self.value_delegate = ExpressionDelegate(self.ui.treeView_globals)
         self.ui.treeView_globals.setItemDelegateForColumn(
@@ -319,7 +312,7 @@ class GroupTab:
         self.check_delegate = CenteredCheckDelegate(self.ui.treeView_globals)
         for column in (self.GLOBALS_COL_SCAN_ENABLED, self.GLOBALS_COL_JIT_ENABLED):
             self.ui.treeView_globals.setItemDelegateForColumn(column, self.check_delegate)
-        self.ui.treeView_globals.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+        self.ui.treeView_globals.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         self.action_globals_delete_selected = QtWidgets.QAction(
             Icon(':qtutils/fugue/minus'), 'Delete selected global(s)', self.ui
         )
@@ -395,7 +388,7 @@ class GroupTab:
     def populate_model(self):
         dummy_scan_enabled_item = QtGui.QStandardItem()
         dummy_scan_enabled_item.setData(True, self.GLOBALS_ROLE_IS_DUMMY_ROW)
-        dummy_scan_enabled_item.setFlags(QtCore.Qt.ItemIsEnabled)
+        dummy_scan_enabled_item.setFlags(QtCore.Qt.ItemFlag.ItemIsEnabled)
         dummy_scan_enabled_item.setToolTip('Click to add global')
 
         dummy_name_item = QtGui.QStandardItem(self.GLOBALS_DUMMY_ROW_TEXT)
@@ -403,26 +396,26 @@ class GroupTab:
         dummy_name_item.setToolTip('Click to add global')
         dummy_name_item.setData(True, self.GLOBALS_ROLE_IS_DUMMY_ROW)
         dummy_name_item.setData(self.GLOBALS_DUMMY_ROW_TEXT, self.GLOBALS_ROLE_PREVIOUS_TEXT)
-        dummy_name_item.setFlags(QtCore.Qt.ItemIsEnabled | QtCore.Qt.ItemIsEditable)
+        dummy_name_item.setFlags(QtCore.Qt.ItemFlag.ItemIsEnabled | QtCore.Qt.ItemFlag.ItemIsEditable)
 
         dummy_jit_enabled_item = QtGui.QStandardItem()
         dummy_jit_enabled_item.setData(True, self.GLOBALS_ROLE_IS_DUMMY_ROW)
-        dummy_jit_enabled_item.setFlags(QtCore.Qt.ItemIsEnabled)
+        dummy_jit_enabled_item.setFlags(QtCore.Qt.ItemFlag.ItemIsEnabled)
         dummy_jit_enabled_item.setToolTip('Click to add global')
 
         dummy_default_item = QtGui.QStandardItem()
         dummy_default_item.setData(True, self.GLOBALS_ROLE_IS_DUMMY_ROW)
-        dummy_default_item.setFlags(QtCore.Qt.ItemIsEnabled)
+        dummy_default_item.setFlags(QtCore.Qt.ItemFlag.ItemIsEnabled)
         dummy_default_item.setToolTip('Click to add global')
 
         dummy_units_item = QtGui.QStandardItem()
         dummy_units_item.setData(True, self.GLOBALS_ROLE_IS_DUMMY_ROW)
-        dummy_units_item.setFlags(QtCore.Qt.ItemIsEnabled)
+        dummy_units_item.setFlags(QtCore.Qt.ItemFlag.ItemIsEnabled)
         dummy_units_item.setToolTip('Click to add global')
 
         dummy_expansion_item = QtGui.QStandardItem()
         dummy_expansion_item.setData(True, self.GLOBALS_ROLE_IS_DUMMY_ROW)
-        dummy_expansion_item.setFlags(QtCore.Qt.ItemIsEnabled)
+        dummy_expansion_item.setFlags(QtCore.Qt.ItemFlag.ItemIsEnabled)
         dummy_expansion_item.setToolTip('Click to add global')
 
         self.globals_model.appendRow(
@@ -440,7 +433,7 @@ class GroupTab:
                 {self.group_name: self.globals_file}
             )[self.group_name]
         )
-        self.ui.treeView_globals.sortByColumn(self.GLOBALS_COL_NAME, QtCore.Qt.AscendingOrder)
+        self.ui.treeView_globals.sortByColumn(self.GLOBALS_COL_NAME, QtCore.Qt.SortOrder.AscendingOrder)
 
     def add_global_rows(self, globals_details):
         """Show globals the file has, ``{name: record}``, above the dummy row."""
@@ -487,7 +480,7 @@ class GroupTab:
         scan_enabled_item = QtGui.QStandardItem()
         scan_enabled_item.setCheckable(True)
         scan_enabled_item.setCheckState(
-            QtCore.Qt.Checked if scan_enabled else QtCore.Qt.Unchecked
+            QtCore.Qt.CheckState.Checked if scan_enabled else QtCore.Qt.CheckState.Unchecked
         )
         scan_enabled_item.setData(scan_enabled, self.GLOBALS_ROLE_PREVIOUS_CHECKSTATE)
         scan_enabled_item.setData(scan_enabled, self.GLOBALS_ROLE_SORT_DATA)
@@ -497,7 +490,7 @@ class GroupTab:
         jit_enabled_item = QtGui.QStandardItem()
         jit_enabled_item.setCheckable(True)
         jit_enabled_item.setCheckState(
-            QtCore.Qt.Checked if jit_enabled else QtCore.Qt.Unchecked
+            QtCore.Qt.CheckState.Checked if jit_enabled else QtCore.Qt.CheckState.Unchecked
         )
         jit_enabled_item.setData(jit_enabled, self.GLOBALS_ROLE_PREVIOUS_CHECKSTATE)
         jit_enabled_item.setData(jit_enabled, self.GLOBALS_ROLE_SORT_DATA)
@@ -530,7 +523,7 @@ class GroupTab:
             if column == self.GLOBALS_COL_SCAN_ENABLED:
                 child_item.setFlags(QtCore.Qt.ItemFlag.ItemIsEnabled | QtCore.Qt.ItemFlag.ItemIsSelectable)
             elif column != self.GLOBALS_COL_VALUE:
-                child_item.setFlags(QtCore.Qt.NoItemFlags)
+                child_item.setFlags(QtCore.Qt.ItemFlag.NoItemFlags)
         child_row[self.GLOBALS_COL_VALUE] = inactive_item
         scan_enabled_item.appendRow(child_row)
 
@@ -544,7 +537,7 @@ class GroupTab:
         ]
 
     def on_treeView_globals_leftClicked(self, index):
-        if qapplication.keyboardModifiers() != QtCore.Qt.NoModifier:
+        if qapplication.keyboardModifiers() != QtCore.Qt.KeyboardModifier.NoModifier:
             return
         item = self.globals_model.itemFromIndex(index)
         name_item = self.get_global_name_item(index)
@@ -555,13 +548,13 @@ class GroupTab:
             self.ui.treeView_globals.edit(name_index)
         elif item.column() == self.GLOBALS_COL_UNITS and item.data(self.GLOBALS_ROLE_IS_BOOL):
             active_item = self.get_active_value_item(global_name)
-            active_item.setText('False' if item.checkState() == QtCore.Qt.Checked else 'True')
+            active_item.setText('False' if item.checkState() == QtCore.Qt.CheckState.Checked else 'True')
         elif index.parent().isValid() and item.column() != self.GLOBALS_COL_VALUE:
             return
         elif item.column() not in (self.GLOBALS_COL_SCAN_ENABLED, self.GLOBALS_COL_JIT_ENABLED):
             if (
                 self.ui.treeView_globals.currentIndex() != index
-                or self.ui.treeView_globals.state() != QtWidgets.QTreeView.EditingState
+                or self.ui.treeView_globals.state() != QtWidgets.QTreeView.State.EditingState
             ):
                 self.edit_cell(index)
 
@@ -580,7 +573,7 @@ class GroupTab:
         if field is None:
             return
         if field in self.GLOBALS_CHECKBOX_FIELDS:
-            new_value = item.checkState() == QtCore.Qt.Checked
+            new_value = item.checkState() == QtCore.Qt.CheckState.Checked
             previous_value = item.data(self.GLOBALS_ROLE_PREVIOUS_CHECKSTATE)
         else:
             new_value = item.text()
@@ -608,11 +601,11 @@ class GroupTab:
             scan_enabled_item = self.get_global_item_by_name(
                 global_name, self.GLOBALS_COL_SCAN_ENABLED
             )
-            scan_enabled = scan_enabled_item.checkState() == QtCore.Qt.Checked
+            scan_enabled = scan_enabled_item.checkState() == QtCore.Qt.CheckState.Checked
             if not scan_enabled:
                 item.setData('', self.GLOBALS_ROLE_SORT_DATA)
                 item.setToolTip('Enable Scan? to set an expansion mode.')
-                item.setData(None, QtCore.Qt.DecorationRole)
+                item.setData(None, QtCore.Qt.ItemDataRole.DecorationRole)
             elif expansion == 'outer':
                 item.setIcon(Icon(':qtutils/custom/outer'))
                 item.setToolTip(
@@ -623,11 +616,11 @@ class GroupTab:
                 item.setIcon(Icon(':qtutils/custom/zip'))
                 item.setToolTip(
                     'This global will be interpreted as a list of values, and will be '
-                    "iterated over in lock-step with other globals in the '%s' zip group."
-                    % expansion
+                    'iterated over in lock-step with other globals in the '
+                    f"'{expansion}' zip group."
                 )
             else:
-                item.setData(None, QtCore.Qt.DecorationRole)
+                item.setData(None, QtCore.Qt.ItemDataRole.DecorationRole)
                 item.setToolTip(
                     'This global will be interpreted as a single value and passed to '
                     'compilation as-is.'
@@ -655,7 +648,7 @@ class GroupTab:
         names = self.selected_global_names()
         confirm_multiple = len(names) > 1
         if confirm_multiple and not app.question_dialog(
-                "Delete %d globals?" % len(names)):
+                f"Delete {len(names)} globals?"):
             return
         for name in names:
             self.delete_global(name, confirm=not confirm_multiple)
@@ -730,20 +723,20 @@ class GroupTab:
             units_item.setData(True, self.GLOBALS_ROLE_IS_BOOL)
             units_item.setData('!1', self.GLOBALS_ROLE_SORT_DATA)
             units_item.setEditable(False)
-            units_item.setCheckState(QtCore.Qt.Checked)
+            units_item.setCheckState(QtCore.Qt.CheckState.Checked)
             units_item.setBackground(QtGui.QBrush(QtGui.QColor(self.color_bool_on)))
         elif value == 'False':
             units_item.setData(True, self.GLOBALS_ROLE_IS_BOOL)
             units_item.setData('!0', self.GLOBALS_ROLE_SORT_DATA)
             units_item.setEditable(False)
-            units_item.setCheckState(QtCore.Qt.Unchecked)
+            units_item.setCheckState(QtCore.Qt.CheckState.Unchecked)
             units_item.setBackground(QtGui.QBrush(QtGui.QColor(self.color_bool_off)))
         else:
             units_item.setData(False, self.GLOBALS_ROLE_IS_BOOL)
             units_item.setData(units_item.text(), self.GLOBALS_ROLE_SORT_DATA)
             units_item.setEditable(True)
-            units_item.setData(None, QtCore.Qt.CheckStateRole)
-            units_item.setData(None, QtCore.Qt.BackgroundRole)
+            units_item.setData(None, QtCore.Qt.ItemDataRole.CheckStateRole)
+            units_item.setData(None, QtCore.Qt.ItemDataRole.BackgroundRole)
 
     def set_colors(self):
         colors = expression_cell_colors()
@@ -772,8 +765,8 @@ class GroupTab:
         default_item = self.get_global_expression_item(global_name, 'default')
         scan_item = self.get_global_expression_item(global_name, 'scan')
         expansion_item = self.get_global_item_by_name(global_name, self.GLOBALS_COL_EXPANSION)
-        scan_enabled = scan_enabled_item.checkState() == QtCore.Qt.Checked
-        jit_enabled = jit_enabled_item.checkState() == QtCore.Qt.Checked
+        scan_enabled = scan_enabled_item.checkState() == QtCore.Qt.CheckState.Checked
+        jit_enabled = jit_enabled_item.checkState() == QtCore.Qt.CheckState.Checked
         active_expression = 'scan' if scan_enabled else 'default'
         if self.get_active_value_item(global_name).data(self.GLOBALS_ROLE_EXPRESSION) != active_expression:
             self.swap_value_items(global_name)
@@ -802,7 +795,7 @@ class GroupTab:
                 expansion_item.setText('')
                 expansion_item.setData('', self.GLOBALS_ROLE_PREVIOUS_TEXT)
                 expansion_item.setData('', self.GLOBALS_ROLE_SORT_DATA)
-                expansion_item.setData(None, QtCore.Qt.DecorationRole)
+                expansion_item.setData(None, QtCore.Qt.ItemDataRole.DecorationRole)
                 expansion_item.setToolTip('Enable Scan? to set an expansion mode.')
             self.update_expression_item_metadata(default_item, default_tooltip)
             self.update_expression_item_metadata(scan_item, scan_tooltip)
@@ -857,7 +850,7 @@ class GroupTab:
         active_item = self.get_active_value_item(global_name)
         inactive_item = default_item if active_item is scan_item else scan_item
         with self.globals_model_item_changed_disconnected:
-            inactive_item.setData(None, QtCore.Qt.BackgroundRole)
+            inactive_item.setData(None, QtCore.Qt.ItemDataRole.BackgroundRole)
             if error:
                 color = self.color_error
             elif deprecated:
@@ -875,7 +868,7 @@ class GroupTab:
         elif hidden_unicode_issues(item.text()):
             item.setIcon(Icon(':qtutils/fugue/exclamation-red'))
         elif not item.icon().isNull():
-            item.setData(None, QtCore.Qt.DecorationRole)
+            item.setData(None, QtCore.Qt.ItemDataRole.DecorationRole)
         if hidden_unicode_issues(item.text()) and item.index().parent().isValid():
             self.ui.treeView_globals.expand(item.index().parent())
 
@@ -944,7 +937,7 @@ class GroupTab:
             default_item = self.get_global_expression_item(new_global_name, 'default')
             if (
                 not default_item.text()
-                and self.ui.treeView_globals.state() != QtWidgets.QAbstractItemView.EditingState
+                and self.ui.treeView_globals.state() != QtWidgets.QAbstractItemView.State.EditingState
             ):
                 if default_item.index().parent().isValid():
                     self.ui.treeView_globals.expand(default_item.index().parent())
@@ -956,7 +949,7 @@ class GroupTab:
         """Set the cell of one field of a global to ``value``, as its file holds it."""
         with self.globals_model_item_changed_disconnected:
             if field in self.GLOBALS_CHECKBOX_FIELDS:
-                item.setCheckState(QtCore.Qt.Checked if value else QtCore.Qt.Unchecked)
+                item.setCheckState(QtCore.Qt.CheckState.Checked if value else QtCore.Qt.CheckState.Unchecked)
                 item.setData(value, self.GLOBALS_ROLE_PREVIOUS_CHECKSTATE)
             else:
                 item.setText(value)
@@ -966,9 +959,9 @@ class GroupTab:
     def change_global(self, global_name, field, previous_value, new_value, interactive=True):
         """Write one field of a global to its file, and show it in the table.
 
-        A remote setter passes ``interactive=False``: the cell is set here rather
-        than by the operator, and a failure is raised rather than shown in a
-        dialog."""
+        With ``interactive=False``, as a remote setter passes it, the write is made
+        before returning, a failure is raised rather than shown in a dialog, and no
+        cell is opened for editing."""
         logger.info(
             '%s:%s - change %s of %s: %s -> %s',
             self.globals_file,
@@ -996,7 +989,7 @@ class GroupTab:
                     app.error_dialog(str(e))
                 self.show_global_field(item, field, previous_value)
                 with self.globals_model_item_changed_disconnected:
-                    item.setData(previous_background, QtCore.Qt.BackgroundRole)
+                    item.setData(previous_background, QtCore.Qt.ItemDataRole.BackgroundRole)
                     item.setIcon(previous_icon)
                 if field in self.GLOBALS_CHECKBOX_FIELDS:
                     self.update_scan_controls(global_name)
@@ -1042,7 +1035,7 @@ class GroupTab:
                 and next_item.isEditable()
                 and not next_item.text()
                 and self.ui.treeView_globals.state()
-                != QtWidgets.QAbstractItemView.EditingState
+                != QtWidgets.QAbstractItemView.State.EditingState
             ):
                 self.edit_cell(next_item.index())
             else:
@@ -1056,7 +1049,7 @@ class GroupTab:
 
     def delete_global(self, global_name, confirm=True):
         logger.info('%s:%s - delete global: %s', self.globals_file, self.group_name, global_name)
-        if confirm and not app.question_dialog("Delete the global '%s'?" % global_name):
+        if confirm and not app.question_dialog(f"Delete the global '{global_name}'?"):
             return
         self.ensure_editable_globals_file()
         runmanager.globals_file.delete_global(self.globals_file, self.group_name, global_name)
@@ -1088,7 +1081,7 @@ class GroupTab:
                 value = evaled_globals[self.group_name][global_name]
                 active_item = (
                     scan_item
-                    if scan_enabled_item.checkState() == QtCore.Qt.Checked
+                    if scan_enabled_item.checkState() == QtCore.Qt.CheckState.Checked
                     else default_item
                 )
                 inactive_item = default_item if active_item is scan_item else scan_item
@@ -1110,7 +1103,7 @@ class GroupTab:
                     self.update_expression_backgrounds(global_name, error=True)
                     self.update_expression_item_metadata(
                         active_item,
-                        '%s: %s' % (value.__class__.__name__, str(value)),
+                        f'{value.__class__.__name__}: {value}',
                         Icon(':qtutils/fugue/exclamation'),
                     )
                     self.tab_contains_errors = True
@@ -1203,17 +1196,17 @@ class RunManager(LabscriptGuiApplication):
     AXES_COL_NAME = 0
     AXES_COL_LENGTH = 1
     AXES_COL_SHUFFLE = 2
-    AXES_ROLE_NAME = QtCore.Qt.UserRole + 1
+    AXES_ROLE_NAME = QtCore.Qt.ItemDataRole.UserRole + 1
 
     # Constants for the model in the groups tab:
     GROUPS_COL_NAME = 0
     GROUPS_COL_ACTIVE = 1
     GROUPS_COL_DELETE = 2
     GROUPS_COL_OPENCLOSE = 3
-    GROUPS_ROLE_IS_DUMMY_ROW = QtCore.Qt.UserRole + 1
-    GROUPS_ROLE_PREVIOUS_NAME = QtCore.Qt.UserRole + 2
-    GROUPS_ROLE_SORT_DATA = QtCore.Qt.UserRole + 3
-    GROUPS_ROLE_GROUP_IS_OPEN = QtCore.Qt.UserRole + 4
+    GROUPS_ROLE_IS_DUMMY_ROW = QtCore.Qt.ItemDataRole.UserRole + 1
+    GROUPS_ROLE_PREVIOUS_NAME = QtCore.Qt.ItemDataRole.UserRole + 2
+    GROUPS_ROLE_SORT_DATA = QtCore.Qt.ItemDataRole.UserRole + 3
+    GROUPS_ROLE_GROUP_IS_OPEN = QtCore.Qt.ItemDataRole.UserRole + 4
     GROUPS_DUMMY_ROW_TEXT = '<Click to add group>'
 
     def __init__(self):
@@ -1237,19 +1230,24 @@ class RunManager(LabscriptGuiApplication):
 
         self.output_box = OutputBox(self.ui.verticalLayout_output_tab)
 
-        # Add a 'pop-out' button to the output tab:
         output_tab_index = self.ui.tabWidget.indexOf(self.ui.tab_output)
         self.output_popout_button = TabToolButton(self.ui.tabWidget.parent())
         self.output_popout_button.setIcon(Icon(':/qtutils/fugue/arrow-out'))
         self.output_popout_button.setToolTip('Toggle whether the output box is in a separate window')
-        self.ui.tabWidget.tabBar().setTabButton(output_tab_index, QtWidgets.QTabBar.RightSide, self.output_popout_button)
+        self.ui.tabWidget.tabBar().setTabButton(
+            output_tab_index,
+            QtWidgets.QTabBar.ButtonPosition.RightSide,
+            self.output_popout_button,
+        )
         # Fix the first four tabs in place:
         for index in range(4):
             self.ui.tabWidget.tabBar().setMovable(False, index=index)
         # Whether or not the output box is currently popped out:
         self.output_box_is_popped_out = False
         # The window it will be moved to when popped out:
-        self.output_box_window = PoppedOutOutputBoxWindow(self.ui, QtCore.Qt.WindowSystemMenuHint)
+        self.output_box_window = PoppedOutOutputBoxWindow(
+            self.ui, QtCore.Qt.WindowType.WindowSystemMenuHint
+        )
         self.output_box_window_verticalLayout = QtWidgets.QVBoxLayout(self.output_box_window)
         self.output_box_window_verticalLayout.setContentsMargins(0, 0, 0, 0)
         self.output_box_window.setWindowTitle('runmanager output')
@@ -1261,10 +1259,9 @@ class RunManager(LabscriptGuiApplication):
         # queue manager starts its worker thread, as that thread compiles
         # shots via self.compile_run_file():
         self.compiler_lock = threading.Lock()
-        # Shot files that never run: each test compile's, overwritten by the
-        # next, and each batch compiled with BLACS unticked, in a folder of its
-        # own. Removed when runmanager exits, since Windows never clears %TEMP%.
-        # A file runviewer still holds open on Windows is left behind.
+        # For shot files that never run: test compiles, and batches compiled with
+        # BLACS unticked. Removed when runmanager exits, since Windows never clears
+        # %TEMP%; a file runviewer still holds open on Windows is left behind.
         self.scratch_dir = tempfile.TemporaryDirectory(
             prefix='runmanager_scratch_', ignore_cleanup_errors=True
         )
@@ -1283,7 +1280,6 @@ class RunManager(LabscriptGuiApplication):
         self._default_shot_globals_changes = 0
 
         splash.update_text('starting compiler subprocess')
-        # Start the compiler subprocess:
         self.to_child, self.from_child, self.child = runmanager.start_compiler(
             self.output_box.port
         )
@@ -1346,12 +1342,11 @@ class RunManager(LabscriptGuiApplication):
 
         # A thread that will evaluate globals when they change, allowing us to
         # show their values and any errors in the tabs they came from.
-        self.preparse_globals_thread = threading.Thread(target=self.preparse_globals_loop)
-        self.preparse_globals_thread.daemon = True
-        # A Queue for informing the preparser thread when globals have changed, and thus
-        # need parsing again. It is a queue rather than a threading.Event() so that
-        # callers can call Queue.join() to wait for parsing to complete in a race-free
-        # way
+        self.preparse_globals_thread = threading.Thread(
+            target=self.preparse_globals_loop, daemon=True
+        )
+        # Tells the preparser thread that globals have changed. A queue rather than
+        # an Event, so that callers can Queue.join() to wait for parsing race-free.
         self.preparse_globals_required = queue.Queue()
         self.preparse_globals_thread.start()
 
@@ -1420,7 +1415,6 @@ class RunManager(LabscriptGuiApplication):
     def setup_axes_tab(self):
         self.axes_model = QtGui.QStandardItemModel()
 
-        # Setup the model columns and link to the treeview
         name_header_item = QtGui.QStandardItem('Name')
         name_header_item.setToolTip('The name of the global or zip group being iterated over')
         self.axes_model.setHorizontalHeaderItem(self.AXES_COL_NAME, name_header_item)
@@ -1436,9 +1430,10 @@ class RunManager(LabscriptGuiApplication):
 
         self.ui.treeView_axes.setModel(self.axes_model)
                                                           
-        # setup header widths
         self.ui.treeView_axes.header().setStretchLastSection(False)
-        self.ui.treeView_axes.header().setSectionResizeMode(self.AXES_COL_NAME, QtWidgets.QHeaderView.Stretch)
+        self.ui.treeView_axes.header().setSectionResizeMode(
+            self.AXES_COL_NAME, QtWidgets.QHeaderView.ResizeMode.Stretch
+        )
                                                           
     def setup_groups_tab(self):
         self.groups_model = QtGui.QStandardItemModel()
@@ -1446,31 +1441,26 @@ class RunManager(LabscriptGuiApplication):
         self.groups_model.setSortRole(self.GROUPS_ROLE_SORT_DATA)
         self.ui.treeView_groups.setModel(self.groups_model)
         self.ui.treeView_groups.setAnimated(True)  # Pretty
-        self.ui.treeView_groups.setSelectionMode(QtWidgets.QTreeView.ExtendedSelection)
+        self.ui.treeView_groups.setSelectionMode(QtWidgets.QTreeView.SelectionMode.ExtendedSelection)
         self.ui.treeView_groups.setSortingEnabled(True)
-        self.ui.treeView_groups.sortByColumn(self.GROUPS_COL_NAME, QtCore.Qt.AscendingOrder)
-        # Set column widths:
+        self.ui.treeView_groups.sortByColumn(self.GROUPS_COL_NAME, QtCore.Qt.SortOrder.AscendingOrder)
         self.ui.treeView_groups.setColumnWidth(self.GROUPS_COL_NAME, 400)
         # Make it so the user can just start typing on an item to edit:
-        self.ui.treeView_groups.setEditTriggers(QtWidgets.QTreeView.AnyKeyPressed |
-                                                QtWidgets.QTreeView.EditKeyPressed |
-                                                QtWidgets.QTreeView.SelectedClicked)
+        self.ui.treeView_groups.setEditTriggers(QtWidgets.QTreeView.EditTrigger.AnyKeyPressed |
+                                                QtWidgets.QTreeView.EditTrigger.EditKeyPressed |
+                                                QtWidgets.QTreeView.EditTrigger.SelectedClicked)
         # Ensure the clickable region of the open/close button doesn't extend forever:
         self.ui.treeView_groups.header().setStretchLastSection(False)
-        # Stretch the filpath/groupname column to fill available space:
         self.ui.treeView_groups.header().setSectionResizeMode(
-            self.GROUPS_COL_NAME, QtWidgets.QHeaderView.Stretch
+            self.GROUPS_COL_NAME, QtWidgets.QHeaderView.ResizeMode.Stretch
         )
-        # Shrink columns other than the 'name' column to the size of their headers:
         for column in range(self.groups_model.columnCount()):
             if column != self.GROUPS_COL_NAME:
                 self.ui.treeView_groups.resizeColumnToContents(column)
 
-        self.ui.treeView_groups.setTextElideMode(QtCore.Qt.ElideMiddle)
-        # Setup stuff for a custom context menu:
-        self.ui.treeView_groups.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+        self.ui.treeView_groups.setTextElideMode(QtCore.Qt.TextElideMode.ElideMiddle)
+        self.ui.treeView_groups.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
 
-        # Make the actions for the context menu:
         self.action_groups_set_selection_active = QtWidgets.QAction(
             Icon(':qtutils/fugue/ui-check-box'), 'Set selected group(s) active', self.ui)
         self.action_groups_set_selection_inactive = QtWidgets.QAction(
@@ -1484,10 +1474,8 @@ class RunManager(LabscriptGuiApplication):
         self.action_groups_close_selected_files = QtWidgets.QAction(
             Icon(':/qtutils/fugue/cross'), 'Close selected file(s)', self.ui)
 
-        # A counter for keeping track of the recursion depth of
-        # self._groups_model_active_changed(). This is used so that some
-        # actions can be taken in response to initial data changes, but not to
-        # flow-on changes made by the method itself:
+        # The recursion depth of on_groups_model_active_changed(), so that it acts
+        # on a change made from outside and not on the changes it makes itself:
         self.on_groups_model_active_changed_recursion_depth = 0
 
     def setup_queue_tab(self):
@@ -1516,14 +1504,13 @@ class RunManager(LabscriptGuiApplication):
         self.queue_pause_button.setIcon(pause_icon)
         self.queue_widget = RunmanagerQueueWidget(self.tab_queue)
         self.queue_widget.setSizePolicy(
-            QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding
+            QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Expanding
         )
         self.verticalLayout_queue_tab.addWidget(self.queue_widget)
         self.ui.tabWidget.setCurrentWidget(self.tab_queue)
         self.refresh_queue_tab()
 
     def connect_signals(self):
-        # The button that pops the output box in and out:
         self.output_popout_button.clicked.connect(self.on_output_popout_button_clicked)
 
         # The OS switching between light and dark:
@@ -1583,9 +1570,9 @@ class RunManager(LabscriptGuiApplication):
         # Groups tab; right click menu, menu actions, open globals file, new globals file, diff globals file,
         self.ui.treeView_groups.customContextMenuRequested.connect(self.on_treeView_groups_context_menu_requested)
         self.action_groups_set_selection_active.triggered.connect(
-            lambda: self.on_groups_set_selection_active_triggered(QtCore.Qt.Checked))
+            lambda: self.on_groups_set_selection_active_triggered(QtCore.Qt.CheckState.Checked))
         self.action_groups_set_selection_inactive.triggered.connect(
-            lambda: self.on_groups_set_selection_active_triggered(QtCore.Qt.Unchecked))
+            lambda: self.on_groups_set_selection_active_triggered(QtCore.Qt.CheckState.Unchecked))
         self.action_groups_delete_selected.triggered.connect(self.on_groups_delete_selected_triggered)
         self.action_groups_open_selected.triggered.connect(self.on_groups_open_selected_triggered)
         self.action_groups_close_selected_groups.triggered.connect(self.on_groups_close_selected_groups_triggered)
@@ -1686,7 +1673,6 @@ class RunManager(LabscriptGuiApplication):
             self.output_box_window.hide()
             self.output_popout_button.setIcon(Icon(':/qtutils/fugue/arrow-out'))
         else:
-            # pop it out
             self.output_box_window_verticalLayout.addWidget(self.output_box.output_textedit)
             self.output_popout_button.setIcon(Icon(':/qtutils/fugue/arrow-in'))
             self.output_box_window.show()
@@ -1699,7 +1685,7 @@ class RunManager(LabscriptGuiApplication):
         if not labscript_file:
             return None
         if not os.path.isfile(labscript_file):
-            self.error_dialog("No such file %s." % labscript_file)
+            self.error_dialog(f"No such file {labscript_file}.")
             return None
         self.last_opened_labscript_folder = os.path.dirname(labscript_file)
         return labscript_file
@@ -1731,7 +1717,6 @@ class RunManager(LabscriptGuiApplication):
             return
         # Save the containing folder for use next time we open the dialog box:
         self.last_selected_shot_output_folder = os.path.dirname(shot_output_folder)
-        # Write the file to the lineEdit:
         self.ui.lineEdit_shot_output_folder.setText(shot_output_folder)
         # Update our knowledge about whether this is the default output folder or not:
         self.check_output_folder_update()
@@ -1744,15 +1729,10 @@ class RunManager(LabscriptGuiApplication):
         self.check_output_folder_update()
 
     def on_labscript_file_text_changed(self, text):
-        # Blank out the 'edit labscript file' button if no labscript file is
-        # selected
         enabled = bool(text)
         self.ui.toolButton_edit_labscript_file.setEnabled(enabled)
-        # Blank out the 'select shot output folder' button if no labscript
-        # file is selected:
         self.ui.toolButton_select_shot_output_folder.setEnabled(enabled)
         self.ui.lineEdit_labscript_file.setToolTip(text)
-        # Check if the output folder needs to be updated:
         self.check_output_folder_update()
 
     def on_default_labscript_file_text_changed(self, text):
@@ -1761,8 +1741,6 @@ class RunManager(LabscriptGuiApplication):
         self.queue_manager.set_default_labscript_file(text)
 
     def on_shot_output_folder_text_changed(self, text):
-        # Blank out the 'reset default output folder' button if the user is
-        # already using the default output folder
         if text == self.get_default_output_folder():
             self.non_default_folder = False
         else:
@@ -1773,7 +1751,7 @@ class RunManager(LabscriptGuiApplication):
 
     def setup_engage_submission_menu(self):
         button = self.ui.pushButton_engage
-        button.setPopupMode(QtWidgets.QToolButton.DelayedPopup)
+        button.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.DelayedPopup)
         self.engage_submission_menu = QtWidgets.QMenu(button)
         self.engage_new_sequence_action = self.engage_submission_menu.addAction(
             'Add shots to new sequence'
@@ -1845,20 +1823,13 @@ class RunManager(LabscriptGuiApplication):
         return os.path.abspath(queue_paths[-1])
 
     def get_submission_anchor(self, submission_mode):
-        """The shot this mode numbers its batch after, or None for a new one.
+        """The shot this mode numbers its batch after, or None for a new sequence.
 
-        A mode that joins a sequence tries the last queued shot, then the shot
-        last sent, or the reverse if it empties the queue: the queued rows are
-        about to be deleted, so the batch joins the sequence BLACS is running.
-        The queue drains as BLACS works through it, and the shot last sent then
-        ends the last sequence. None means there is no sequence to join, and a
-        batch with nothing to be numbered after starts one of its own.
-
-        Read here, where the answer is used, and once. The queue moves on its
-        own -- BLACS takes the last shot on the server thread -- so a mode
-        offered against a queue with work in it can be carried out against one
-        that has none, and a second read taken later answers about a different
-        queue than the one that was checked."""
+        A mode that joins a sequence tries the last queued shot, then the shot last
+        sent; one that empties the queue tries them the other way round, since the
+        queued rows are about to be deleted. None means there is no sequence to
+        join. The queue changes under the server thread, so this reads it once,
+        where the answer is used."""
         mode = SUBMISSION_MODES[submission_mode]
         if not mode.joins_sequence:
             return None
@@ -1868,10 +1839,9 @@ class RunManager(LabscriptGuiApplication):
         return self.get_queue_append_filepath() or last_sent
 
     def can_use_alternate_submission_mode(self):
-        """Whether the menu offers the alternate submission modes right now.
+        """Whether the alternate submission modes are on offer.
 
-        Their wording names a last sequence, so they are greyed out while
-        there is none."""
+        They need BLACS ticked, and a last sequence for their wording to name."""
         return (
             self.ui.checkBox_run_shots.isChecked()
             and self.get_submission_anchor(SUBMISSION_MODE_LAST_SEQUENCE) is not None
@@ -1886,19 +1856,16 @@ class RunManager(LabscriptGuiApplication):
     def reindex_run_file_infos(
         self, run_file_infos, indexed_path_base, index_start=None, name_format=None
     ):
-        """Name and number a batch after the shot it is being added to.
+        """Name and number a batch after the shot ``indexed_path_base``, whose sequence it joins.
 
-        ``indexed_path_base`` is the shot whose sequence this batch is joining.
-        With ``name_format``, that sequence's ``(folder, prefix)``, the prefix
-        with any globals unresolved, each shot is named from it and its own
-        globals, as make_run_files names them; otherwise after
-        ``indexed_path_base``."""
+        With ``name_format``, that sequence's ``(folder, prefix)``, each shot is
+        named from the prefix and its own globals, as make_run_files names them."""
         if not run_file_infos:
             return run_file_infos
         candidate_stem = os.path.splitext(os.path.basename(indexed_path_base))[0]
         _, _, index_str = candidate_stem.rpartition('_')
         width = len(index_str) if index_str.isdigit() else 1
-        suffix_format = '_{index:0%dd}' % width
+        suffix_format = f'_{{index:0{width}d}}'
         # A shot still compiling writes its file after this batch is named, and
         # deletes it again if its row has gone, so its name is not given out.
         compiling = self.queue_controller.get_compiling_paths()
@@ -1928,12 +1895,9 @@ class RunManager(LabscriptGuiApplication):
                     compiling,
                 )
             run_file_info['path'] = run_file
-            # A shot file is named after the run number written into it, and
-            # a run number is unique within its sequence, so renumbering the
-            # files of a batch added to a sequence renumbers its runs with
-            # them. Left as they were, the added shots would restart at run 0
-            # in a sequence that already has one, each of them in a file named
-            # for a number other than its own.
+            # A shot file is named after the run number written into it, so a batch
+            # added to a sequence is numbered on from it, not restarted at run 0 in
+            # files named for other numbers.
             run_file_info['run_no'] = next_index
             next_index += 1
         # How far the sequence reaches as of these shots (see make_single_run_file);
@@ -1973,10 +1937,7 @@ class RunManager(LabscriptGuiApplication):
         )
 
     def expand_pending_shots(self):
-        """The window's shot globals paired with the globals to freeze, in making order.
-
-        Pairs, so that a shot's globals cannot be reordered apart from the ones
-        frozen for it."""
+        """The window's shot globals, each paired with its globals to freeze, in making order."""
         active_groups = self.get_active_groups(interactive=False)
         expansion_order = {}
         for i in range(self.axes_model.rowCount()):
@@ -2000,7 +1961,7 @@ class RunManager(LabscriptGuiApplication):
             )
         if not pending:
             raise ValueError('The globals expand into no shots.')
-        if self.ui.pushButton_shuffle.checkState() == QtCore.Qt.Checked:
+        if self.ui.pushButton_shuffle.checkState() == QtCore.Qt.CheckState.Checked:
             # Per-global shuffles leave the batch ordered by the outermost
             # global; only shuffling the whole batch takes that out.
             random.shuffle(pending)
@@ -2011,25 +1972,16 @@ class RunManager(LabscriptGuiApplication):
     ):
         """Make the shots of one batch and put them in the queue.
 
-        ``batch`` is one ``(shot globals, globals to freeze)`` pair per shot,
-        in the order the shots are to be made: what the window's globals
-        expand into for an Engage, and what the caller named entry by entry
-        for a remote submission. Made in one go because that is what tells the
-        shots apart -- a filename and a run number are claimed by the batch
-        being made, so shots made one at a time would each find the same
-        number free.
+        ``batch`` is one ``(shot globals, globals to freeze)`` pair per shot, in
+        making order. The batch is made in one go, since a filename and a run
+        number are claimed by the batch being made. ``sequence``, if given, is the
+        ``(sequence_id, sequence_index)`` of a sequence made or added to here,
+        which the batch joins in place of the one the mode would find; an index of
+        None names the one sequence recorded with that id.
 
-        Raises rather than writing to the output box, because a caller that is
-        not a person standing at the window has no output box to read: Engage
-        catches these and puts them there itself.
-
-        ``sequence``, if given, is the ``(sequence_id, sequence_index)`` of a
-        sequence made or added to here, which the batch joins in place of the
-        one the mode would find. An index of None names the one sequence
-        recorded with that id.
-
-        Returns the queue records, each carrying the identifier its row has,
-        in the order the shots were given."""
+        Raises rather than writing to the output box, which Engage does itself.
+        Returns the queue records, each carrying its row's identifier, in the
+        order the shots were given."""
         mode = SUBMISSION_MODES[submission_mode]
         indexed_path_base = self.get_submission_anchor(submission_mode)
         labscript_file = self.ui.lineEdit_labscript_file.text()
@@ -2071,8 +2023,8 @@ class RunManager(LabscriptGuiApplication):
             ]
             if len(keys) != 1:
                 raise SequenceRefused(
-                    'Cannot add shots to sequence %s: runmanager has no record of '
-                    'it, or has two and was not told which' % sequence_id
+                    f'Cannot add shots to sequence {sequence_id}: runmanager has no record of '
+                    'it, or has two and was not told which'
                 )
             indexed_path_base, sequence_attrs, index_start, name_format = (
                 self.sequences[keys[0]]
@@ -2083,8 +2035,8 @@ class RunManager(LabscriptGuiApplication):
             joined = sequence_attrs['script_basename']
             if joined != os.path.splitext(os.path.basename(labscript_file))[0]:
                 raise SequenceRefused(
-                    'Cannot add shots to sequence %s: it is a sequence of %s, not '
-                    'of %s' % (sequence_attrs['sequence_id'], joined, labscript_file)
+                    f"Cannot add shots to sequence {sequence_attrs['sequence_id']}: "
+                    f'it is a sequence of {joined}, not of {labscript_file}'
                 )
         if mode.clears_queue:
             self.queue_manager.clear()
@@ -2134,11 +2086,10 @@ class RunManager(LabscriptGuiApplication):
         )
 
     def on_abort_clicked(self):
-        """Empty the queue, as the replacement modes' Clear does.
+        """Empty the queue as the replacement modes' Clear does, and fail the compile in progress.
 
-        Every waiting row goes, and the compile in progress, whatever it is for,
-        is interrupted and fails. Running, failed, rejected and cancelled rows
-        are kept. A batch being compiled for runviewer alone stops there."""
+        Waiting rows go; running, failed, rejected and cancelled rows are kept. A
+        batch being compiled for runviewer alone stops there."""
         self.queue_manager.stop_compile_shots()
         self.queue_manager.clear()
         # During a restart there is no compile to interrupt, and the old
@@ -2147,7 +2098,6 @@ class RunManager(LabscriptGuiApplication):
             self.to_child.put(['abort', None])
 
     def on_restart_subprocess_clicked(self):
-        # Kill and restart the compilation subprocess
         self.ui.pushButton_restart_subprocess.setEnabled(False)
         # Cleared before the fake reply, which frees a compile waiting on the
         # old child to go on to the next shot. That shot must wait for the new
@@ -2206,30 +2156,30 @@ class RunManager(LabscriptGuiApplication):
         all_checked = True
         none_checked = True
         for i in range(self.axes_model.rowCount()):
-            check_state = self.axes_model.item(i, self.AXES_COL_SHUFFLE).checkState() == QtCore.Qt.Checked
+            check_state = self.axes_model.item(i, self.AXES_COL_SHUFFLE).checkState() == QtCore.Qt.CheckState.Checked
             all_checked = all_checked and check_state
             none_checked = none_checked and not check_state
             
         if not all_checked and not none_checked:
             self.ui.pushButton_shuffle.setTristate(True)
-            self.ui.pushButton_shuffle.setCheckState(QtCore.Qt.PartiallyChecked)
+            self.ui.pushButton_shuffle.setCheckState(QtCore.Qt.CheckState.PartiallyChecked)
         elif none_checked and not all_checked:
             self.ui.pushButton_shuffle.setTristate(False)
-            self.ui.pushButton_shuffle.setCheckState(QtCore.Qt.Unchecked)
+            self.ui.pushButton_shuffle.setCheckState(QtCore.Qt.CheckState.Unchecked)
         elif all_checked and not none_checked:
             self.ui.pushButton_shuffle.setTristate(False)
-            self.ui.pushButton_shuffle.setCheckState(QtCore.Qt.Checked)
+            self.ui.pushButton_shuffle.setCheckState(QtCore.Qt.CheckState.Checked)
         else:
-            # No axes. Set if partially checked, otherwise else leave it alone:
-            if self.ui.pushButton_shuffle.checkState() == QtCore.Qt.PartiallyChecked:
+            # No axes: a partially checked master box becomes checked, else it is left alone:
+            if self.ui.pushButton_shuffle.checkState() == QtCore.Qt.CheckState.PartiallyChecked:
                 self.ui.pushButton_shuffle.setTristate(False)
-                self.ui.pushButton_shuffle.setCheckState(QtCore.Qt.Checked)
+                self.ui.pushButton_shuffle.setCheckState(QtCore.Qt.CheckState.Checked)
 
 
     def on_master_shuffle_clicked(self, state):
         # stateChanged delivers an int, which never equals a Qt.CheckState member.
         state = QtCore.Qt.CheckState(state)
-        if state in [QtCore.Qt.Checked, QtCore.Qt.Unchecked]:
+        if state in [QtCore.Qt.CheckState.Checked, QtCore.Qt.CheckState.Unchecked]:
             self.ui.pushButton_shuffle.setTristate(False)
             for i in range(self.axes_model.rowCount()):
                 item = self.axes_model.item(i, self.AXES_COL_SHUFFLE)
@@ -2271,7 +2221,6 @@ class RunManager(LabscriptGuiApplication):
                 filenames[filepath] = os.sep.join(filepath.split(os.sep)[-i:])
             i += 1
 
-        # add all filenames to the copy and move submenu
         for filepath, filename in filenames.items():
             copy_menu.addAction(filename, lambda filepath=filepath: self.on_groups_copy_selected_groups_triggered(filepath, False))
             move_menu.addAction(filename, lambda filepath=filepath: self.on_groups_copy_selected_groups_triggered(filepath, True))
@@ -2306,7 +2255,7 @@ class RunManager(LabscriptGuiApplication):
         # message.
         confirm_multiple = (len(name_items) > 1)
         if confirm_multiple:
-            if not self.question_dialog("Delete %d groups?" % len(name_items)):
+            if not self.question_dialog(f"Delete {len(name_items)} groups?"):
                 return
         for item in name_items:
             globals_file = item.parent().text()
@@ -2318,7 +2267,7 @@ class RunManager(LabscriptGuiApplication):
         selected_items = [self.groups_model.itemFromIndex(index) for index in selected_indexes]
         name_items = self.selected_group_items(self.GROUPS_COL_NAME)
 
-        # Include all grous of selected globals files:
+        # Include all groups of selected globals files:
         for item in selected_items:
             if item.parent() is None:
                 children = [item.child(i) for i in range(item.rowCount())]
@@ -2353,8 +2302,8 @@ class RunManager(LabscriptGuiApplication):
                          for child_item in child_openclose_items]
         if any(child_is_open):
             if not self.question_dialog(
-                    'Close %d file(s)? This will close %d currently open group(s).' %
-                    (len(name_items), child_is_open.count(True))):
+                    f'Close {len(name_items)} file(s)? This will close '
+                    f'{child_is_open.count(True)} currently open group(s).'):
                 return
         for item in name_items:
             globals_file = item.text()
@@ -2371,20 +2320,16 @@ class RunManager(LabscriptGuiApplication):
             # User cancelled selection
             return
         if not os.path.isfile(globals_file):
-            self.error_dialog("No such file %s." % globals_file)
+            self.error_dialog(f"No such file {globals_file}.")
             return
         # Save the containing folder for use next time we open the dialog box:
         self.last_opened_globals_folder = os.path.dirname(globals_file)
-        # Open the file:
         self.open_globals_file(globals_file)
 
     def on_new_globals_file_clicked(self):
-        # The panel is offered a filename rather than just the folder. A save
-        # panel with no extension to preserve supplies one of its own, taken
-        # from the host's type database rather than from the name filter below,
-        # which is not necessarily the extension asked for. Given a name it
-        # keeps that extension and typing replaces only the stem, so 'untitled'
-        # is what the operator types over and '.toml' is what survives.
+        # A save panel given no extension supplies one from the host's type database,
+        # not necessarily the filter's, so it is offered 'untitled.toml': typing
+        # replaces only the stem and '.toml' survives.
         suggested_file = os.path.join(self.last_opened_globals_folder, 'untitled.toml')
         globals_file = file_dialogs.save_file(
             self.ui, 'Create new globals file', suggested_file, "TOML files (*.toml)"
@@ -2396,7 +2341,6 @@ class RunManager(LabscriptGuiApplication):
             globals_file += '.toml'
         # Save the containing folder for use next time we open the dialog box:
         self.last_opened_globals_folder = os.path.dirname(globals_file)
-        # Create the new file and open it:
         runmanager.globals_file.new_globals_file(globals_file)
         self.open_globals_file(globals_file)
 
@@ -2411,38 +2355,22 @@ class RunManager(LabscriptGuiApplication):
             # User cancelled
             return
 
-        # Get runmanager's globals
         active_groups = self.get_active_groups()
         if active_groups is None:
             # Invalid group selection
             return
 
-        # Get file's globals groups
         other_groups = runmanager.get_all_groups(globals_file)
 
-        # Display the output tab so the user can see the output:
         self.ui.tabWidget.setCurrentWidget(self.ui.tab_output)
         self.output_box.output(f'Globals diff with:\n{globals_file}\n\n')
 
-        # Do the globals diff
         globals_diff_table = runmanager.globals_diff_groups(active_groups, other_groups)
         self.output_box.output(globals_diff_table)
         self.output_box.output('Ready.\n\n')
 
     def on_treeView_groups_leftClicked(self, index):
-        """Here we respond to user clicks on the treeview. We do the following:
-
-        - If the user clicks on the <click to add group> dummy row, we go into
-          edit mode on it so they can enter the name of the new group they
-          want.
-        - If the user clicks on the icon to open or close a globals file or a
-          group, we call the appropriate open and close methods and update the
-          open/close data role on the model.
-        - If the user clicks delete on a globals group, we call a delete
-          method, which deletes it after confirmation, and closes it if it was
-          open.
-          """
-        if qapplication.keyboardModifiers() != QtCore.Qt.NoModifier:
+        if qapplication.keyboardModifiers() != QtCore.Qt.KeyboardModifier.NoModifier:
             # Only handle mouseclicks with no keyboard modifiers.
             return
         item = self.groups_model.itemFromIndex(index)
@@ -2451,50 +2379,33 @@ class RunManager(LabscriptGuiApplication):
         name_item = self.groups_model.itemFromIndex(name_index)
         # The parent item, None if there is no parent:
         parent_item = item.parent()
-        # What kind of row did the user click on?
-        # A globals file, a group, or a 'click to add group' row?
         if item.data(self.GROUPS_ROLE_IS_DUMMY_ROW):
-            # They clicked on an 'add new group' row. Enter editing
-            # mode on the name item so they can enter a name for
-            # the new group:
+            # Edit the name item, to enter the new group's name:
             self.ui.treeView_groups.setCurrentIndex(name_index)
             self.ui.treeView_groups.edit(name_index)
         elif item.column() == self.GROUPS_COL_ACTIVE:
-            # They clicked on the active column. Toggle the checkbox. We do
-            # this manually because setting the item checkable means the model
-            # changes before we catch the mouse click. This is a pain because
-            # we want the ensuing sorting (if the user is sorting by the
-            # enabled column) to keep the the selection. If the user only
-            # selected the column by clicking on it, then the sort happens
-            # before they selected it, and the resort happens without a visual
-            # indication of where the item went, because it never got
-            # selected.
+            # Toggled by hand: a checkable item changes the model before the click
+            # is caught, so a sort by this column would run before the item was
+            # selected, and the selection would not follow the item.
             state = item.checkState()
-            if state in (QtCore.Qt.Unchecked, QtCore.Qt.PartiallyChecked):
-                item.setCheckState(QtCore.Qt.Checked)
-            elif state == QtCore.Qt.Checked:
-                item.setCheckState(QtCore.Qt.Unchecked)
+            if state in (QtCore.Qt.CheckState.Unchecked, QtCore.Qt.CheckState.PartiallyChecked):
+                item.setCheckState(QtCore.Qt.CheckState.Checked)
+            elif state == QtCore.Qt.CheckState.Checked:
+                item.setCheckState(QtCore.Qt.CheckState.Unchecked)
             else:
                 raise AssertionError('Invalid Check state')
             # If this changed the sort order, ensure the item is still visible:
             scroll_view_to_row_if_current(self.ui.treeView_groups, item)
         elif parent_item is None:
-            # They clicked on a globals file row.
             globals_file = name_item.text()
-            # What column did they click on?
             if item.column() == self.GROUPS_COL_OPENCLOSE:
-                # They clicked the close button. Close the file:
                 self.close_globals_file(globals_file)
         else:
-            # They clicked on a globals group row.
             globals_file = parent_item.text()
             group_name = name_item.text()
-            # What column did they click on?
             if item.column() == self.GROUPS_COL_DELETE:
-                # They clicked the delete button. Delete the group:
                 self.delete_group(globals_file, group_name, confirm=True)
             elif item.column() == self.GROUPS_COL_OPENCLOSE:
-                # They clicked the open/close button. Which is it, open or close?
                 group_is_open = item.data(self.GROUPS_ROLE_GROUP_IS_OPEN)
                 if group_is_open:
                     self.close_group(globals_file, group_name)
@@ -2508,12 +2419,10 @@ class RunManager(LabscriptGuiApplication):
         if item.data(self.GROUPS_ROLE_IS_DUMMY_ROW):
             return
         elif parent_item and item.column() == self.GROUPS_COL_NAME:
-            # it's a group name item. What's the group and file name?
             globals_file = parent_item.text()
             group_name = item.text()
             if (globals_file, group_name) not in self.currently_open_groups:
                 self.open_group(globals_file, group_name)
-            # Focus the tab:
             group_tab = self.currently_open_groups[globals_file, group_name]
             for i in range(self.ui.tabWidget.count()):
                 if self.ui.tabWidget.widget(i) is group_tab.ui:
@@ -2521,22 +2430,12 @@ class RunManager(LabscriptGuiApplication):
                     break
 
     def on_groups_model_item_changed(self, item):
-        """This function is for responding to data changes in the model. The
-        methods for responding to changes different columns do different
-        things. Mostly they make other data changes for model consistency, but
-        also group creation and renaming is handled in response to changes to
-        the 'name' column. When we change things elsewhere, we prefer to only
-        change one thing, and the rest of the changes are triggered here. So
-        here we do the following:
+        """Respond to a change in the groups model.
 
-        Be careful not to recurse unsafely into this method - changing
-        something that itself triggers further changes is fine so long as they
-        peter out and don't get stuck in a loop. If recursion needs to be
-        stopped, one can disconnect the signal temporarily with the context
-        manager self.groups_model_item_changed_disconnected. But use this
-        sparingly, otherwise there's the risk that some required data updates
-        will be forgotten about and won't happen.
-        """
+        Creates or renames a group, and keeps the rest of the model consistent.
+        Changes made here may trigger this again, and must die out. To stop one,
+        use ``groups_model_item_changed_disconnected``, but sparingly: a required
+        update can be forgotten."""
         if item.column() == self.GROUPS_COL_NAME:
             self.on_groups_model_name_changed(item)
         elif item.column() == self.GROUPS_COL_ACTIVE:
@@ -2554,13 +2453,10 @@ class RunManager(LabscriptGuiApplication):
         if item.data(self.GROUPS_ROLE_IS_DUMMY_ROW):
             item_text = item.text()
             if item_text != self.GROUPS_DUMMY_ROW_TEXT:
-                # The user has made a new globals group by editing the <click
-                # to add group> item.
                 globals_file = parent_item.text()
                 group_name = item_text
                 self.new_group(globals_file, group_name)
         else:
-            # User has renamed a globals group.
             new_group_name = item.text()
             previous_group_name = item.data(self.GROUPS_ROLE_PREVIOUS_NAME)
             # Ensure it truly is a name change, and not something else about
@@ -2570,18 +2466,11 @@ class RunManager(LabscriptGuiApplication):
                 self.rename_group(globals_file, previous_group_name, new_group_name)
 
     def on_groups_model_active_changed(self, item):
-        """Sets the sort data for the item in response to its check state
-        changing. Also, if this is the first time this function has been
-        called on the stack, that is, the change was initiated externally
-        instead of via recursion from this function itself, then set the check
-        state of other items for consistency. This entails checking/unchecking
-        all group rows in response to the file row's check state changing, or
-        changing the file row's check state to reflect the check state of the
-        child group rows. That's why we need to keep track of the recursion
-        depth - so that those changes we make don't in turn cause further
-        changes. But we don't disconnect the on_changed signal altogether,
-        because we still want to do the update of the sort data, and anything
-        else that might be added in future."""
+        """Set the item's sort data and, for a change from outside, update related rows.
+
+        A file row's state is applied to its groups, and a group's change updates
+        its file row. A change this method makes itself, which the recursion depth
+        identifies, only sets sort data."""
         self.on_groups_model_active_changed_recursion_depth += 1
         try:
             check_state = item.checkState()
@@ -2596,22 +2485,20 @@ class RunManager(LabscriptGuiApplication):
 
             parent_item = item.parent()
             if parent_item is not None:
-                # A 'group active' checkbox changed due to external action (not from this method itself).
-                # Update the parent file checkbox to reflect the state of its children
+                # A group changed: its file row shows the state of its groups.
                 children = [parent_item.child(i, self.GROUPS_COL_ACTIVE) for i in range(parent_item.rowCount())]
                 child_states = [child.checkState() for child in children
                                 if not child.data(self.GROUPS_ROLE_IS_DUMMY_ROW)]
                 parent_active_index = parent_item.index().sibling(parent_item.index().row(), self.GROUPS_COL_ACTIVE)
                 parent_active_item = self.groups_model.itemFromIndex(parent_active_index)
-                if all(state == QtCore.Qt.Checked for state in child_states):
-                    parent_active_item.setCheckState(QtCore.Qt.Checked)
-                elif all(state == QtCore.Qt.Unchecked for state in child_states):
-                    parent_active_item.setCheckState(QtCore.Qt.Unchecked)
+                if all(state == QtCore.Qt.CheckState.Checked for state in child_states):
+                    parent_active_item.setCheckState(QtCore.Qt.CheckState.Checked)
+                elif all(state == QtCore.Qt.CheckState.Unchecked for state in child_states):
+                    parent_active_item.setCheckState(QtCore.Qt.CheckState.Unchecked)
                 else:
-                    parent_active_item.setCheckState(QtCore.Qt.PartiallyChecked)
+                    parent_active_item.setCheckState(QtCore.Qt.CheckState.PartiallyChecked)
             else:
-                # A 'file active' checkbox changed due to external action (not from this method itself).
-                # Update the check state of all children to match.
+                # A file changed: apply its state to its groups.
                 name_index = item.index().sibling(item.index().row(), self.GROUPS_COL_NAME)
                 name_item = self.groups_model.itemFromIndex(name_index)
                 checkstate = item.checkState()
@@ -2623,7 +2510,6 @@ class RunManager(LabscriptGuiApplication):
             self.on_groups_model_active_changed_recursion_depth -= 1
             if self.on_groups_model_active_changed_recursion_depth == 0:
                 self.do_model_sort()
-                # Trigger a preparse to occur:
                 self.globals_changed()
 
     def on_groups_model_openclose_changed(self, item):
@@ -2634,13 +2520,10 @@ class RunManager(LabscriptGuiApplication):
         # group, not a file, as the open/close state of a file shouldn't be
         # changing.
         assert parent_item is not None  # Just to be sure.
-        # Ensure the sort data matches the open/close state:
         group_is_open = item.data(self.GROUPS_ROLE_GROUP_IS_OPEN)
         item.setData(group_is_open, self.GROUPS_ROLE_SORT_DATA)
-        # Set the appropriate icon and tooltip. Changing the icon causes
-        # itemChanged to be emitted, even if it the same icon, and even if we
-        # were to use the same QIcon instance. So to avoid infinite recursion
-        # we temporarily disconnect the signal whilst we set the icons.
+        # Changing the icon emits itemChanged even for the same icon, so the
+        # signal is disconnected while the icons are set, to avoid infinite recursion.
         with self.groups_model_item_changed_disconnected:
             if group_is_open:
                 item.setIcon(Icon(':qtutils/fugue/cross'))
@@ -2654,10 +2537,9 @@ class RunManager(LabscriptGuiApplication):
 
     @inmain_decorator()
     def get_default_output_folder(self):
-        """Returns what the default output folder would be right now, based on
-        the current date and selected labscript file. Returns empty string if
-        no labscript file is selected. Does not create the default output
-        folder, does not check if it exists."""
+        """The default output folder now, for the selected labscript file, or '' if none.
+
+        It is not created, and not checked for existence."""
         current_labscript_file = self.ui.lineEdit_labscript_file.text()
         if not current_labscript_file:
             return ''
@@ -2673,12 +2555,10 @@ class RunManager(LabscriptGuiApplication):
         return unescape_braces(default_output_folder)
 
     def rollover_shot_output_folder(self):
-        """Runs in a thread, checking every 30 seconds if the default output folder has
-        changed, likely because the date has changed, but also possible because another
-        instance of runmanager has incremented the sequence index. If the defaulr output
-        folder has changed, and if runmanager is configured to use the default output
-        folder, sets the folder in which compiled shots will be put. Does not create the
-        folder if it does not already exist, this will be done at compile-time."""
+        """Runs in a thread: every 30 seconds, check whether the default output folder changed.
+
+        It changes with the date, and when another runmanager increments the
+        sequence index."""
         while True:
             time.sleep(30)
             try:
@@ -2689,28 +2569,26 @@ class RunManager(LabscriptGuiApplication):
 
     @inmain_decorator()
     def check_output_folder_update(self):
-        """Do a single check of whether the output folder needs updating. This
-        is implemented as a separate function to the above loop so that the
-        whole check happens at once in the Qt main thread and hence is atomic
-        and can't be interfered with by other Qt calls in the program."""
+        """Check once whether the output folder needs updating.
+
+        Runs in the main thread, so that no other Qt call interleaves."""
         current_default_output_folder = self.get_default_output_folder()
         if not current_default_output_folder:
             # No labscript file selected:
             return
         currently_selected_output_folder = self.ui.lineEdit_shot_output_folder.text()
         if current_default_output_folder != self.previous_default_output_folder:
-            # It's a new day, or a new labscript file.
-            # Is the user using default folders?
+            # A new day, or a new labscript file: if the default folder was selected,
+            # select the new default:
             if currently_selected_output_folder == self.previous_default_output_folder:
-                # Yes they are. In that case, update to use the new folder:
                 self.ui.lineEdit_shot_output_folder.setText(current_default_output_folder)
             self.previous_default_output_folder = current_default_output_folder
 
     @inmain_decorator()
     def globals_changed(self):
-        """Called from either self, a GroupTab, or the RunmanagerServer to inform
-        runmanager that something about globals has changed, and that they need
-        parsing again."""
+        """Note that globals have changed, so that they are parsed again.
+
+        Called by the window, a GroupTab and the server."""
         self.globals_changes += 1
         self.ui.pushButton_engage.setEnabled(False)
         self.preparse_globals_required.put(None)
@@ -2724,7 +2602,6 @@ class RunManager(LabscriptGuiApplication):
             
     @inmain_decorator()  # Is called by preparser thread
     def update_axes_tab(self, expansions, dimensions):
-        # get set of expansions
         expansion_list = []
         for global_name, expansion in expansions.items():
             if expansion:
@@ -2735,7 +2612,6 @@ class RunManager(LabscriptGuiApplication):
                 
         expansion_list = set(expansion_list)
                 
-        # find items to delete
         for i in reversed(range(self.axes_model.rowCount())):
             item = self.axes_model.item(i, self.AXES_COL_NAME)
             name = item.data(self.AXES_ROLE_NAME)
@@ -2752,9 +2628,8 @@ class RunManager(LabscriptGuiApplication):
                 # remove from expansions list so we don't add it again
                 expansion_list.remove(name)
             
-        # add new rows
         for expansion_name in expansion_list:
-            shuffle = self.ui.pushButton_shuffle.checkState() != QtCore.Qt.Unchecked
+            shuffle = self.ui.pushButton_shuffle.checkState() != QtCore.Qt.CheckState.Unchecked
             self.add_item_to_axes_model(expansion_name, shuffle, dimensions)
                 
         self.update_axes_indentation() 
@@ -2782,7 +2657,7 @@ class RunManager(LabscriptGuiApplication):
         
         shuffle_item = QtGui.QStandardItem()
         shuffle_item.setCheckable(True)
-        shuffle_item.setCheckState(QtCore.Qt.Checked if shuffle else QtCore.Qt.Unchecked)
+        shuffle_item.setCheckState(QtCore.Qt.CheckState.Checked if shuffle else QtCore.Qt.CheckState.Unchecked)
         
         items.append(shuffle_item)
         
@@ -2838,20 +2713,15 @@ class RunManager(LabscriptGuiApplication):
         logger.info('Globals parsed')
 
     def preparse_globals_loop(self):
-        """Runs in a thread, waiting on a threading.Event that tells us when
-        some globals have changed, and calls parse_globals to evaluate them
-        all before feeding the results back to the relevant tabs to be
-        displayed."""
+        """Runs in a thread: whenever globals have changed, evaluate them and show
+        the results in their tabs."""
         while True:
             try:
-                # Wait until we're needed:
                 self.preparse_globals_required.get()
                 n_requests = 1
                 # Wait until the main thread is idle before clearing the queue of
-                # requests. This way if preparsing is triggered multiple times within
-                # the main thread before it becomes idle, we can respond to this all at
-                # once, once they are all done, rather than starting too early and
-                # having to preparse again.
+                # requests, so that preparsing triggered several times within it is
+                # answered once, after they are all done.
                 with qtlock:
                     while True:
                         try:
@@ -2859,7 +2729,6 @@ class RunManager(LabscriptGuiApplication):
                             n_requests += 1
                         except queue.Empty:
                             break
-                # Do some work:
                 logger.info('Pre-parsing globals with %d requests', n_requests)
                 try:
                     self.preparse_globals()
@@ -2883,16 +2752,15 @@ class RunManager(LabscriptGuiApplication):
         """Returns an item from the row representing a globals group in the
         groups model. Which item is returned is set by the column argument."""
         parent_item = self.groups_model.findItems(globals_file, column=self.GROUPS_COL_NAME)[0]
-        possible_name_items = self.groups_model.findItems(group_name, QtCore.Qt.MatchRecursive,
+        possible_name_items = self.groups_model.findItems(group_name, QtCore.Qt.MatchFlag.MatchRecursive,
                                                           column=self.GROUPS_COL_NAME)
         # Don't accidentally match on other groups or files with the same name
         # as this group:
         possible_name_items = [item for item in possible_name_items if item.parent() == parent_item]
         if previous_name is not None:
-            # Also filter by previous name, useful for telling rows apart when
-            # a rename is in progress and two rows may temporarily contain the
-            # same name (though the rename code with throw an error and revert
-            # it).
+            # Also filter by previous name, to tell rows apart when a rename is in
+            # progress and two rows may briefly hold the same name (the rename code
+            # throws an error and reverts it).
             possible_name_items = [item for item in possible_name_items
                                    if item.data(self.GROUPS_ROLE_PREVIOUS_NAME) == previous_name]
         elif group_name != self.GROUPS_DUMMY_ROW_TEXT:
@@ -2908,7 +2776,6 @@ class RunManager(LabscriptGuiApplication):
             raise LookupError('No item found')
         name_item = possible_name_items[0]
         name_index = name_item.index()
-        # Found the name item, get the sibling item for the column requested:
         item_index = name_index.sibling(name_index.row(), column)
         item = self.groups_model.itemFromIndex(item_index)
         return item
@@ -2921,14 +2788,14 @@ class RunManager(LabscriptGuiApplication):
 
     @inmain_decorator()  # Can be called from a non-main thread
     def get_active_groups(self, interactive=True):
-        """Returns active groups in the format {group_name: globals_file}.
-        Displays an error dialog and returns None if multiple groups of the
-        same name are selected, this is invalid - selected groups must be
-        uniquely named. If interactive=False, raises the exception instead."""
+        """The active groups, ``{group_name: globals_file}``.
+
+        If two active groups share a name, shows an error dialog and returns None,
+        or raises RuntimeError if ``interactive`` is False."""
         active_groups = {}
         for globals_file, groups in self.group_active_items().items():
             for group_name, active_item in groups.items():
-                if active_item.checkState() == QtCore.Qt.Checked:
+                if active_item.checkState() == QtCore.Qt.CheckState.Checked:
                     if group_name in active_groups:
                         msg = (
                             f'There are two active groups named {group_name}. '
@@ -2960,7 +2827,7 @@ class RunManager(LabscriptGuiApplication):
         if not matching_items:
             return new_path
         if self.groups_model.findItems(new_path, column=self.GROUPS_COL_NAME):
-            raise RuntimeError("A globals file named %s is already open." % new_path)
+            raise RuntimeError(f"A globals file named {new_path} is already open.")
         file_name_item = matching_items[0]
         with self.groups_model_item_changed_disconnected:
             file_name_item.setText(new_path)
@@ -2992,7 +2859,7 @@ class RunManager(LabscriptGuiApplication):
         if not destination.lower().endswith('.toml'):
             destination += '.toml'
         if destination != globals_file and self.groups_model.findItems(destination, column=self.GROUPS_COL_NAME):
-            raise RuntimeError("A globals file named %s is already open." % destination)
+            raise RuntimeError(f"A globals file named {destination} is already open.")
         runmanager.globals_file.convert_to_toml(globals_file, destination)
         self.last_opened_globals_folder = os.path.dirname(destination)
         return self.replace_globals_file_path(globals_file, destination)
@@ -3005,17 +2872,14 @@ class RunManager(LabscriptGuiApplication):
         # Legacy HDF5 globals and shot files remain readable from the file
         # selector. Conversion to TOML is deferred until the user attempts an
         # edit operation.
-        # Get the groups:
         groups = runmanager.globals_file.get_group_names(globals_file)
-        # Add the parent row:
         file_name_item = QtGui.QStandardItem(globals_file)
         file_name_item.setEditable(False)
         file_name_item.setToolTip(globals_file)
-        # Sort column by name:
         file_name_item.setData(globals_file, self.GROUPS_ROLE_SORT_DATA)
 
         file_active_item = QtGui.QStandardItem()
-        file_active_item.setCheckState(QtCore.Qt.Unchecked)
+        file_active_item.setCheckState(QtCore.Qt.CheckState.Unchecked)
         # Sort column by CheckState - must keep this updated when checkstate changes:
         file_active_item.setData(QtCore.Qt.CheckState.Unchecked.value, self.GROUPS_ROLE_SORT_DATA)
         file_active_item.setEditable(False)
@@ -3033,39 +2897,37 @@ class RunManager(LabscriptGuiApplication):
 
         self.groups_model.appendRow([file_name_item, file_active_item, file_delete_item, file_close_item])
 
-        # Add the groups as children:
         for group_name in groups:
             row = self.make_group_row(group_name)
             file_name_item.appendRow(row)
 
-        # Finally, add the <Click to add group> row at the bottom:
         dummy_name_item = QtGui.QStandardItem(self.GROUPS_DUMMY_ROW_TEXT)
         dummy_name_item.setToolTip('Click to add group')
         # This lets later code know that this row does
         # not correspond to an actual globals group:
         dummy_name_item.setData(True, self.GROUPS_ROLE_IS_DUMMY_ROW)
         dummy_name_item.setData(self.GROUPS_DUMMY_ROW_TEXT, self.GROUPS_ROLE_PREVIOUS_NAME)
-        dummy_name_item.setFlags(QtCore.Qt.ItemIsEnabled | QtCore.Qt.ItemIsEditable)  # Clears the 'selectable' flag
+        # Clears the 'selectable' flag:
+        dummy_name_item.setFlags(
+            QtCore.Qt.ItemFlag.ItemIsEnabled | QtCore.Qt.ItemFlag.ItemIsEditable
+        )
 
         dummy_active_item = QtGui.QStandardItem()
         dummy_active_item.setData(True, self.GROUPS_ROLE_IS_DUMMY_ROW)
-        dummy_active_item.setFlags(QtCore.Qt.ItemIsEnabled)
+        dummy_active_item.setFlags(QtCore.Qt.ItemFlag.ItemIsEnabled)
 
         dummy_delete_item = QtGui.QStandardItem('')
         dummy_delete_item.setData(True, self.GROUPS_ROLE_IS_DUMMY_ROW)
-        dummy_delete_item.setFlags(QtCore.Qt.ItemIsEnabled)
+        dummy_delete_item.setFlags(QtCore.Qt.ItemFlag.ItemIsEnabled)
 
         dummy_open_close_item = QtGui.QStandardItem()
         dummy_open_close_item.setData(True, self.GROUPS_ROLE_IS_DUMMY_ROW)
-        dummy_open_close_item.setFlags(QtCore.Qt.ItemIsEnabled)
+        dummy_open_close_item.setFlags(QtCore.Qt.ItemFlag.ItemIsEnabled)
 
-        # Not setting anything as the above items' sort role has the effect of
-        # ensuring this row is always sorted to the end of the list, without
-        # us having to implement any custom sorting methods or subclassing
-        # anything, yay.
+        # The sort role of the items above is left unset, which sorts this row to
+        # the end of the list without any custom sorting.
 
         file_name_item.appendRow([dummy_name_item, dummy_active_item, dummy_delete_item, dummy_open_close_item])
-        # Expand the child items to be visible:
         self.ui.treeView_groups.setExpanded(file_name_item.index(), True)
         self.globals_changed()
         self.do_model_sort()
@@ -3083,7 +2945,7 @@ class RunManager(LabscriptGuiApplication):
         group_name_item.setData(group_name, self.GROUPS_ROLE_SORT_DATA)
 
         group_active_item = QtGui.QStandardItem()
-        group_active_item.setCheckState(QtCore.Qt.Unchecked)
+        group_active_item.setCheckState(QtCore.Qt.CheckState.Unchecked)
         # Sort column by CheckState - must keep this updated whenever the
         # checkstate changes:
         group_active_item.setData(QtCore.Qt.CheckState.Unchecked.value, self.GROUPS_ROLE_SORT_DATA)
@@ -3112,30 +2974,26 @@ class RunManager(LabscriptGuiApplication):
 
     def close_globals_file(self, globals_file, confirm=True):
         item = self.groups_model.findItems(globals_file, column=self.GROUPS_COL_NAME)[0]
-        # Close any open groups in this globals file:
-
         child_name_items = [item.child(i, self.GROUPS_COL_NAME) for i in range(item.rowCount())]
         child_openclose_items = [item.child(i, self.GROUPS_COL_OPENCLOSE) for i in range(item.rowCount())]
         child_is_open = [child_item.data(self.GROUPS_ROLE_GROUP_IS_OPEN)
                          for child_item in child_openclose_items]
         if confirm and any(child_is_open):
             if not self.question_dialog(
-                    'Close %s? This will close %d currently open group(s).' %
-                    (globals_file, child_is_open.count(True))):
+                    f'Close {globals_file}? This will close '
+                    f'{child_is_open.count(True)} currently open group(s).'):
                 return
         to_close = [name_item for name_item, is_open in zip(child_name_items, child_is_open) if is_open]
         for name_item in to_close:
             group_name = name_item.text()
             self.close_group(globals_file, group_name)
 
-        # Remove the globals file from the model:
         self.groups_model.removeRow(item.row())
         self.globals_changed()
 
     def copy_group(self, source_globals_file, source_group_name, dest_globals_file=None, delete_source_group=False):
-        """This function copys a group of globals with the name source_group_name from the file
-            source_globals_file to a new file dest_globals_file. If delete_source_group is True
-            the source group is deleted after copying"""
+        """Copy a group to ``dest_globals_file``, or to its own file if None, deleting
+        the source group afterwards if ``delete_source_group``."""
         if delete_source_group and source_globals_file == dest_globals_file:
             return
         try:
@@ -3157,13 +3015,11 @@ class RunManager(LabscriptGuiApplication):
             )
             group_row = self.insert_group_row(file_item, dest_group_name)
 
-            # Open the group
             self.open_group(dest_globals_file, dest_group_name)
             name_item = group_row[self.GROUPS_COL_NAME]
             self.globals_changed()
             self.ui.treeView_groups.setCurrentIndex(name_item.index())
 
-            # delete original
             if delete_source_group:
                 self.delete_group(source_globals_file, source_group_name, confirm=False)
 
@@ -3201,7 +3057,7 @@ class RunManager(LabscriptGuiApplication):
             active_item = group_row[self.GROUPS_COL_ACTIVE]
             name_item = group_row[self.GROUPS_COL_NAME]
             if active:
-                active_item.setCheckState(QtCore.Qt.Checked)
+                active_item.setCheckState(QtCore.Qt.CheckState.Checked)
             self.globals_changed()
             self.ui.treeView_groups.setCurrentIndex(name_item.index())
             # If this changed the sort order, ensure the group item is still visible:
@@ -3220,10 +3076,9 @@ class RunManager(LabscriptGuiApplication):
         # the other data roles, icons etc:
         openclose_item = self.get_group_item_by_name(globals_file, group_name, self.GROUPS_COL_OPENCLOSE)
         openclose_item.setData(True, self.GROUPS_ROLE_GROUP_IS_OPEN)
-        # Trigger a preparse to occur in light of this. Calling code can
-        # disable this so that multiple groups can be opened at once without
-        # triggering a preparse. If they do so, they should call
-        # self.globals_changed() themselves.
+        # Trigger a preparse in light of this. A caller opening several groups passes
+        # trigger_preparse=False to avoid one for each, and calls
+        # self.globals_changed() itself.
         if trigger_preparse:
             self.globals_changed()
 
@@ -3259,7 +3114,7 @@ class RunManager(LabscriptGuiApplication):
 
     def delete_group(self, globals_file, group_name, confirm=True):
         if confirm:
-            if not self.question_dialog("Delete the group '%s'?" % group_name):
+            if not self.question_dialog(f"Delete the group '{group_name}'?"):
                 return
         # If the group is open, close it:
         group_tab = self.currently_open_groups.get((globals_file, group_name))
@@ -3280,7 +3135,7 @@ class RunManager(LabscriptGuiApplication):
             (globals_file, group_name)
             for globals_file, groups in files.items()
             for group_name, active_item in groups.items()
-            if active_item.checkState() == QtCore.Qt.Checked
+            if active_item.checkState() == QtCore.Qt.CheckState.Checked
         ]
         # Get the currently open groups:
         groups_open = []
@@ -3312,7 +3167,12 @@ class RunManager(LabscriptGuiApplication):
             shuffle_item = self.axes_model.item(i, self.AXES_COL_SHUFFLE)
             shuffle_state = shuffle_item.checkState()
             
-            axes.append((name_item.data(self.AXES_ROLE_NAME), 1 if shuffle_state == QtCore.Qt.Checked else 0))
+            axes.append(
+                (
+                    name_item.data(self.AXES_ROLE_NAME),
+                    1 if shuffle_state == QtCore.Qt.CheckState.Checked else 0,
+                )
+            )
         
         save_data = {'h5_files_open': h5_files_open,
                      'active_groups': active_groups,
@@ -3334,8 +3194,6 @@ class RunManager(LabscriptGuiApplication):
         save_data = self.get_save_data()
         for globals_file in save_data['h5_files_open']:
             self.close_globals_file(globals_file, confirm=False)
-        # Ensure folder exists, if this was opened programmatically we are
-        # creating the file, so the directory had better exist!
         appconfig, save_target = load_appconfig(filename, return_save_path=True)
         runmanager_config = appconfig.get('runmanager_state', {})
 
@@ -3363,7 +3221,7 @@ class RunManager(LabscriptGuiApplication):
             globals_file = opened_globals_files.get(globals_file, globals_file)
             try:
                 group_active_item = self.get_group_item_by_name(globals_file, group_name, self.GROUPS_COL_ACTIVE)
-                group_active_item.setCheckState(QtCore.Qt.Checked)
+                group_active_item.setCheckState(QtCore.Qt.CheckState.Checked)
             except LookupError:
                 warning(f"previously active group '{group_name}' in {globals_file} no longer exists")
 
@@ -3407,17 +3265,16 @@ class RunManager(LabscriptGuiApplication):
         if self.axes_model.rowCount():
             self.axes_model.removeRows(0, self.axes_model.rowCount())
 
-        # set the state of the global shuffle button. This ensure that if no axes items get loaded afterwards
-        # (e.g. because the globals in the saved config file are no longer expansion globals), then we still have 
-        # an approximate state for the shuffle button that will apply to whatever globals are to be expanded.
+        # Set the master shuffle button first, so that if no axes load afterwards (the
+        # saved globals may no longer be expansion globals) it still has an
+        # approximate state to apply to whatever globals are expanded.
         if runmanager_config.get('shuffle', False):
             self.ui.pushButton_shuffle.setChecked(True)
 
-        # Now load the axes states (order and shuffle). This will also ensure the shuffle button matches the 
-        # state of these items (since we don't save/restore the tri-state nature of the global shuffle button
+        # Load the axes states (order and shuffle), which also brings the shuffle
+        # button into line with them, since its tri-state is not saved:
         axes = runmanager_config.get('axes')
         if axes is not None and isinstance(axes, list):
-            # clear model
             for name, shuffle in axes:
                 self.add_item_to_axes_model(name, shuffle)
             self.update_axes_indentation() 
@@ -3493,22 +3350,12 @@ class RunManager(LabscriptGuiApplication):
         return sequence_globals, shots, evaled_globals, global_hierarchy, expansions, deprecations
 
     def guess_expansion_modes(self, active_groups, evaled_globals, global_hierarchy, expansions):
-        """This function is designed to be called iteratively. It changes the
-        expansion type of globals that reference other globals - such that
-        globals referencing an iterable global will be zipped with it, rather
-        than outer producted. Each time this method is called,
-        self.parse_globals should also be called, so that the globals are
-        evaluated with their new expansion modes, if they changed. This should
-        be performed repeatedly until there are no more changes. Note that
-        this method does not return what expansion types it thinks globals
-        should have - it *actually writes them to the globals HDF5 file*. So
-        it is up to later code to ensure it re-reads the expansion mode from
-        the HDF5 file before proceeding. At present this method is only called
-        from self.preparse_globals(), so see there to see how it fits in with
-        everything else. This method uses four instance attributes to store
-        state: self.previous_evaled_globals, self.previous_global_hierarchy,
-        self.previous_expansion_types and self.previous_expansions. This is
-        neccesary so that it can detect changes."""
+        """Guess expansion types for globals, and store the changed ones in the globals file.
+
+        A global referencing an iterable global is zipped with it, not outer
+        producted. Returns whether any stored type changed; the caller then parses
+        again with the new types, until this returns False. The previous parse is
+        kept in the ``previous_*`` attributes, to detect changes."""
 
         # An error is not a value to guess from, and can hide what a global
         # depends on, so an error never changes a stored expansion:
@@ -3651,13 +3498,10 @@ class RunManager(LabscriptGuiApplication):
     ):
         """Name and number the shot files of a batch, without writing them.
 
-        Returns a record per entry of ``shots``, for the files written later.
-
-        ``indexed_path_base`` is a shot whose sequence this batch is joining,
-        with ``sequence_attrs`` the sequence of that shot, or None for a
-        sequence of its own, which claims a sequence index if
-        ``increment_sequence_index``.
-        """
+        Returns a record per entry of ``shots``. ``indexed_path_base`` is a shot
+        whose sequence the batch joins, with ``sequence_attrs`` that sequence's;
+        with none, the batch starts a sequence, which claims a sequence index if
+        ``increment_sequence_index``."""
         if indexed_path_base is not None:
             # The shot being added to supplies the folder, filename stem and
             # sequence a new sequence would be given, so new_sequence_details
@@ -3721,10 +3565,9 @@ class RunManager(LabscriptGuiApplication):
             item['sequence_attrs'],
             item['run_no'],
             item['n_runs'],
-            # A record with no id is written without the attribute, which is
-            # how a shot nobody submitted is told apart from one that was.
-            # Every queue row has an id; a record that never became one may
-            # not.
+            # A record with no id is written without the attribute, which tells a
+            # shot nobody submitted from one that was. Every queue row has an id;
+            # a record that never became one may not.
             shot_id=item.get('shot_id'),
         )
 
@@ -3750,17 +3593,16 @@ class RunManager(LabscriptGuiApplication):
 
         try:
             runviewer.add_shot(agnostic_path)
-            self.output_box.output('Shot %s sent to runviewer.\n' % os.path.basename(run_file))
+            self.output_box.output(f'Shot {os.path.basename(run_file)} sent to runviewer.\n')
         except Exception as e:
             self.output_box.output(f'Couldn\'t submit shot to runviewer: {e!s}\n\n', red=True)
 
     def discard_default_shot(self):
         """Drop a prepared default shot that is not going to be handed over.
 
-        Its globals were read when it was produced, so it must not be handed to
-        BLACS later as though they were current. This happens when the queue
-        has taken over, the empty-queue policy no longer calls for one, or the
-        globals have changed since."""
+        That is when the queue has taken over, the empty-queue policy no longer
+        calls for one, or the globals have changed: its globals were read when it
+        was made, so BLACS must not get it as though they were current."""
         with self._default_shot_lock:
             row = self._default_shot_ready
             self._default_shot_ready = None
@@ -3768,11 +3610,9 @@ class RunManager(LabscriptGuiApplication):
             self.queue_manager.delete_shot_files([row['path']])
 
     def take_default_shot(self, labscript_file):
-        """Return a compiled default shot's queue row, or None while one is
-        being produced.
+        """A compiled default shot's queue row, or None while one is being produced.
 
-        At most one is produced at a time, however often BLACS asks. The shot
-        is collected by a later request once it is ready."""
+        At most one is produced at a time; a later request collects it once ready."""
         # A default shot started before the latest change to the globals read
         # the old ones. Drop it now if it is ready; one still compiling is
         # dropped by the request that finds it ready:
@@ -3791,8 +3631,8 @@ class RunManager(LabscriptGuiApplication):
         thread = threading.Thread(
             target=self.prepare_default_shot,
             args=(labscript_file, send_to_runviewer),
+            daemon=True,
         )
-        thread.daemon = True
         thread.start()
         return None
 
@@ -3834,12 +3674,12 @@ class RunManager(LabscriptGuiApplication):
             }
             if not self.queue_manager.compile_shot(shot, default_globals=True)[0]:
                 raise RuntimeError(
-                    'Compilation failed for %s' % os.path.basename(run_file)
+                    f'Compilation failed for {os.path.basename(run_file)}'
                 )
             row = dict(shot, compiled=True, default_shot=True)
         except Exception as e:
             self.output_box.output(
-                'Could not produce a default shot: %s\n' % str(e), red=True
+                f'Could not produce a default shot: {e}\n', red=True
             )
             if run_file is not None:
                 self.queue_manager.delete_shot_files([run_file])
@@ -3851,12 +3691,9 @@ class RunManager(LabscriptGuiApplication):
     def queue_exchange(self, outcome=None, request_shot=True):
         """Apply BLACS's outcome for the shot it was offered, then offer one.
 
-        The outcome is applied first, so that a single exchange can retire the
-        row BLACS has just finished and offer the next one in the same reply.
-        That order is also what lets offer_shot() reclaim a row still marked
-        running: by the time it looks, a row BLACS has just reported on has
-        already been retired or reddened, so anything still marked running is a
-        row this BLACS is demonstrably not executing."""
+        The outcome is applied first, so that one exchange can retire the row BLACS
+        has just finished and offer the next. offer_shot() can then reclaim any row
+        still marked running, which this BLACS is demonstrably not executing."""
         no_shot = {'state': PROVIDER_NONE, 'shot_id': None, 'path': None}
         try:
             if outcome is not None:
@@ -3869,29 +3706,22 @@ class RunManager(LabscriptGuiApplication):
             # back to BLACS, which takes it for an unreachable runmanager and
             # would resend the outcome for ever over a fault on this side.
             self.output_box.output(
-                'Runmanager could not answer BLACS: %s\n' % str(exc), red=True
+                f'Runmanager could not answer BLACS: {exc}\n', red=True
             )
             return no_shot
 
     def apply_shot_outcome(self, outcome):
         """Record how BLACS says the shot it was offered turned out.
 
-        Only completed shots are submitted for analysis; the others are
-        recorded and shown, but not analysed. Analysis gets the file BLACS
+        Only completed shots are submitted for analysis, with the file BLACS
         actually ran, which is not the queued one when it made a fresh copy to
-        re-run a shot that already held data.
+        re-run a shot that already held data. An outcome runmanager cannot read
+        -- not a mapping, naming no shot, or with an unknown status -- is refused
+        and reported, leaving the queue as it was.
 
-        The completion is reported before the row is retired, and not the other
-        way round. Both happen under queue_exchange's guard, which answers
-        BLACS normally rather than raising: BLACS then drops the outcome, so no
-        resend can arrive to make good a submission that failed. Retiring the
-        row last means such a failure leaves it in the queue, where BLACS's
-        next request reclaims it and the shot is run again -- which costs a run
-        of the apparatus, and not the data, which nothing can recover later.
-
-        An outcome runmanager cannot read -- one that is not a mapping, names
-        no shot, or reports a status runmanager does not know -- is refused and
-        reported, leaving the queue as it was."""
+        The completion is reported before the row is retired: a failure between
+        them leaves the row queued, for BLACS's next request to reclaim and run
+        again, which costs a run of the apparatus but not its data."""
         fields = outcome if isinstance(outcome, dict) else {}
         shot_id = str(fields.get('shot_id') or '')
         status = str(fields.get('status', ''))
@@ -3900,8 +3730,7 @@ class RunManager(LabscriptGuiApplication):
             # exchange goes on to offer_shot. A raise would end it at
             # queue_exchange's guard, offering nothing until BLACS asks again.
             self.output_box.output(
-                'BLACS sent a shot outcome runmanager could not read: %s\n'
-                % (outcome,),
+                f'BLACS sent a shot outcome runmanager could not read: {outcome}\n',
                 red=True,
             )
             return
@@ -3912,10 +3741,8 @@ class RunManager(LabscriptGuiApplication):
         agnostic_path = fields.get('path')
         agnostic_path = str(agnostic_path) if agnostic_path else ''
         if not agnostic_path:
-            # BLACS named no file, so the row's own path is the only one there
-            # is -- and there is none at all if no row matches, which leaves
-            # nothing to analyse. Read while the row is still in the queue, for
-            # the same reason the submission below happens while it is.
+            # BLACS named no file, so use the row's own path, if a row matches. Read
+            # while the row is still in the queue, as the submission below is.
             queued_path = self.queue_controller.get_shot_path(shot_id)
             if queued_path:
                 agnostic_path = shared_drive.path_to_agnostic(queued_path)
@@ -3926,66 +3753,40 @@ class RunManager(LabscriptGuiApplication):
             self.analysis_submission.notify_shot_complete(agnostic_path)
         record = self.queue_manager.shot_finished(shot_id, status, message)
         if record is None:
-            # A completed shot that matched no row. The row can be gone for
-            # ordinary reasons -- the operator restarted runmanager while BLACS
-            # was running the shot it had been given -- and it can also be a
-            # lost reply being sent again for a row already retired. The two
-            # are indistinguishable here.
-            #
-            # There is nothing to do to the queue either way, and nothing
-            # here needs to know which case it was. The shot ran and wrote
-            # data, so the completion has already gone on above: reporting one
-            # is runmanager's part, and whether the far end has already seen
-            # this file is the far end's to decide, not something to be guessed
-            # at from here. Say which shot it was, since the queue shows
-            # nothing of it.
+            # The row can be gone because runmanager restarted while BLACS ran the
+            # shot, or because a lost reply is being sent again for a row already
+            # retired. The two cannot be told apart, and the queue needs nothing.
             self.output_box.output(
-                'BLACS reported shot %s as completed, but no queued shot has '
-                'that id; the queue is unchanged.\n' % shot_id,
+                f'BLACS reported shot {shot_id} as completed, but no queued shot has '
+                'that id; the queue is unchanged.\n',
                 red=True,
             )
 
     def offer_shot(self):
-        """Offer BLACS a shot, if this runmanager has one to run.
+        """Offer BLACS a shot if there is one.
 
-        Returns the exchange response: the provider state, plus the stable id
-        and shared-drive-agnostic path of the shot when one is offered."""
+        Returns the exchange response, with the shot's id and agnostic path when
+        one is offered."""
         no_shot = {'state': PROVIDER_NONE, 'shot_id': None, 'path': None}
         if self.queue_controller.get_queue_state()['paused']:
-            # Pause is this runmanager's policy about its own queue, not
-            # authority over the apparatus: a second runmanager sharing one
-            # BLACS must not be able to stop it by pausing its own queue. So
-            # this says "I have nothing for you", not "stop" -- BLACS keeps
-            # requesting and runs its local override shot meanwhile.
-            #
-            # The check comes before anything is chosen, so that it withholds a
-            # runmanager-generated default shot as well as a queued row, and
-            # before a row is marked running, so that pausing changes nothing
-            # in the queue and does not touch the shot already under way.
+            # Pause governs only this runmanager's queue, so the answer is "nothing
+            # for you", not "stop": a second runmanager sharing one BLACS must not
+            # be able to stop it. Checked first, so nothing is chosen or marked running.
             return {'state': PROVIDER_PAUSED, 'shot_id': None, 'path': None}
         item = self.queue_manager.offer_next()
         if item is None:
-            # A queued shot that is not compiled yet stays at the head of the
-            # queue and is compiled off this thread, so that a slow compile
-            # neither holds up the remote server nor loses the shot when BLACS
-            # stops waiting. BLACS asks again shortly, and the queue is not
-            # empty meanwhile, so the empty-queue policy does not step in ahead
-            # of it:
+            # A queued shot not yet compiled stays at the head and is compiled off
+            # this thread, so that a slow compile does not hold up the server or
+            # lose the shot when BLACS stops waiting. BLACS asks again shortly:
             if self.queue_manager.compile_next_in_background():
                 # Pending rather than none, so that BLACS can wait for this shot
                 # instead of running its local override in the gap:
                 return dict(no_shot, state=PROVIDER_PENDING)
             queue_state = self.queue_controller.get_queue_state()
             labscript_file = queue_state['default_labscript_file']
-            # No default shot is called for: the policy does not ask for one,
-            # there is no labscript file to make it from, or the queue is not
-            # empty after all. A row still marked running is no longer a reason
-            # -- offer_next() reclaims that one rather than leaving it
-            # unoffered -- but the queue can still gain work, or finish
-            # compiling its head, between the offer attempt above and this
-            # check. Either way runmanager has work rather than nothing to
-            # offer, and a default shot made now would only be queued behind
-            # something that is about to be offered.
+            # No default shot when the policy does not ask for one, there is no
+            # labscript file, or the queue is not empty after all: it can gain work
+            # since the offer attempt above, which a default shot would queue behind.
             if (
                 queue_state['empty_queue_policy'] != EMPTY_QUEUE_DEFAULT_LABSCRIPT
                 or not labscript_file
@@ -3996,24 +3797,17 @@ class RunManager(LabscriptGuiApplication):
                 return no_shot
             if not os.path.isfile(labscript_file):
                 raise RuntimeError(
-                    'Default-shot labscript file does not exist: %s' % labscript_file
+                    f'Default-shot labscript file does not exist: {labscript_file}'
                 )
-            # Producing a default shot means evaluating the globals, writing
-            # the shot file and compiling it. That happens off this thread for
-            # the same reason a queued shot's compile does: it must not hold up
-            # the remote server, nor finish into a client that stopped waiting.
+            # Producing a default shot evaluates the globals, writes the shot file and
+            # compiles it, so it happens off this thread, as a queued shot's compile
+            # does, to not hold up the server or finish into a client that left.
             row = self.take_default_shot(labscript_file)
             if row is None:
                 return no_shot
-            # The default shot joins the queue as an ordinary row and is then
-            # offered like one. That is the whole of its lifecycle: it is
-            # visible while it runs, goes red with its reason if it does not,
-            # is retried by the next request, can be deleted by the operator,
-            # and is removed and sent for analysis when it completes -- all by
-            # rules the queue already has, with no second lifecycle to keep in
-            # step. It is also what stops a second default shot being made
-            # while the first still needs attention: a red row is the head of
-            # the queue, so it is what the next request is offered.
+            # It joins the queue as an ordinary row and is offered like one, so the
+            # queue's own rules show, retry, delete and analyse it, and a red one
+            # at the head stops a second being made.
             self.queue_manager.enqueue([row])
             item = self.queue_manager.offer_next()
             if item is None:
@@ -4066,8 +3860,8 @@ class RunmanagerServer(ZMQServer):
         for global_name in (locations if names is None else names):
             if len(groups_of.get(global_name, ())) > 1:
                 raise RuntimeError(
-                    'Global %s is defined in multiple active groups: %s'
-                    % (global_name, ' and '.join(groups_of[global_name]))
+                    f'Global {global_name} is defined in multiple active groups: '
+                    f"{' and '.join(groups_of[global_name])}"
                 )
         return active_groups, globals_details, locations
 
@@ -4101,13 +3895,13 @@ class RunmanagerServer(ZMQServer):
             return value
         if isinstance(value, int) and value in (0, 1):
             return bool(value)
-        raise TypeError('%s must be a bool, not %s' % (name, value.__class__.__name__))
+        raise TypeError(f'{name} must be a bool, not {value.__class__.__name__}')
 
     @staticmethod
     def _coerce_remote_text(value, name):
         if isinstance(value, str):
             return value
-        raise TypeError('%s must be a str, not %s' % (name, value.__class__.__name__))
+        raise TypeError(f'{name} must be a str, not {value.__class__.__name__}')
 
     @staticmethod
     def _coerce_remote_expression(value, name):
@@ -4130,7 +3924,7 @@ class RunmanagerServer(ZMQServer):
         for global_name in globals:
             if global_name not in locations:
                 raise ValueError(
-                    "Global %s not found in any active group" % global_name
+                    f"Global {global_name} not found in any active group"
                 )
         for path in {locations[global_name][0] for global_name in globals}:
             RunmanagerServer._refuse_legacy_hdf5(path)
@@ -4153,7 +3947,7 @@ class RunmanagerServer(ZMQServer):
                 name: value for name, value in globals.items() if name in locations
             }
         globals = {
-            name: coerce(value, 'global %s' % name) for name, value in globals.items()
+            name: coerce(value, f'global {name}') for name, value in globals.items()
         }
         self._check_before_writing(locations, globals)
         try:
@@ -4206,7 +4000,7 @@ class RunmanagerServer(ZMQServer):
     def handle_get_groups(self):
         return {
             globals_file: {
-                group_name: item.checkState() == QtCore.Qt.Checked
+                group_name: item.checkState() == QtCore.Qt.CheckState.Checked
                 for group_name, item in groups.items()
             }
             for globals_file, groups in self.app.group_active_items().items()
@@ -4256,7 +4050,7 @@ class RunmanagerServer(ZMQServer):
     def handle_set_groups_active(self, groups):
         items = self.app.group_active_items()
         active = {
-            (globals_file, group_name): item.checkState() == QtCore.Qt.Checked
+            (globals_file, group_name): item.checkState() == QtCore.Qt.CheckState.Checked
             for globals_file, file_items in items.items()
             for group_name, item in file_items.items()
         }
@@ -4264,11 +4058,10 @@ class RunmanagerServer(ZMQServer):
         # Refused before any is changed, so a batch is not half applied.
         for globals_file, states in groups.items():
             for group_name, state in states.items():
-                state = self._coerce_remote_boolean(state, 'group %s' % group_name)
+                state = self._coerce_remote_boolean(state, f'group {group_name}')
                 if group_name not in items.get(globals_file, {}):
                     raise ValueError(
-                        'Group %s not found in open globals file %s'
-                        % (group_name, globals_file)
+                        f'Group {group_name} not found in open globals file {globals_file}'
                     )
                 active[globals_file, group_name] = state
                 changes.append((items[globals_file][group_name], state))
@@ -4278,11 +4071,11 @@ class RunmanagerServer(ZMQServer):
         repeated = sorted({name for name in names if names.count(name) > 1})
         if repeated:
             raise ValueError(
-                'Cannot leave two active groups with the same name: %s.'
-                % ', '.join(repeated)
+                'Cannot leave two active groups with the same name: '
+                f"{', '.join(repeated)}."
             )
         for item, state in changes:
-            item.setCheckState(QtCore.Qt.Checked if state else QtCore.Qt.Unchecked)
+            item.setCheckState(QtCore.Qt.CheckState.Checked if state else QtCore.Qt.CheckState.Unchecked)
 
     @inmain_decorator()
     def handle_new_globals_file(self, path):
@@ -4313,7 +4106,7 @@ class RunmanagerServer(ZMQServer):
         self._refuse_legacy_hdf5(globals_file)
         self.app.new_group(globals_file, group_name, interactive=False)
         item = self.app.group_active_items()[globals_file][group_name]
-        return item.checkState() == QtCore.Qt.Checked
+        return item.checkState() == QtCore.Qt.CheckState.Checked
 
     @inmain_decorator()
     def handle_new_globals(self, globals_file, group_name, globals):
@@ -4452,40 +4245,11 @@ class RunmanagerServer(ZMQServer):
         self.app.on_reset_shot_output_folder_clicked(None)
 
     def handle_submit_shots(self, entries, sequence_id=None, sequence_index=None):
-        """Submit one shot per entry, each with the globals that entry names.
+        """Submit one shot per entry, as ``RunmanagerClient.submit_shots`` describes.
 
-        An entry is a dict of global name to value, and every entry names the
-        same globals. Each entry's shot is evaluated from one read of the
-        globals, as the window would hold them with that entry's values set.
-        The window is then set to the last entry and left so, so that an
-        operator watching can see what is being run; globals no entry names
-        are untouched, and keep whatever the operator last gave them.
-
-        Returns one descriptor per entry -- shot_id, sequence_id,
-        sequence_index, run_number and path -- in the order submitted.
-
-        A remote session is one sequence. With no ``sequence_id`` the batch
-        starts a sequence of its own; given the sequence_id of an earlier
-        submission, the batch joins it whatever ran in between.
-        ``sequence_index`` tells it from a sequence started in the same second.
-
-        Every entry is evaluated before any shot is made, and the whole batch
-        is then made and submitted in one go. That is what makes it safe to
-        raise: until the last entry has been evaluated there is nothing in the
-        queue to take back, so a refusal leaves the queue as it found it and
-        there is no half-submitted batch whose shots the caller would never
-        hear about. It is also what tells the shots apart: a filename and a
-        run number are claimed by the batch being made, so entries submitted
-        one at a time would each find the same number free.
-
-        A global an entry names must have its Scan? and JIT? boxes unticked,
-        since the shot would not run the value submitted otherwise: the batch
-        is refused.
-
-        A batch refused while its entries are evaluated sets no global; one
-        refused as it is queued is left set to its last entry. Nothing is
-        queued and nothing runs.
-        """
+        Every entry is evaluated before any shot is made, and the whole batch is
+        then made in one go, since a filename and a run number are claimed by the
+        batch being made. A refusal therefore queues nothing."""
         entries = [dict(entry) for entry in entries]
         if not entries:
             # A caller that produced no entries this round has asked for
@@ -4505,7 +4269,7 @@ class RunmanagerServer(ZMQServer):
         }
         missing = sorted(names - set(group_of))
         if missing:
-            raise ValueError('Global %s not found in any active group' % missing[0])
+            raise ValueError(f'Global {missing[0]} not found in any active group')
         # The shot would run the scan, or a value read at compile time, and not
         # the one filed and receipted for it:
         held = sorted(
@@ -4517,7 +4281,7 @@ class RunmanagerServer(ZMQServer):
         if held:
             raise ValueError(
                 'Cannot submit a value for a global with its Scan? or JIT? box '
-                'ticked, since the shot would not run it: %s.' % ', '.join(held)
+                f"ticked, since the shot would not run it: {', '.join(held)}."
             )
         send_to_runviewer = self.handle_get_view_shots()
         batch = []
@@ -4535,9 +4299,8 @@ class RunmanagerServer(ZMQServer):
             if len(pairs) != 1:
                 expanding = sorted(name for name in expansions if expansions[name])
                 raise ValueError(
-                    'Cannot submit %r as one shot: the globals as they stand '
-                    'produce %d. Expanded by: %s.'
-                    % (entry, len(pairs), ', '.join(expanding) or 'none')
+                    f'Cannot submit {entry!r} as one shot: the globals as they stand '
+                    f"produce {len(pairs)}. Expanded by: {', '.join(expanding) or 'none'}."
                 )
             batch.append(pairs[0])
         self.handle_set_values(entries[-1])
@@ -4557,8 +4320,7 @@ class RunmanagerServer(ZMQServer):
     def handle_shot_status(self, shot_ids):
         """The record of each of these shots, as ``shot_status`` returns them.
 
-        Read-only and batched: a caller waiting on many shots asks once. The
-        queue controller is safe to ask from any thread, so this is not a GUI
+        The queue controller is safe to ask from any thread, so this is not a GUI
         read."""
         return self.app.queue_controller.get_shot_statuses(list(shot_ids))
 
