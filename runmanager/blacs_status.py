@@ -21,18 +21,10 @@ import labscript_utils.shared_drive as shared_drive
 def blacs_state(status):
     """Describe what BLACS is doing, for the BLACS link indicator.
 
-    Parameters
-    ----------
-    status : dict
-        BLACS's answer to ``get_status``.
-
-    Returns
-    -------
-    state : str
-        Shown beside the BLACS light: whether BLACS is requesting shots, the shot
-        it is running, or what stopped it.
-    details : list of str
-        Tooltip lines: BLACS's own activity, and the shot it is running.
+    ``status`` is BLACS's answer to ``get_status``. Returns ``(state, details)``:
+    ``state`` is shown beside the BLACS light and says whether BLACS is requesting
+    shots, the shot it is running, or what stopped it; ``details`` are tooltip
+    lines, BLACS's own activity and the shot it is running.
     """
     # BLACS sends the path shared-drive-agnostic, so put it in this machine's form:
     shot_path = shared_drive.path_to_local(str(status.get('shot_path') or ''))
@@ -56,7 +48,7 @@ def blacs_state(status):
     if shot_id:
         details.append(f'Shot id: {shot_id}')
     elif shot_path:
-        # No id means the shot is in no runmanager's queue: BLACS is running its
-        # local override shot because this runmanager had nothing to offer.
+        # BLACS reports no id for a local override shot, which is in no runmanager's
+        # queue:
         details.append('Not a queued shot: BLACS local override')
     return state, details
