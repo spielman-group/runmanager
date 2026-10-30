@@ -166,9 +166,18 @@ def evaluate_globals(sequence_globals, raise_exceptions=True):
 
     Each expression is evaluated once, after the globals that it refers to. A global
     that fails to evaluate, that is defined in more than one group, or that is in a
-    cycle of references holds an exception instead of a value, and the globals that
-    refer to it fail with NameError. If raise_exceptions is True, one exception listing
-    every failed global is raised instead.
+    cycle of references holds an exception instead of a value. A global that reads it
+    when evaluated then fails with NameError, unless the namespace has that name; one
+    that names it only on a branch not taken does not. A global whose value cannot be
+    scanned holds an ExpansionError, but the globals that read it get its value. If
+    the namespace cannot be loaded, every global without an exception holds that
+    error.
+
+    If raise_exceptions is True, an exception is raised instead, at the first of these
+    that applies: a global defined in more than one group raises its ValueError, a
+    namespace that cannot be loaded raises its error, any global holding an exception
+    after evaluation gives one exception listing them all, and a zip group that fails
+    its checks raises its error.
 
     If any global uses names that only `from pylab import *` provides, a FutureWarning
     names the globals and the replacement for each name."""
