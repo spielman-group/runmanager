@@ -11,17 +11,16 @@
 # the project for the full license.                                 #
 #                                                                   #
 #####################################################################
-"""Runmanager-owned shot queue helpers.
+"""Runmanager's shot queue: its state, its edits and compile loop, and its widget.
 
-This module keeps queue state and background queue/compile work out of
-``runmanager.__main__``. QueueManager owns the background compile loop used by
-Engage, and the queue edits that delete files or redraw the queue tab. Queue
-state is in QueueController, which the application holds.
-Queue items are stored as shot records. The queue widget shows each one's file
-name and compile mode, and reddens a row that needs an operator.
+QueueController holds the queue as shot records, safe to use from any thread.
+QueueManager makes the queue's edits, including those that delete files or redraw the
+queue tab, and owns the background compile loop that Engage uses.
+RunmanagerQueueWidget shows each row's file name and compile mode, and reddens a row
+that needs an operator.
 
-blacs' ``docs/source/shot-management.rst`` is the contract of record for the
-BLACS handover, so change either side against it.
+blacs' ``docs/source/shot-management.rst`` is the contract of record for the BLACS
+handover, so change either side against it.
 """
 
 import os
@@ -59,23 +58,19 @@ EMPTY_QUEUE_NOTHING = 'nothing'
 EMPTY_QUEUE_DEFAULT_LABSCRIPT = 'default_labscript'
 COMPILE_MODE_EAGER = 'eager'
 COMPILE_MODE_LAZY = 'lazy'
-# One colour, for the one thing a colour is needed for. The reserved first row
-# is above the rule, which is what says BLACS was sent that shot, so running is
-# simply what that row looks like and needs no colour of its own. Red marks the
-# exception: it came back without running, and is waiting for an operator. The
-# rows below the rule are work still waiting and are never tinted.
+# Only a failed or rejected row is tinted: it came back without running and is waiting
+# for an operator. The reserved first row is set apart by the rule below it, and the
+# rows below the rule are work still waiting.
 FAILED_ROW_BACKGROUND = QtGui.QColor('#ffcccc')
 ROW_BACKGROUNDS = {
     BLACS_FAILED: FAILED_ROW_BACKGROUND,
     BLACS_REJECTED: FAILED_ROW_BACKGROUND,
 }
-# Set with either of them, and not left to the theme. Both fills are pale, so
-# on a dark theme the palette's own near-white text sits on them unreadably;
-# naming the text colour alongside the fill is what keeps the pair legible
-# whichever theme is in use.
+# Set with the fill, not left to the theme: on a dark theme the palette's near-white
+# text is unreadable on these pale fills.
 TINTED_ROW_FOREGROUND = QtGui.QColor('#202020')
-# What a shot record says about this session's attempt at it rather than about
-# the shot: assigned by _normalise_item, and left out of a saved queue:
+# Fields that record this session's attempt at a shot, not the shot, so a saved queue
+# leaves them out:
 SESSION_ONLY_FIELDS = (
     'compiling', 'state', 'message', 'reclaimed', 'since', 'blacs_outcome',
     'lyse', 'lyse_message',
@@ -86,22 +81,17 @@ SESSION_ONLY_FIELDS = (
 # handover joins by being named here.
 BLACS_STATES = (BLACS_RUNNING, BLACS_FAILED, BLACS_REJECTED, BLACS_CANCELLED)
 
-# The states the queue refuses to hand a row over in, each against whether a
-# row in it holds up the rows behind it as well. Written as the refusals that
-# exist rather than as the states that are left, so that a state added later
-# is one the queue would offer -- which is what offer_next() would do with it.
-# A shot reported dead because nobody listed it is a shot a caller gives up on
-# while the apparatus is about to run it.
+# The states the queue will not hand a row over in, each against whether a row in it
+# also holds up the rows behind. Listing the refusals, not what is left, offers a state
+# added later, so a shot is not reported dead while the apparatus is about to run it.
 REFUSED_STATES = {
-    # offer_next(): BLACS could not read this shot at all -- a file that has
-    # gone, or a connection table that does not match the apparatus. Offering
-    # it again would only be refused again, so it is held at the head until an
-    # operator deletes it, and nothing behind it can be reached meanwhile.
+    # BLACS could not read the shot at all (a file that has gone, or a connection table
+    # that does not match the apparatus), so offering it again would only be refused
+    # again: it is held at the head until an operator deletes it.
     BLACS_REJECTED: True,
-    # offer_next(): the operator has said this shot is not to be sent. The
-    # queue clears the row itself, at the next request from BLACS -- see
-    # drop_cancelled_head() -- so the shots behind it are waiting their turn
-    # rather than waiting on anybody.
+    # The operator said the shot is not to be sent. The queue clears the row at BLACS's
+    # next request (see drop_cancelled_head()), so the rows behind are only waiting
+    # their turn.
     BLACS_CANCELLED: False,
 }
 
@@ -114,10 +104,8 @@ def new_shot_id():
 def sent_to_blacs(row):
     """Whether this row has been handed to BLACS.
 
-    Written once because three rules turn on it -- which row the queue reserves
-    its first place for, what Clear leaves alone, and what a saved queue means
-    -- and a state added to BLACS_STATES joins all three without being named
-    again in each."""
+    The reserved first row, what Clear leaves alone and a row's BLACS status all turn on
+    it, so a state added to BLACS_STATES joins all three."""
     return row.get('state') in BLACS_STATES
 
 
@@ -138,8 +126,7 @@ class RunmanagerQueueWidget(ShotQueueWidget):
     deleteRowsRequested = Signal(list)
 
     def __init__(self, parent=None):
-        ShotQueueWidget.__init__(
-            self,
+        super().__init__(
             parent=parent,
             column_titles=['Mode', 'Shot file'],
             path_column=1,
@@ -160,8 +147,8 @@ class RunmanagerQueueWidget(ShotQueueWidget):
             'columns': [
                 {
                     'text': mode,
-                    'tooltip': 'Compile mode: %s' % mode if mode else '',
-                    'alignment': QtCore.Qt.AlignCenter,
+                    'tooltip': f'Compile mode: {mode}' if mode else '',
+                    'alignment': QtCore.Qt.AlignmentFlag.AlignCenter,
                 }
             ],
         }
@@ -174,17 +161,10 @@ class RunmanagerQueueWidget(ShotQueueWidget):
     def _sent_to_blacs_row(self, display_item):
         """The reserved first row: whichever shot has gone to BLACS.
 
-        Set apart from the queue below it by a rule and by its colour, because
-        it is not waiting work -- it is the shot BLACS was given, and what an
-        operator wants to know about it is different. It keeps the columns,
-        rather than being a label above the table, so that a column added later
-        describes it too.
-
-        What "has been sent" means is named once, in BLACS_STATES, so a state
-        added there is included here without this having to learn its name. A
-        compile failure is deliberately not one of them: that row never left
-        runmanager, and drawing it here claimed a handover that never
-        happened."""
+        It is set apart from the queue below by a rule, and keeps the columns so that a
+        column added later describes it too. What counts as sent is named in
+        BLACS_STATES; a compile failure is not one, as that row never left runmanager.
+        """
         if display_item is None:
             return {
                 'path': '',
@@ -198,15 +178,13 @@ class RunmanagerQueueWidget(ShotQueueWidget):
         row_info['rule_below'] = True
         if display_item['state'] == BLACS_RUNNING:
             row_info['tooltip'] = (
-                '%s\nBLACS has this shot. Delete cancels it: the row stays '
-                'until BLACS next asks for work, because its file may still be '
-                'being written, but it will not be sent again.'
-                % display_item['path']
+                f"{display_item['path']}\nBLACS has this shot. Delete cancels it: the "
+                'row stays until BLACS next asks for work, because its file may still '
+                'be being written, but it will not be sent again.'
             )
         elif display_item['state'] == BLACS_CANCELLED:
-            # Struck through rather than removed, and nothing more to aim at
-            # it: a second Delete could not free the file any sooner than the
-            # first, for the same reason.
+            # Struck through and not selectable: a second Delete could not free the
+            # file any sooner than the first.
             row_info['strikeout'] = True
             row_info['selectable'] = False
         return row_info
@@ -238,27 +216,22 @@ class RunmanagerQueueWidget(ShotQueueWidget):
             self._emit_delete()
 
     def _emit_delete(self):
-        # By identity, not position. The queue moves on its own -- a shot
-        # finishing removes a row while the operator has one selected -- so a
-        # row number that meant one shot when the table was drawn can mean
-        # another by the time the key is pressed. A shot_id means one shot for
-        # as long as that shot exists, and nothing once it is gone.
+        # By id, not position: the queue moves on its own, as when a shot finishing
+        # removes a row while another is selected.
         shot_ids = self.selected_ids()
         if shot_ids:
             self.deleteRowsRequested.emit(shot_ids)
 
 
-class QueueController(object):
+class QueueController:
     """Thread-safe queue of shot records."""
 
     def __init__(self):
         self.empty_queue_policy = EMPTY_QUEUE_NOTHING
         self.default_labscript_file = ''
         self.compile_mode = COMPILE_MODE_EAGER
-        # Whether this runmanager is offering the work it holds. A setting of
-        # the queue rather than of any row in it: pausing withholds the next
-        # shot without touching the queue, so the row BLACS is running is
-        # unaffected and resuming offers the same head again.
+        # Whether this runmanager is offering its work. Pausing withholds the next shot
+        # and leaves the queue as it is, so resuming offers the same head again.
         self.paused = False
         self.last_sent_from_queue = None
         # The sequence of that shot, whose row has left the queue.
@@ -281,11 +254,9 @@ class QueueController(object):
             item = {'path': item, 'compile_mode': COMPILE_MODE_EAGER, 'compiled': True}
         record = dict(item)
         record['path'] = os.path.abspath(str(record['path']))
-        # One stable identifier per queue row, assigned when the record is made
-        # and kept for the life of the row, including across a save and restore
-        # and across every retry of it. It names the row rather than a run of
-        # it, so BLACS's outcome finds the row it was offered even when the
-        # file it ran is a fresh copy with another name:
+        # One id per queue row, kept across a save and restore and every retry. It names
+        # the row, not a run of it, so BLACS's outcome finds its row even if it ran a
+        # fresh copy of the file:
         record['shot_id'] = str(record.get('shot_id') or new_shot_id())
         labscript_file = record.get('labscript_file', '')
         record['labscript_file'] = (
@@ -315,17 +286,14 @@ class QueueController(object):
         }
         record['run_no'] = int(record.get('run_no', 0))
         record['n_runs'] = int(record.get('n_runs', 1))
-        # 'running' once the row is offered to BLACS, 'failed' once BLACS
-        # reports it did not complete; see offer_next() and shot_finished().
-        # 'message' is why it did not complete. Like a compile in progress,
-        # both belong to this session only: a restored shot never starts out
-        # running, and does not carry the reason a previous session gave for
-        # it, which nothing has attempted since.
+        # 'state' and 'message' say how the row's offer to BLACS stands, and why it did
+        # not complete (see offer_next() and shot_finished()). Both belong to this
+        # session only, so a restored shot starts with neither:
         record['state'] = ''
         record['message'] = ''
-        # 'blacs_outcome' is what BLACS last reported of the row, because
-        # 'state' calls an aborted and a failed shot alike 'failed'. 'since' is
-        # when the row last changed, for shot_status.
+        # 'blacs_outcome' is what BLACS last reported, as 'state' calls an aborted and a
+        # failed shot alike 'failed'. 'since' is when the row last changed, for
+        # shot_status.
         record['blacs_outcome'] = ''
         record['since'] = time.time()
         # What runmanager did with the file for lyse, once BLACS completes the
@@ -337,7 +305,7 @@ class QueueController(object):
 
     def set_empty_queue_policy(self, value):
         if value not in (EMPTY_QUEUE_NOTHING, EMPTY_QUEUE_DEFAULT_LABSCRIPT):
-            raise ValueError('Invalid empty queue policy: %s' % value)
+            raise ValueError(f'Invalid empty queue policy: {value}')
         with self._lock:
             self.empty_queue_policy = value
 
@@ -347,7 +315,7 @@ class QueueController(object):
 
     def set_compile_mode(self, value):
         if value not in (COMPILE_MODE_EAGER, COMPILE_MODE_LAZY):
-            raise ValueError('Invalid compile mode: %s' % value)
+            raise ValueError(f'Invalid compile mode: {value}')
         with self._lock:
             self.compile_mode = value
 
@@ -361,26 +329,18 @@ class QueueController(object):
             self._items.extend(records)
 
     def delete_rows(self, shot_ids):
-        """Delete the queued shots with these stable ids.
+        """Delete the queued shots with these ids.
 
-        By id and not by position. The queue moves on its own -- a shot
-        finishing removes a row while the operator has one selected -- so a row
-        number that meant one shot when the table was drawn can mean another by
-        the time the key is pressed. An id means one shot for as long as it
-        exists, and nothing afterwards, so an id that has gone deletes nothing
-        rather than deleting whatever took its place.
+        Rows are named by id, not position: the queue moves on its own, and an id that
+        has gone deletes nothing instead of whatever took its place.
 
-        Deleting a row marked running cancels it instead of removing its file,
-        because BLACS may still be using that file. The cancelled row stays
-        struck through until BLACS's next request or an outcome proves the file
-        is free. A cancelled row cannot be deleted again. Waiting, failed and
-        rejected rows are removed with their files when explicitly selected.
+        A running row is cancelled, not removed, because BLACS may still be using its
+        file. It stays struck through until BLACS's next request or an outcome shows the
+        file is free, and cannot be deleted again. Waiting, failed and rejected rows are
+        removed.
 
-        Restarting runmanager restores queued rows without their session-only
-        running or cancelled state.
-
-        Returns ``(removed_paths, protected)``: removed paths and selected
-        running rows that were cancelled and kept."""
+        Returns ``(removed_paths, protected)``: the paths removed and the running rows
+        that were cancelled and kept."""
         wanted = set(shot_ids)
         removed_paths = []
         protected = []
@@ -390,13 +350,9 @@ class QueueController(object):
                 if item['shot_id'] not in wanted:
                     keep.append(item)
                 elif item['state'] == BLACS_RUNNING:
-                    # Marked, not removed. Its file may be under the hardware's
-                    # pen, and nothing here can know otherwise -- so the row
-                    # stays, struck through, and is never offered again. What
-                    # clears it is BLACS's next request carrying no outcome for
-                    # it, which is the one fact that proves the file is free;
-                    # see offer_next. A second Delete cannot do better, for the
-                    # same reason the first could not.
+                    # Marked, not removed, as BLACS may still be using its file. It is
+                    # never offered again, and goes when BLACS's next request carries
+                    # no outcome for it, which proves the file is free.
                     item['state'] = BLACS_CANCELLED
                     item['message'] = (
                         'Cancelled. It will not be sent again, and goes when '
@@ -416,19 +372,13 @@ class QueueController(object):
     def clear(self):
         """Empty the queue, leaving whatever has been sent to BLACS.
 
-        Clear is reached by the two replacement submission modes, whose offer
-        is to empty the queue and submit a batch in its place, and by Empty
-        queue and the remote abort, which empty it outright. The queue
-        is the work still waiting; a shot that has gone to BLACS has left it,
-        and sits in the row the display reserves above the rest. Replacing the
-        queue therefore replaces what is behind that row and nothing else --
-        running, so that a file being written is not pulled away, and failed,
-        because a shot that came back needing attention is not what an operator
-        meant to discard by submitting different work.
+        Used by the submission modes that empty the queue and by Abort, local or remote.
+        The queue is the work still waiting: a shot that has gone to BLACS has left it,
+        and sits in the row the display reserves above the rest. A running row stays so
+        that a file being written is not pulled away, and a failed one because it came
+        back needing attention. Discarding it is explicit: select it and delete it.
 
-        Discarding a failed row is still possible, and still explicit: select
-        it and delete it. That is what delete_rows is for, and it is the only
-        thing that does it. Returns ``(removed_paths, protected)``."""
+        Returns ``(removed_paths, protected)``: the paths removed and the rows kept."""
         with self._lock:
             kept = [item for item in self._items if sent_to_blacs(item)]
             dropped = [item for item in self._items if not sent_to_blacs(item)]
@@ -541,10 +491,9 @@ class QueueController(object):
         """Record what runmanager did with a completed shot's file for lyse.
 
         Called from the analysis submission's thread, for a path given to
-        expect_lyse. The file is handed over before the row is retired, so the
-        outcome can arrive either side of that: a queued row keeps it for when
-        it leaves, and a record that has left takes it while it is still
-        waiting. Each outcome is final, so the path is forgotten with it."""
+        expect_lyse. The outcome can arrive before or after the row is retired: a
+        queued row keeps it, and a record that has left takes it while it is still
+        waiting."""
         with self._lock:
             shot_id = self._lyse_paths.pop(os.path.abspath(path), None)
             if shot_id is None:
@@ -593,10 +542,7 @@ class QueueController(object):
         return None
 
     def get_shot_path(self, shot_id):
-        """Return the path recorded for one queued shot, or None for no row.
-
-        A read that leaves the row where it is, for a caller that needs the
-        path of a row it is about to retire before it retires it."""
+        """The path recorded for one queued shot, or None for no row."""
         with self._lock:
             for item in self._items:
                 if item['shot_id'] == shot_id:
@@ -618,7 +564,7 @@ class QueueController(object):
                         'path': path,
                         'label': os.path.basename(path),
                         'mode': mode_label,
-                        'tooltip': '%s\n%s' % (path, message) if message else path,
+                        'tooltip': f'{path}\n{message}' if message else path,
                         'state': item['state'],
                         # Separately from the tooltip it is folded into, because
                         # the reserved row says the reason on its face:
@@ -633,7 +579,7 @@ class QueueController(object):
     def set_last_sent_from_queue(self, value, sequence_attrs=None):
         """Record the last shot handed out, by local path, and its sequence.
 
-        True if that changed which shot it is."""
+        Returns whether that changed which shot it is."""
         if value:
             value = os.path.abspath(shared_drive.path_to_local(str(value)))
         else:
@@ -652,24 +598,9 @@ class QueueController(object):
                 'default_labscript_file': self.default_labscript_file,
                 'compile_mode': self.compile_mode,
                 'paused': self.paused,
-                # Without what this session made of each row: a saved queue is
-                # a list of work still to do, so writing out that BLACS was
-                # running a row, or the paragraph explaining why it could not,
-                # would only put back something restore_save_data discards -- and
-                # would make the configuration differ from the saved one, and
-                # so prompt to be saved again, after every offer:
-                #
-                # And without runmanager's own default shots at all. A default
-                # shot's globals were read when it was produced, so restoring
-                # the row would offer BLACS a shot in a later session as though
-                # they were current -- which is the very thing
-                # discard_default_shot() exists to prevent within one session.
-                # Its file is in the default directory for the day it was made,
-                # too, so a restored row would likely name a shot that is no
-                # longer there, at the head of the queue, ahead of real work.
-                # Nothing is lost by leaving it out: a runmanager that still
-                # has the same empty-queue policy produces another as soon as
-                # it is asked for a shot.
+                # Left out: this session's state of each row, which restore_save_data
+                # discards and which would prompt a save after every offer, and the
+                # default shots, whose globals go stale and whose files may be gone.
                 'items': [
                     {
                         name: value
@@ -713,18 +644,13 @@ class QueueController(object):
     def drop_overtaken_default_shots(self):
         """Forget default shots that real work has got in front of.
 
-        A default shot exists only because the queue was empty when it was
-        asked for. Deciding that and enqueueing it are two lock acquisitions on
-        the request thread, and batches are enqueued from another, so a batch
-        landing in between leaves the default shot parked behind work that was
-        engaged after its globals were frozen. The discard that exists to stop
-        that being offered is never reached, because it is on the branch this
-        ordering skips.
-
-        So correct it where it shows rather than holding the lock across the
-        decision: the lock would then be held across a filesystem check on the
-        request thread, and BLACS's exchange would wait behind runmanager's own
-        work. Returns the paths whose files should go with them."""
+        A default shot is made because the queue was empty when asked, but deciding
+        that and enqueueing it are two lock acquisitions, and a batch landing between
+        leaves it parked behind work engaged after its globals were frozen. This
+        corrects that where it shows, rather than holding the lock across the decision,
+        which would hold a filesystem check on the request thread and make BLACS's
+        exchange wait behind runmanager's own work. Returns the paths whose files
+        should go with them."""
         with self._lock:
             if not self._items or self._items[0]['default_shot']:
                 return []
@@ -742,11 +668,10 @@ class QueueController(object):
     def drop_cancelled_head(self):
         """Forget a cancelled row, now that nobody can be running it.
 
-        Called when BLACS asks for work. The outcome it carried, if any, has
-        already been applied, so a cancelled row still here at this point is
-        one BLACS said nothing about -- and a request carrying no outcome for a
-        row is proof nobody is running it, the same fact the reclaim rests on.
-        That is when its file is free to go. Returns the paths to delete."""
+        Called when BLACS asks for work. The request's outcome has already been
+        applied, so a cancelled row still here is one it said nothing about, and a
+        request with no outcome for a row proves nobody is running it: its file is
+        free to go. Returns the paths to delete."""
         with self._lock:
             if not self._items or self._items[0]['state'] != BLACS_CANCELLED:
                 return []
@@ -757,63 +682,41 @@ class QueueController(object):
     def offer_next(self):
         """Offer the shot at the head of the queue if it is ready to hand over.
 
-        A lazy shot that has not been compiled yet stays in the queue, so that
-        it is neither lost nor overtaken by the empty-queue policy while it is
-        being compiled. The offered shot stays in the queue too, marked
-        running: the row is what BLACS is executing, so it remains visible. A
-        failed row is offered again as well as a waiting one -- that is the
-        retry. A rejected row is held at the head until it is deleted or
-        runmanager is restarted. The exchange path removes a cancelled head
-        before calling this method, once the request proves BLACS is no longer
-        using its file. Returns a copy of the offered record, or None.
+        A lazy shot not yet compiled stays in the queue, so that it is neither lost nor
+        overtaken by the empty-queue policy while it compiles. The offered shot stays
+        too, marked running. A failed row is offered again as well as a waiting one,
+        which is the retry; a rejected row is held at the head until it is deleted or
+        runmanager is restarted. A cancelled head is removed before this is called.
+        Returns a copy of the offered record, or None.
 
-        A row already marked running is offered again too, which is what stops
-        a lost reply stranding the queue behind it. That rests on an ordering
-        rule spanning both applications, recoverable from neither side's source
-        alone: BLACS is sequential, and asks for a shot only when it is idle,
-        carrying the outcome of the shot it has just finished on the same
-        exchange. So a request that arrives without an outcome retiring this
-        row proves BLACS is not running it -- either the offer reply never
-        arrived, or BLACS restarted while holding it. Both make the row ours to
-        hand out again, under the same id. queue_exchange() applies the outcome
-        before offering, so a row BLACS has just reported on has already been
-        retired or reddened by the time this looks at the head, and is never
-        mistaken for a stranded one. Only offer_shot() may call this, because
-        only there does a call mean that BLACS asked for work.
+        A row already marked running is offered again too, so that a lost reply cannot
+        strand the queue behind it. BLACS is sequential and asks for a shot only when
+        it is idle, carrying the outcome of the shot it has just finished on the same
+        exchange, so a request without an outcome retiring this row proves BLACS is
+        not running it: the offer reply never arrived, or BLACS restarted while holding
+        it. queue_exchange() applies the outcome before offering, so a row BLACS has
+        just reported on is not mistaken for a stranded one, and only offer_shot() may
+        call this, because only there does a call mean that BLACS asked for work. The
+        returned copy says in ``reclaimed`` whether the row was such a one.
 
-        The inference holds for one BLACS per runmanager, which is what this
-        protocol is for. A second BLACS asking the same runmanager would be
-        handed the row the first is still executing, and would run it again --
-        as it would have been under the acknowledgement handshake this
-        replaced. Sharing one runmanager between apparatuses is deferred with
-        the rest of the multi-provider work.
-
-        Note that running means offered and not yet reported on, not that this
-        particular shot is on the hardware. If the operator deletes the running
-        row, it becomes cancelled; the exchange path drops it on the next
-        request before this method offers a later row.
-
-        The returned copy says in ``reclaimed`` whether it was a row still
-        marked running, so that the caller can report a re-offer that the
-        operator would otherwise never see."""
+        That holds for one BLACS per runmanager: a second BLACS asking the same
+        runmanager would be handed the row the first is still executing. Running means
+        offered and not yet reported on, not that the shot is on the hardware."""
         with self._lock:
             if not self._items or not self._items[0]['compiled']:
                 return None
             item = self._items[0]
             if item['state'] in REFUSED_STATES:
-                # A row the queue will not hand over, for the reason recorded
-                # against its state in REFUSED_STATES. It is held here, marked,
-                # until an operator deletes it, the queue clears it, or a
-                # restart clears the state. Meanwhile BLACS is free: it keeps
-                # asking, gets nothing, and runs its own shot.
+                # A row the queue will not hand over (see REFUSED_STATES) is held
+                # here, marked, until an operator deletes it or the queue clears it.
+                # BLACS keeps asking, gets nothing, and runs its own shot.
                 return None
             reclaimed = item['state'] == BLACS_RUNNING
             item['state'] = BLACS_RUNNING
             if not reclaimed:
                 item['since'] = time.time()
-            # Whatever went wrong last time is being attempted again, so the
-            # row goes back to the running appearance rather than keeping a
-            # reason that no longer describes it:
+            # Whatever went wrong last time is being attempted again, so the row looks
+            # as it does when running, without the old reason:
             item['message'] = ''
             record = dict(item)
             record['reclaimed'] = reclaimed
@@ -822,30 +725,26 @@ class QueueController(object):
     def shot_finished(self, shot_id, status, message=''):
         """Record how BLACS says the shot it was offered turned out.
 
-        The outcome names the row by its stable id, so it applies to the row
-        that was offered whichever file BLACS actually ran. Completion removes
-        the row. An aborted or failed shot stays red at the head and is offered
-        again on the next request. A rejected shot stays red but is held until
-        deleted or runmanager is restarted. If the row was cancelled, any
-        outcome removes it; the caller still handles a completed shot for
-        analysis.
+        The outcome names the row by id, so it applies to the row that was offered
+        whichever file BLACS ran. Completion removes the row, and so does any outcome
+        for a cancelled row; the caller still handles a completed shot for analysis. An
+        aborted or failed shot stays red at the head and is offered again on the next
+        request. A rejected shot stays red but is held until deleted or runmanager is
+        restarted.
 
-        Returns the row when an outcome changes queue state, or None when it
-        does not. An identical repeated rejection is ignored while the row is
-        still rejected. After a failed or aborted row is reoffered, a later
-        identical failure can be a genuine retry outcome and is reported
-        again."""
+        Returns the row when an outcome changes queue state, or None when it does not.
+        An identical repeated rejection is ignored while the row is still rejected.
+        After a failed or aborted row is offered again, an identical failure is a
+        retry's outcome and is reported again."""
         message = str(message)
         with self._lock:
             for index, item in enumerate(self._items):
                 if item['shot_id'] != shot_id:
                     continue
                 if status == BLACS_COMPLETED or item['state'] == BLACS_CANCELLED:
-                    # A cancelled row goes on any outcome at all. The operator
-                    # has said they do not want this shot, so a failure is not
-                    # an invitation to try it again -- and a completed one is
-                    # still reported onward by the caller, the cancel being
-                    # about the queue and not about physics already done.
+                    # A cancelled row goes on any outcome at all: the operator does not
+                    # want this shot, so a failure is no reason to try it again, and a
+                    # completed one is still reported onward by the caller.
                     changes = {'blacs': status}
                     if status == BLACS_COMPLETED:
                         changes.update(compile=COMPILE_COMPILED, lyse=item['lyse'])
@@ -855,21 +754,11 @@ class QueueController(object):
                     self._leave(item, message, **changes)
                     return self._items.pop(index)
                 state = BLACS_REJECTED if status == BLACS_REJECTED else BLACS_FAILED
-                # This catches a resend only while the row still shows the
-                # outcome being reported -- so in practice only a rejected row,
-                # that being the one state the offer path refuses to re-offer.
-                # For a failed or aborted row the same exchange goes on to
-                # re-offer it and reset the state, so a resend is applied and
-                # reported again.
-                #
-                # That is deliberate, and the exchange cannot do better. A
-                # resend of one run's outcome and a genuine second run that
-                # failed identically are the same bytes; telling them apart
-                # needs the offer to carry a token that the outcome echoes
-                # back, which this protocol does not have. Of the two errors
-                # available, a repeated line in the output box is much the
-                # safer: see ReplayTests, which pins that a retry failing the
-                # same way is still a second failure and must be reported.
+                # Catches a resend only while the row still shows this outcome, in
+                # practice a rejected row. A failed row is offered again and reset, so
+                # its resend is reported again: a resend and a second run that failed
+                # identically are the same bytes, and the protocol has no token to tell
+                # them apart. A repeated line is the safer error (see ReplayTests).
                 if item['state'] == state and item['message'] == message:
                     return None
                 item['state'] = state
@@ -953,10 +842,9 @@ class QueueController(object):
 class QueueManager(QtCore.QObject):
     """The queue's edits, and the worker thread that compiles shots.
 
-    Queue state lives in the controller it is given, which is safe to use from
-    any thread, so state operations act on it directly. Only compilation is
-    handed to the worker thread, so that a long Engage batch cannot hold up a
-    queue-tab control or a BLACS request for the next shot."""
+    State operations act directly on the controller, which is safe to use from any
+    thread. Only compilation is handed to the worker thread, so that a long Engage
+    batch cannot hold up a queue-tab control or a BLACS request for the next shot."""
 
     queueChanged = Signal()
 
@@ -968,7 +856,7 @@ class QueueManager(QtCore.QObject):
         send_to_runviewer,
         output,
     ):
-        QtCore.QObject.__init__(self)
+        super().__init__()
         self.controller = controller
         self.command_queue = queue.Queue()
         self.prepare_run_file_callback = prepare_run_file
@@ -979,8 +867,7 @@ class QueueManager(QtCore.QObject):
         # submitted, and stopping replaces it, so an Engage after Empty queue is
         # not stopped by the click that came before it.
         self._compile_shots_stop = threading.Event()
-        self.thread = threading.Thread(target=self.mainloop)
-        self.thread.daemon = True
+        self.thread = threading.Thread(target=self.mainloop, daemon=True)
         self.thread.start()
 
     def shutdown(self):
@@ -1040,12 +927,9 @@ class QueueManager(QtCore.QObject):
         )
         if success and item['send_to_runviewer']:
             self.send_to_runviewer_callback(item['path'])
-        # Deliberately does not mark the record compiled. For a row already in
-        # the queue that is the controller's to do, under its lock, in
-        # finish_compile: marking it here would make it offerable before the
-        # compile is recorded, and the offer's running state would then be
-        # wiped by the compile finishing -- so the row would be handed to BLACS
-        # and offered again afterwards as though it never had been.
+        # Not marked compiled here: for a queued row that is finish_compile's to do
+        # under the controller's lock, or the row would be offerable before the compile
+        # is recorded, and its running state wiped when the compile finishes.
         return success, error
 
     def compile_next_in_background(self):
@@ -1060,26 +944,26 @@ class QueueManager(QtCore.QObject):
         boundary."""
         item, pending = self.controller.claim_next_for_compile()
         if item is not None:
-            thread = threading.Thread(target=self._background_compile, args=(item,))
-            thread.daemon = True
+            thread = threading.Thread(
+                target=self._background_compile, args=(item,), daemon=True
+            )
             thread.start()
         return pending
 
     def _compile_saying_why(self, item):
-        """compile_shot, and the message a shot's record gives if it failed.
+        """Compile the shot, returning ``(success, message)``.
 
-        That is the traceback compile_shot returns for a failure in the user's
-        script, or the exception of a failure to get even that far."""
+        The message is what the shot's record says if it failed: the traceback of a
+        failure in the user's script, or the exception of a failure before that."""
         try:
             success, error = self.compile_shot(item)
             return success, f'Could not be compiled:\n{error}'
         except Exception as exc:
             self.output(
-                'Could not compile shot %s: %s\n'
-                % (os.path.basename(item['path']), str(exc)),
+                f"Could not compile shot {os.path.basename(item['path'])}: {exc}\n",
                 red=True,
             )
-            return False, 'Could not be compiled: %s' % str(exc)
+            return False, f'Could not be compiled: {exc}'
 
     def _background_compile(self, item):
         success, message = self._compile_saying_why(item)
@@ -1089,8 +973,8 @@ class QueueManager(QtCore.QObject):
             self.delete_shot_files([item['path']])
         if not success and changed:
             self.output(
-                'Queued shot %s could not be compiled, and has left the queue.\n'
-                % os.path.basename(item['path']),
+                f"Queued shot {os.path.basename(item['path'])} could not be compiled, "
+                'and has left the queue.\n',
                 red=True,
             )
         if changed:
@@ -1112,8 +996,7 @@ class QueueManager(QtCore.QObject):
                 continue
             except Exception as exc:
                 self.output(
-                    'Could not delete shot %s: %s\n'
-                    % (os.path.basename(path), str(exc)),
+                    f'Could not delete shot {os.path.basename(path)}: {exc}\n',
                     red=True,
                 )
 
@@ -1134,20 +1017,13 @@ class QueueManager(QtCore.QObject):
         self.queueChanged.emit()
 
     def _remove_from_queue(self, removed_paths, protected):
-        """Delete the files of the rows that went, and say why one stayed.
+        """Delete the files of the rows that went, and say why a protected row stayed.
 
-        The operator either selected the protected row or asked for a Clear
-        that would have taken it, so a line in the output box says why it is
-        still there -- a line rather than a dialog, because the rest of what
-        they asked for has happened.
-
-        The reason is read off the row, because the two callers keep rows for
-        different reasons: Delete keeps only the row BLACS is executing, while
-        Clear keeps everything that went to BLACS, which includes rows that came
-        back failed or rejected long ago. One message saying "BLACS is running
-        it" for all of them would be untrue of the second kind, and it is the
-        untruth most likely to send an operator to Abort on idle hardware.
-        Returns the paths that were removed."""
+        The reason goes in the output box, as a line rather than a dialog, because the
+        rest of what the operator asked for has happened. It is read off the row:
+        Delete keeps only the row BLACS is executing, but Clear keeps every row that
+        went to BLACS, including ones that came back failed or rejected, of which
+        "BLACS is running it" would be untrue. Returns the paths that were removed."""
         for row in protected:
             if row['state'] == BLACS_RUNNING:
                 reason = 'BLACS is running it.'
@@ -1156,12 +1032,11 @@ class QueueManager(QtCore.QObject):
                 # already carries the whole of it.
                 reason = row['message']
             else:
-                reason = 'BLACS reported it as %s%s' % (
-                    row['state'],
-                    ': %s' % row['message'] if row['message'] else '.',
+                reason = f"BLACS reported it as {row['state']}" + (
+                    f": {row['message']}" if row['message'] else '.'
                 )
             self.output(
-                'Kept queued shot %s: %s\n' % (os.path.basename(row['path']), reason),
+                f"Kept queued shot {os.path.basename(row['path'])}: {reason}\n",
                 red=True,
             )
         if removed_paths:
@@ -1185,13 +1060,12 @@ class QueueManager(QtCore.QObject):
         item = self.controller.offer_next()
         if item is not None:
             if item['reclaimed']:
-                # BLACS asked for work while this row was still marked running,
-                # so the offer it was marked running for never got there. Say
-                # so: the row looks no different afterwards, and a reply that
-                # keeps going missing is worth an operator knowing about.
+                # The offer it was marked running for never got there. The row looks no
+                # different afterwards, so say so: a reply that keeps going missing is
+                # worth an operator knowing about.
                 self.output(
-                    'Shot %s was still marked as running in the queue; '
-                    'offering it to BLACS again.\n' % os.path.basename(item['path']),
+                    f"Shot {os.path.basename(item['path'])} was still marked as running "
+                    'in the queue; offering it to BLACS again.\n',
                     red=True,
                 )
             self.queueChanged.emit()
@@ -1200,19 +1074,15 @@ class QueueManager(QtCore.QObject):
     def shot_finished(self, shot_id, status, message=''):
         record = self.controller.shot_finished(shot_id, status, message)
         if record is None:
-            # The outcome changed nothing: it names a row that has gone, or one
-            # already carrying this failure. That is the ordinary shape of an
-            # outcome BLACS sent again because our reply went missing, so it is
-            # neither reported a second time nor allowed to repaint the queue.
+            # The outcome changed nothing: it names a row that has gone, or one already
+            # carrying this failure, as when BLACS resends because our reply went
+            # missing. It is neither reported again nor allowed to repaint the queue.
             return None
         if status != BLACS_COMPLETED:
             self.output(
-                'BLACS reported shot %s as %s%s\n'
-                % (
-                    os.path.basename(record['path']),
-                    status,
-                    ': %s' % message if message else '',
-                ),
+                f"BLACS reported shot {os.path.basename(record['path'])} as {status}"
+                + (f': {message}' if message else '')
+                + '\n',
                 red=True,
             )
         self.queueChanged.emit()
@@ -1283,8 +1153,8 @@ class QueueManager(QtCore.QObject):
                         else:
                             self.controller.set_unqueued_compile(item, COMPILE_FAILED, message)
                             self.output(
-                                'Shot %s could not be compiled.\n'
-                                % os.path.basename(item['path']),
+                                f"Shot {os.path.basename(item['path'])} "
+                                'could not be compiled.\n',
                                 red=True,
                             )
                     if aborted:
@@ -1292,6 +1162,6 @@ class QueueManager(QtCore.QObject):
                     else:
                         self.output('Ready.\n\n')
                 else:
-                    raise ValueError('Invalid queue command: %s' % command)
+                    raise ValueError(f'Invalid queue command: {command}')
             except Exception as exc:
                 raise_exception_in_thread((type(exc), exc, exc.__traceback__))
