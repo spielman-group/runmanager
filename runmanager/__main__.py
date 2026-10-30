@@ -4380,6 +4380,8 @@ if __name__ == "__main__":
     logger = setup_logging(APPLICATION_NAME)
     labscript_utils.excepthook.set_logger(logger)
     logger.info('\n\n===============starting===============\n')
+    qapplication = splash.qapplication
+    setup_application(qapplication)
     port = LabConfig().getint('ports', 'runmanager', fallback=DEFAULT_PORT)
     if port_in_use(port):
         message = (
@@ -4391,8 +4393,6 @@ if __name__ == "__main__":
         splash.hide()
         QtWidgets.QMessageBox.critical(None, 'runmanager', message)
         sys.exit(1)
-    qapplication = splash.qapplication
-    setup_application(qapplication)
     app = RunManager()
     splash.update_text('Starting remote server')
     runmanager_server = RunmanagerServer(app)
