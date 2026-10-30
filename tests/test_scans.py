@@ -170,14 +170,15 @@ class EvaluationTests(unittest.TestCase):
 
     def test_a_global_defined_in_two_groups_is_refused_before_any_other_error(self):
         sequence_globals = {
-            'one': {'a': ('1', '', ''), 'b': ('1 +', '', '')},
-            'two': {'a': ('2', '', ''), 'c': ('3', '', '')},
+            'one': {'shared': ('1', '', ''), 'b': ('1 +', '', '')},
+            'two': {'shared': ('2', '', ''), 'c': ('3', '', '')},
         }
-        with self.assertRaisesRegex(ValueError, 'multiple active groups'):
+        with self.assertRaises(ValueError) as context:
             runmanager.evaluate_globals(sequence_globals)
+        self.assertIn('shared', str(context.exception))
         results, _, _ = runmanager.evaluate_globals(sequence_globals, raise_exceptions=False)
-        self.assertIsInstance(results['one']['a'], ValueError)
-        self.assertIsInstance(results['two']['a'], ValueError)
+        self.assertIsInstance(results['one']['shared'], ValueError)
+        self.assertIsInstance(results['two']['shared'], ValueError)
         self.assertIsInstance(results['one']['b'], SyntaxError)
         self.assertEqual(results['two']['c'], 3)
 
