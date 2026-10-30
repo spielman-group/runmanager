@@ -33,7 +33,9 @@ compiles both take this path. Three faults follow:
 
 - A **scanned** global has an expansion: in runmanager, its Scan? box is ticked;
   upstream, its expansion setting, automatic or chosen, is not empty. A JIT global is
-  never scanned.
+  never scanned. This is wider than `expander.scanned_globals`, which returns only
+  the globals that lead an axis, leaving out one zipped with the global it is derived
+  from.
 - A **per-shot** global is not scanned, and depends on a scanned global, directly or
   through other globals.
 
@@ -131,30 +133,44 @@ upstream does not have.
   both, and gives the reason in **Why**. A quantity that depends on several axes,
   which upstream's documentation tells the user to compute in the experiment script,
   becomes a per-shot global.
+- It is written against upstream's code, not ported from the fork's: upstream's
+  zip group check uses `expander.axis_names`, and `automatic_expansions` is upstream's
+  alone, since runmanager's `guess_expansion_modes` already skips globals that are not
+  scanned.
 - The four-fix evaluator pull request changes how `_evaluate_globals` finds each
-  global's references. This one adds the per-shot pass and changes the zip group
-  check. Each applies without the other, though both touch `_evaluate_globals`, so
-  the second to merge is rebased on the first.
+  global's references. This one moves that code into a function of its own, adds the
+  per-shot pass and changes the zip group check. Each applies without the other,
+  though both touch `_evaluate_globals`, so the second to merge is rebased on the
+  first.
 
 ## Architecture
 
 - **`evaluator.py`:**
-  - `_evaluate_globals(sequence_globals, raise_exceptions=True, frozen=None)` finds
-    the per-shot globals from the dependencies it already builds, and leaves them out
-    of the evaluation in order. It then evaluates them in the first shot, whose
-    scanned values are the first of each scanned global's values, so that its
-    results have a value or an error for every global. With no shots, they hold an
-    error saying that the scan has none.
+  - The code of `_evaluate_globals` that compiles each expression, finds its
+    references and orders the globals becomes one function, which `_evaluate_globals`
+    and `expand_globals` both call.
+  - Its evaluation loop (eval, `iterator_to_tuple`, catching the error) becomes one
+    function too, used for the globals evaluated once, for the first shot, and for
+    each shot in `expand_globals`.
+  - The per-shot globals are those not scanned whose `_reachable` set in the
+    hierarchy holds a scanned global. `_reachable` also replaces the zip group check's
+    `expanded_dependencies` and `scanned_globals`' own `dependencies`.
+  - `_evaluate_globals(sequence_globals, raise_exceptions=True, frozen=None)` leaves
+    the per-shot globals out of the evaluation in order. It then evaluates them in the
+    first shot, whose scanned values are the first of each scanned global's values,
+    so that its results have a value or an error for every global. It does this
+    itself, since `expander` imports `evaluator` and not the other way round. With no
+    shots, they hold an error saying that the scan has none.
   - It gives a scanned global that depends on a per-shot global the error of
     requirement 3.
   - `frozen`, a dict from name to value, is the fork's: those names go into the
     namespace as given and are not evaluated. `evaluate_globals` does not take it.
 - **`expander.py`:**
   - `expand_globals` evaluates the per-shot globals for each shot it makes. It finds
-    them, and their order, with the evaluator's own reference code, so its
-    signature is unchanged and upstream's scripts get per-shot values. It raises one
-    error naming each per-shot global that fails, its error, and the first shot it
-    fails in (requirement 4).
+    them, and their order, with the evaluator's function for references, so its
+    signature is unchanged and upstream's scripts get per-shot values. It loads the
+    namespace once, not once per shot. It raises one error naming each per-shot
+    global that fails, its error, and the first shot it fails in (requirement 4).
   - `get_shots_with_frozen_globals(globals_details, expansion_order=None,
     frozen=None)` returns each shot with the values it keeps (requirement 6), and the
     sequence globals at Engage. `get_frozen_globals` returns values.
