@@ -8,3 +8,5 @@ API Reference
 
     runmanager
     runmanager.remote
+    runmanager.client
+    runmanager.globals_file
