@@ -847,6 +847,8 @@ class QueueManager(QtCore.QObject):
     batch cannot hold up a queue-tab control or a BLACS request for the next shot."""
 
     queueChanged = Signal()
+    # Why a shot could not be prepared or compiled, when that raised:
+    compileFailed = Signal(str)
 
     def __init__(
         self,
@@ -917,14 +919,20 @@ class QueueManager(QtCore.QObject):
         a default shot is, rather than from the item's frozen globals.
 
         Returns ``(success, error)``: whether it compiled and, if not, the
-        compile's traceback.
+        compile's traceback. An exception is emitted as ``compileFailed`` and raised.
         """
         # A header, so that the output of one compile does not run into the last:
         self.output(f"Compiling {os.path.basename(item['path'])}\n")
-        self.prepare_run_file_callback(item, default_globals=default_globals)
-        success, error = self.compile_run_file_callback(
-            item['labscript_file'], item['path']
-        )
+        try:
+            self.prepare_run_file_callback(item, default_globals=default_globals)
+            success, error = self.compile_run_file_callback(
+                item['labscript_file'], item['path']
+            )
+        except Exception as exc:
+            self.compileFailed.emit(
+                f"Could not compile shot {os.path.basename(item['path'])}: {exc}"
+            )
+            raise
         if success and item['send_to_runviewer']:
             self.send_to_runviewer_callback(item['path'])
         # Not marked compiled here: for a queued row that is finish_compile's to do

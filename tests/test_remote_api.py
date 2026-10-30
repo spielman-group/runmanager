@@ -62,6 +62,7 @@ from fixtures import (
 )
 from runmanager.queueing import (
     COMPILE_MODE_EAGER,
+    COMPILE_MODE_LAZY,
     QueueController,
     QueueManager,
 )
@@ -1245,6 +1246,57 @@ class CompileOnlyEngageTests(RemoteCommandTestCase):
         self.assertEqual(
             [record['path'] for record in records.values()], self.app.compiled
         )
+
+
+class OutputTabApp(SubmittingApp):
+    """SubmittingApp with runmanager's output tab, whose error icon the tests read."""
+
+    set_output_tab_error = RunManager.set_output_tab_error
+
+    def __init__(self, directory):
+        super().__init__(directory)
+        self.main_ui = load_main_ui()
+        self.ui.tabWidget = self.main_ui.tabWidget
+        self.ui.tab_output = self.main_ui.tab_output
+        self.output_tab_tooltip = ''
+        # As connect_signals connects it:
+        self.queue_manager.compileFailed.connect(self.set_output_tab_error)
+
+
+class OutputTabErrorTests(RemoteCommandTestCase):
+    """The output tab's error icon, which an error that stops a shot shows."""
+
+    def make_app(self):
+        return OutputTabApp(self.directory)
+
+    def setUp(self):
+        self.directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.directory, True)
+        super().setUp()
+        self.addCleanup(self.app.compiling.set)
+        runmanager.new_global(self.app.globals_file, 'group', 'x')
+        globals_file.set_field(self.app.globals_file, 'group', 'x', 'default', '1')
+
+    def shown_error(self):
+        """The output tab's error tooltip, or None while it shows no error."""
+        tab_widget = self.app.ui.tabWidget
+        index = tab_widget.indexOf(self.app.ui.tab_output)
+        if tab_widget.tabBar().tabStatusIcon(index).isNull():
+            return None
+        return tab_widget.tabToolTip(index)
+
+    def test_a_jit_global_that_fails_as_its_shot_is_written_shows_an_error(self):
+        # A JIT global is evaluated again as its shot's file is written, which for
+        # a lazy shot is when BLACS asks for it:
+        globals_file.set_field(self.app.globals_file, 'group', 'x', 'jit_enabled', True)
+        self.app.queue_compile_mode_combo.currentData = lambda: COMPILE_MODE_LAZY
+        self.request(self.client.engage)
+        self.assertIsNone(self.shown_error())
+
+        globals_file.set_field(self.app.globals_file, 'group', 'x', 'default', '1/0')
+        self.app.queue_manager.compile_next_in_background()
+
+        wait_for(lambda: self.shown_error() is not None)
 
 
 class CompileErrorTests(RemoteCommandTestCase):

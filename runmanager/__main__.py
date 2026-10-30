@@ -1603,6 +1603,7 @@ class RunManager(LabscriptGuiApplication):
             self.groups_model.itemChanged, self.on_groups_model_item_changed)
 
         self.queue_manager.queueChanged.connect(self.refresh_queue_tab)
+        self.queue_manager.compileFailed.connect(self.set_output_tab_error)
         self.queue_compile_mode_combo.currentIndexChanged.connect(
             self.on_queue_compile_mode_changed
         )
