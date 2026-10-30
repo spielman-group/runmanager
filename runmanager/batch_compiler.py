@@ -32,6 +32,8 @@ KILL_LOCK_TIMEOUT = 60
 
 
 class BatchProcessor:
+    """The compiler subprocess's loop: compiles each labscript its parent asks for."""
+
     def __init__(self, to_parent, from_parent, kill_lock):
         self.to_parent = to_parent
         self.from_parent = from_parent
@@ -140,7 +142,7 @@ class BatchProcessor:
             if type(e) is NameError and e.name is not None and hasattr(np, e.name):
                 e.add_note(
                     "labscript no longer provides numpy's names to experiment scripts. "
-                    "Import '%s' from numpy." % e.name
+                    f"Import '{e.name}' from numpy."
                 )
             traceback_lines = traceback.format_exception(*sys.exc_info())
             del traceback_lines[1:2]
@@ -150,15 +152,15 @@ class BatchProcessor:
         finally:
             labscript.labscript_cleanup()
             os.chdir(cwd)
-            # Reset the script module's namespace:
             self.script_module.__dict__.clear()
             self.script_module.__dict__.update(self.script_module_clean_dict)
-                   
+
+
 if __name__ == '__main__':
     process_tree = ProcessTree.connect_to_parent()
     # Set a meaningful name for the zlock client's id:
     process_tree.zlock_client.set_process_name('runmanager.batch_compiler')
-    module_watcher = ModuleWatcher() # Make sure modified modules are reloaded
+    module_watcher = ModuleWatcher()  # Make sure modified modules are reloaded
     # Rename this module to '_runmanager_batch_compiler' and put it in sys.modules under
     # that name. The user's script will become the __main__ module:
     __name__ = '_runmanager_batch_compiler'
