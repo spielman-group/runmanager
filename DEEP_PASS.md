@@ -84,7 +84,9 @@ history at a9078eb.
 - **Port of `d5842a2..057e6f8`:** each commit picked with `-x`, in order. Where the
   fork differs, the pick says how in its message, and a fork commit follows:
   - 77dc943 keeps `requires-python` at 3.13 and no `__version__.py`, since the version
-    comes from labscript-utils; e4a4180 drops the 3.11 and 3.12 classifiers.
+    comes from labscript-utils; e4a4180 drops the 3.11 and 3.12 classifiers. 6b7de0e
+    floors labscript and labscript_utils at 3.5.0.dev0, not e5283ab's 3.5.0rc1, which
+    the fork's 3.5.0.devN checkouts do not meet.
   - 0adb3a8 lists the fork's PyQt6 inventory; fa4069c adds `runmanager.client` and
     `runmanager.globals_file`, the fork's public modules, to the API reference.
   - 4513df4 is merged into the fork's usage page, and deletes upstream's 2013 manual;
@@ -95,7 +97,9 @@ history at a9078eb.
   - f03d7b3, a0f4b7a, 188cd85, 1cf5844, d1e73df and 2ca0300 are ported onto the
     fork's tree of globals, queue and `exec_qapplication`. ae0dbfc drops a deleted
     view from f03d7b3's click-off filter, which otherwise raises on every click once
-    a view's wrapper outlives it; upstream has the same fault.
+    a view's wrapper outlives it; upstream has the same fault. The output tab's error
+    icon also shows an error raised while a shot is written or compiled (a0fc638),
+    and remote Engage clears and sets it as the button does (06047ba).
 - **Already in:** a844749, 32bead0, 3a7b271, 1035d06, 27d61e3 and 8e7d7f7, upstream's
   style commits whose lines the fork has changed or removed.
 - **Deferred by Ian:** the custom and automatic expansion settings (a658642 and its
@@ -145,9 +149,8 @@ compiles while `pylab_namespace` is True.
   `widgets.py`'s `mix_colors`; `globals_file.py`'s `new_globals_file` and
   `get_field`.
 - Test gaps: no queueing test sees a lyse outcome arrive before its row retires, the
-  remote tour never reaches a failed compile, and no test sees the ported window
-  behaviour: the click-off clearing, the add rows sorted last and the output tab's
-  error icon.
+  remote tour never reaches a failed compile, and no test sees the click-off
+  clearing or the add rows sorted last.
 
 ## Lab checks
 
