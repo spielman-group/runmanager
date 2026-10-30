@@ -10,8 +10,7 @@
 # the project for the full license.                                 #
 #                                                                   #
 #####################################################################
-"""Functions for expanding iterable globals into a list of shots.
-"""
+"""Functions for expanding iterable globals into a list of shots."""
 
 import itertools
 import math
@@ -42,7 +41,6 @@ def _make_axes(sequence_globals, evaled_globals, expansion_config=None):
             values[global_name] = value
             expansions[global_name] = expansion
 
-    # Get a list of the zip keys in use:
     zip_keys = set(expansions.values())
     try:
         zip_keys.remove('outer')
@@ -69,10 +67,8 @@ def _make_axes(sequence_globals, evaled_globals, expansion_config=None):
         axes['zip '+zip_key] = list(zip(*axis, strict=True))
         global_names['zip '+zip_key] = zip_global_names
 
-    # Give each global being outer-product'ed its own axis. It gets
-    # wrapped up in a list and zipped with itself so that it is in the
-    # same format as the zipped globals, ready for outer-producting
-    # together:
+    # Each outer-product'ed global gets its own axis, wrapped in a list and zipped
+    # with itself so that it has the same format as the zipped globals:
     for global_name, expansion in expansions.items():
         if expansion == 'outer':
             value = values[global_name]
@@ -81,7 +77,7 @@ def _make_axes(sequence_globals, evaled_globals, expansion_config=None):
             axes['outer '+global_name] = list(zip(*[value]))
             global_names['outer '+global_name] = [global_name]
 
-    # sort the axes by order. An ordered axis the globals no longer produce, such
+    # Sort the axes by order. An ordered axis the globals no longer produce, such
     # as a scan just disabled, is skipped:
     ordered = sorted(axes, key=lambda key: order.get(key, -1))
     return (
@@ -94,19 +90,8 @@ def _make_axes(sequence_globals, evaled_globals, expansion_config=None):
 def count_shots(sequence_globals, evaled_globals, expansion_config=None, return_dimensions=False):
     """Count the shots expand_globals makes from the same arguments, without making them.
 
-    Parameters
-    ----------
-    sequence_globals, evaled_globals, expansion_config
-        As expand_globals takes them.
-    return_dimensions : bool, optional
-        Also return the length of each axis.
-
-    Returns
-    -------
-    int
-        The number of shots.
-    dict
-        With ``return_dimensions``, the length of each axis, by its name.
+    Returns the count, or with ``return_dimensions`` the pair ``(count, dimensions)``,
+    where ``dimensions`` is the length of each axis by its name.
     """
     axes, _, _ = _make_axes(sequence_globals, evaled_globals, expansion_config)
     dimensions = {key: len(axis) for key, axis in axes.items()}
@@ -147,32 +132,32 @@ def scanned_globals(sequence_globals, evaled_globals, global_hierarchy):
     return scanned
 
 
-def expand_globals(sequence_globals, evaled_globals, expansion_config = None, return_dimensions = False):
-    """Expands iterable globals according to their expansion
-    settings. Creates a number of 'axes' which are to be outer product'ed
-    together. Some of these axes have only one element, these are globals
-    that do not vary. Some have a set of globals being zipped together,
-    iterating in lock-step. Others contain a single global varying
-    across its values (the globals set to 'outer' expansion). Returns
-    a list of shots, each element of which is a dictionary for that
-    shot's globals."""
+def expand_globals(sequence_globals, evaled_globals, expansion_config=None, return_dimensions=False):
+    """Expand iterable globals according to their expansion settings into a list of
+    shots, each a dictionary of that shot's globals.
+
+    The globals make 'axes' that are outer product'ed together: one axis for each
+    zip group, whose globals iterate in lock-step, with the globals that do not vary
+    on one more axis of a single element, and one for each global set to 'outer'
+    expansion, which varies across its values. ``expansion_config`` maps an axis name,
+    ``'zip <group>'`` or ``'outer <global>'``, to a dict with optional entries
+    ``'order'``, which sorts the axes, the last varying fastest, and ``'shuffle'``,
+    whether the axis's values are shuffled. With ``return_dimensions``, also returns
+    the length of each axis by its name."""
     axes, global_names, shuffle = _make_axes(sequence_globals, evaled_globals, expansion_config)
     dimensions = {key: len(axis) for key, axis in axes.items()}
 
-    # shuffle relevant axes
     for axis_name, axis_values in axes.items():
         if shuffle[axis_name]:
             random.shuffle(axis_values)
 
     axes = list(axes.values())
-    # flatten the global names
     global_names = [global_name for global_list in global_names.values() for global_name in global_list]
 
     shots = []
     for axis_values in itertools.product(*axes):
-        # values here is a tuple of tuples, with the outer list being over
-        # the axes. We need to flatten it to get our individual values out
-        # for each global, since we no longer care what axis they are on:
+        # axis_values is a tuple over the axes of tuples of values. Flatten it to one
+        # value per global, since which axis a global is on no longer matters:
         global_values = [value for axis in axis_values for value in axis]
         shot_globals = dict(zip(global_names, global_values))
         shots.append(shot_globals)
@@ -199,6 +184,9 @@ def value_expression(value):
 
 
 def get_frozen_globals(globals_details, shot):
+    """Return ``{global_name: expression}`` freezing one shot of ``globals_details``, as
+    ``globals_file.get_globals_details`` returns it. A scanned global's expression is
+    its value in ``shot``, any other's is its default, and a JIT global is left out."""
     frozen_globals = {}
     for group_name, globals_data in globals_details.items():
         for global_name, record in globals_data.items():
