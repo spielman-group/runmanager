@@ -10,8 +10,7 @@
 # the project for the full license.                                 #
 #                                                                   #
 #####################################################################
-"""Functions for reading, writing, and modifying globals groups.
-"""
+"""Functions for reading, writing, and modifying globals groups."""
 
 import warnings
 
@@ -26,18 +25,7 @@ def is_valid_python_identifier(name):
 
 
 def is_valid_hdf5_group_name(name):
-    """Ensure that a string is a valid name for an hdf5 group.
-
-    The names of hdf5 groups may only contain ASCII characters. Furthermore, the
-    characters "/" and "." are not allowed.
-
-    Args:
-        name (str): The potential name for an hdf5 group.
-
-    Returns:
-        bool: Whether or not `name` is a valid name for an hdf5 group. This will
-            be `True` if it is a valid name or `False` otherwise.
-    """
+    """Whether ``name`` is a valid hdf5 group name: ASCII only, with no ``/`` or ``.``."""
     return name.isascii() and '.' not in name and '/' not in name
 
 
@@ -52,7 +40,6 @@ def new_group(filename, groupname):
 
 def rename_group(filename, oldgroupname, newgroupname):
     if oldgroupname == newgroupname:
-        # No rename!
         return
     if not is_valid_hdf5_group_name(newgroupname):
         raise ValueError(
@@ -79,7 +66,6 @@ def new_globals(filename, groupname, records):
 
 def rename_global(filename, groupname, oldglobalname, newglobalname):
     if oldglobalname == newglobalname:
-        # No rename!
         return
     if not is_valid_python_identifier(newglobalname):
         raise ValueError(f'{newglobalname} is not a valid Python variable name')
@@ -94,7 +80,9 @@ def guess_expansion_type(value):
 
 
 def get_all_groups(h5_files):
-    """returns a dictionary of group_name: h5_path pairs from a list of h5_files."""
+    """Return ``{group_name: path}`` for the groups of the globals files ``h5_files``,
+    a path or a list of them. Raises ValueError for a group name that is in more
+    than one."""
     if isinstance(h5_files, (bytes, str)):
         h5_files = [h5_files]
     groups = {}
@@ -109,7 +97,9 @@ def get_all_groups(h5_files):
 
 
 def get_globals(groups):
-    """Return the effective expression, units, and expansion for active globals."""
+    """Return ``{group_name: {global_name: (expression, units, expansion)}}`` for
+    ``groups``, a dict of group name to globals file. A scanned global has its Scan
+    expression and its expansion, any other its default expression and no expansion."""
     return _details_to_sequence_globals(globals_file.get_globals_details(groups))
 
 
@@ -137,13 +127,10 @@ def _details_to_sequence_globals(globals_details, defaults_only=False, overrides
 
 
 def get_shot_globals(filepath):
-    """Returns the evaluated globals for a shot, for use by labscript or lyse.
-    Simple dictionary access as in dict(h5py.File(filepath).attrs) would be fine
-    except we want to apply some hacks, so it's best to do that in one place.
-    
-    Deprecated: use identical function `labscript_utils.shot_utils.get_shot_globals`
+    """Return the evaluated globals of a shot file.
+
+    Deprecated: use ``labscript_utils.shot_utils.get_shot_globals``, which this calls.
     """
-    
     warnings.warn(
         FutureWarning("get_shot_globals has moved to labscript_utils.shot_utils. "
                       "Please update your code to import it from there."))
