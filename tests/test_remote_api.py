@@ -42,6 +42,7 @@ from qtutils.qt.QtWidgets import QApplication
 import runmanager
 import runmanager.globals_file as globals_file
 from runmanager.client import (
+    SUBMISSION_MODE_LAST_SEQUENCE,
     SUBMISSION_MODE_LAST_SEQUENCE_CLEAR_QUEUE,
     RunmanagerClient,
     SequenceRefused,
@@ -144,6 +145,7 @@ class SubmittingApp:
     """
 
     AXES_COL_NAME = RunManager.AXES_COL_NAME
+    AXES_COL_LENGTH = RunManager.AXES_COL_LENGTH
     AXES_COL_SHUFFLE = RunManager.AXES_COL_SHUFFLE
     AXES_ROLE_NAME = RunManager.AXES_ROLE_NAME
 
@@ -1277,6 +1279,60 @@ class CompileOnlyEngageTests(RemoteCommandTestCase):
             )
         )
         self.assertEqual([os.path.exists(r['path']) for r in receipts], [False, False])
+
+
+class DryRunTests(RemoteCommandTestCase):
+    """A dry run compiles every shot of an Engage and runs none.
+
+    Its shots are compiled as with 'BLACS' unticked, whatever the box says,
+    and only while no queued shot is waiting to compile."""
+
+    def make_app(self):
+        return SubmittingApp(self.directory)
+
+    def setUp(self):
+        self.directory = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.directory, True)
+        super().setUp()
+        self.addCleanup(self.app.compiling.set)
+        runmanager.new_global(self.app.globals_file, 'group', 'x')
+        globals_file.set_field(self.app.globals_file, 'group', 'x', 'scan', '[1, 2, 3]')
+        globals_file.set_field(
+            self.app.globals_file, 'group', 'x', 'scan_enabled', True
+        )
+        globals_file.set_field(self.app.globals_file, 'group', 'x', 'expansion', 'outer')
+
+    def test_a_dry_run_queues_nothing_and_leaves_the_last_sequence_as_it_was(self):
+        real = self.request(self.client.engage)
+        dry = self.request(self.client.engage, dry_run=True)
+        joined = self.request(self.client.engage, SUBMISSION_MODE_LAST_SEQUENCE)
+
+        queued = self.app.queue_controller.get_queue_paths()
+        self.assertFalse({receipt['path'] for receipt in dry} & set(queued))
+        self.assertEqual(
+            {(r['sequence_id'], r['sequence_index']) for r in joined},
+            {(real[0]['sequence_id'], real[0]['sequence_index'])},
+        )
+        self.assertEqual([r['run_number'] for r in joined], [3, 4, 5])
+
+    def test_queued_shots_compile_before_a_dry_runs_remaining_shots(self):
+        dry = self.request(self.client.engage, dry_run=True)
+        # The dry run's first shot is compiling when the queued batch is engaged:
+        wait_for(
+            lambda: self.request(self.client.shot_status, [dry[0]['shot_id']])[
+                dry[0]['shot_id']
+            ]['compile'] == 'compiling'
+        )
+        real = self.request(self.client.engage)
+        self.app.compiling.set()
+        wait_for(lambda: len(self.app.compiled) == 6)
+
+        self.assertEqual(
+            self.app.compiled,
+            [dry[0]['path']]
+            + [r['path'] for r in real]
+            + [r['path'] for r in dry[1:]],
+        )
 
 
 class OutputTabApp(SubmittingApp):

@@ -1946,17 +1946,20 @@ class RunManager(LabscriptGuiApplication):
             self.output_box.output(f'{e!s}\n\n', red=True)
         logger.info('end engage')
 
-    def engage(self, submission_mode=SUBMISSION_MODE_NEW_SEQUENCE, sequence=None):
+    def engage(
+        self, submission_mode=SUBMISSION_MODE_NEW_SEQUENCE, sequence=None, dry_run=False
+    ):
         """Make the batch the Engage button makes, returning its queue records.
 
         ``sequence``, if given, is the ``(sequence_id, sequence_index)`` of a
-        sequence the batch joins, as ``compile_and_queue_shots`` takes it. An error
-        that stops it is shown on the output tab until the next Engage."""
+        sequence the batch joins, as ``compile_and_queue_shots`` takes it. A
+        ``dry_run`` is made as with 'BLACS' unticked, whatever the box says. An
+        error that stops it is shown on the output tab until the next Engage."""
         self.set_output_tab_error(None)
         try:
             if submission_mode not in SUBMISSION_MODES:
                 raise ValueError(f'Unknown submission mode {submission_mode!r}.')
-            send_to_blacs = self.ui.checkBox_run_shots.isChecked()
+            send_to_blacs = not dry_run and self.ui.checkBox_run_shots.isChecked()
             send_to_runviewer = self.ui.checkBox_view_shots.isChecked()
             mode = SUBMISSION_MODES[submission_mode]
             if (
@@ -1966,7 +1969,7 @@ class RunManager(LabscriptGuiApplication):
                 # -- so with nothing going to BLACS there is nothing for it to do.
                 raise ValueError(
                     "Alternate queue submission modes, and joining a sequence, "
-                    "require 'BLACS' to be selected."
+                    "require 'BLACS' to be selected, and are not for a dry run."
                 )
             return self.compile_and_queue_shots(
                 submission_mode,
@@ -4240,15 +4243,18 @@ class RunmanagerServer(ZMQServer):
         submission_mode=SUBMISSION_MODE_NEW_SEQUENCE,
         sequence_id=None,
         sequence_index=None,
+        dry_run=False,
     ):
         """Make the shots the globals expand into and queue them, as Engage does;
         returns a receipt per shot. submission_mode: 'new_sequence' (default),
         'last_sequence' to join the last one, or either + '_clear_queue' to empty
         the queue first. To join an earlier sequence instead, pass its sequence_id
-        and sequence_index, as a receipt gives them."""
+        and sequence_index, as a receipt gives them. dry_run=True compiles every
+        shot without running it, using no sequence index and yielding to queued
+        shots; shot_status gives the results."""
         self.app.wait_until_preparse_complete()
         sequence = None if sequence_id is None else (sequence_id, sequence_index)
-        records = inmain(self.app.engage, submission_mode, sequence)
+        records = inmain(self.app.engage, submission_mode, sequence, dry_run)
         return [shot_receipt(record) for record in records]
 
     @inmain_decorator()

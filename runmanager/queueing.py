@@ -973,6 +973,13 @@ class QueueManager(QtCore.QObject):
             )
             return False, f'Could not be compiled: {exc}'
 
+    def _compile_eager_rows(self):
+        """Compile the queued eager rows not yet compiled, in queue order."""
+        item = self.controller.claim_next_to_compile_ahead()
+        while item is not None:
+            self._background_compile(item)
+            item = self.controller.claim_next_to_compile_ahead()
+
     def _background_compile(self, item):
         success, message = self._compile_saying_why(item)
         changed, still_queued = self.controller.finish_compile(item, success, message)
@@ -1138,10 +1145,7 @@ class QueueManager(QtCore.QObject):
                     return
 
                 if command == 'compile_ahead':
-                    item = self.controller.claim_next_to_compile_ahead()
-                    while item is not None:
-                        self._background_compile(item)
-                        item = self.controller.claim_next_to_compile_ahead()
+                    self._compile_eager_rows()
                     self.output('Ready.\n\n')
                 elif command == 'compile_shots':
                     records, stop = args
@@ -1154,6 +1158,8 @@ class QueueManager(QtCore.QObject):
                                 item, None, 'Not compiled: compilation was aborted.'
                             )
                             continue
+                        # Shots bound for BLACS go first:
+                        self._compile_eager_rows()
                         self.controller.set_unqueued_compile(item, COMPILE_COMPILING)
                         success, message = self._compile_saying_why(item)
                         if success:

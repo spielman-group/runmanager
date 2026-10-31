@@ -412,6 +412,7 @@ class RunmanagerClient(ZMQClient):
         submission_mode=SUBMISSION_MODE_NEW_SEQUENCE,
         sequence_id=None,
         sequence_index=None,
+        dry_run=False,
     ):
         """Compile the shots the window's globals expand into, and queue them.
 
@@ -458,6 +459,11 @@ class RunmanagerClient(ZMQClient):
         sequence_index : int, optional
             That sequence's ``sequence_index``, which tells apart two sequences
             started in the same second.
+        dry_run : bool
+            If True, compile every shot without running it, as with 'BLACS'
+            unticked whatever the box says: the shots are not queued and use no
+            sequence index, and each compiles only while no queued shot is
+            waiting to. ``shot_status`` gives each one's result.
 
         Returns
         -------
@@ -470,10 +476,10 @@ class RunmanagerClient(ZMQClient):
         ------
         ValueError
             For a ``submission_mode`` that is not one of these, for any but the
-            first, or a ``sequence_id``, while 'BLACS' is unticked, since the
-            others are about the queue, and when there is no labscript file, or
-            no output folder with 'BLACS' ticked, or the globals cannot be
-            evaluated or expand into no shots.
+            first, or a ``sequence_id``, in a dry run or while 'BLACS' is
+            unticked, since the others are about the queue, and when there is
+            no labscript file, or no output folder with 'BLACS' ticked, or the
+            globals cannot be evaluated or expand into no shots.
         SequenceRefused
             For a sequence runmanager has no record of, one of another labscript
             file, or a ``sequence_id`` two sequences share with no
@@ -486,6 +492,7 @@ class RunmanagerClient(ZMQClient):
             submission_mode,
             sequence_id=sequence_id,
             sequence_index=sequence_index,
+            dry_run=dry_run,
         )
 
     def abort(self):
