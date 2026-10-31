@@ -4016,31 +4016,45 @@ class RunmanagerServer(ZMQServer):
         return skipped
 
     def handle_get_values(self, raw=False):
+        """Each active global's Default, {name: value}. With raw=True the stored
+        expression text, otherwise the evaluated value."""
         return self._get_expression_field_values('default', raw=raw)
 
     def handle_get_globals(self, raw=False):
+        """Each active global's value as shots use it: its Scan where Scan? is
+        ticked, otherwise its Default. With raw=True the expression text."""
         active_groups = inmain(self.app.get_active_groups, interactive=False)
         return self._merge_groups(runmanager.get_globals(active_groups), raw)
 
     def handle_get_scans(self, raw=False):
+        """Each active global's Scan, the list a ticked Scan? steps through. With
+        raw=True the expression text, otherwise the evaluated value."""
         return self._get_expression_field_values('scan', raw=raw)
 
     def handle_get_scan_enabled(self):
+        """Whether each active global's Scan? box is ticked, {name: bool}."""
         return self._get_global_field_values('scan_enabled')
 
     def handle_get_jit_enabled(self):
+        """Whether each active global's JIT? box is ticked, {name: bool}. A JIT
+        global is evaluated again as each shot compiles."""
         return self._get_global_field_values('jit_enabled')
 
     def handle_get_expansions(self):
+        """Each active global's expansion: '' for none, 'outer', or a zip group's
+        name."""
         # The preparse guesses the expansion of a global whose type changed.
         self.app.wait_until_preparse_complete()
         return self._get_global_field_values('expansion')
 
     def handle_get_units(self):
+        """Each active global's units, {name: units}."""
         return self._get_global_field_values('units')
 
     @inmain_decorator()
     def handle_get_groups(self):
+        """Each open globals file's groups and whether each is active,
+        {globals_file: {group_name: active}}. Only active groups reach shots."""
         return {
             globals_file: {
                 group_name: item.checkState() == QtCore.Qt.CheckState.Checked
@@ -4050,6 +4064,8 @@ class RunmanagerServer(ZMQServer):
         }
 
     def handle_set_values(self, globals, raw=False, skip_missing=False, preserve_comments=True):
+        """Set active globals' Defaults, {name: value}; all are written or none.
+        A value is stored as its repr, or with raw=True is the expression text."""
         return self._set_field_values(
             'default',
             globals,
@@ -4059,6 +4075,8 @@ class RunmanagerServer(ZMQServer):
         )
 
     def handle_set_scans(self, globals, raw=False, skip_missing=False, preserve_comments=True):
+        """Set active globals' Scans, {name: value}, the lists a ticked Scan? steps
+        through. Arguments as for set_values."""
         return self._set_field_values(
             'scan',
             globals,
@@ -4068,6 +4086,8 @@ class RunmanagerServer(ZMQServer):
         )
 
     def handle_set_scan_enabled(self, globals):
+        """Tick or untick active globals' Scan? boxes, {name: bool}. A global
+        cannot be both scanned and JIT."""
         return self._set_field_values(
             'scan_enabled',
             globals,
@@ -4075,6 +4095,8 @@ class RunmanagerServer(ZMQServer):
         )
 
     def handle_set_jit_enabled(self, globals):
+        """Tick or untick active globals' JIT? boxes, {name: bool}, so that a
+        global is evaluated again as each shot compiles and later edits reach it."""
         return self._set_field_values(
             'jit_enabled',
             globals,
@@ -4082,6 +4104,8 @@ class RunmanagerServer(ZMQServer):
         )
 
     def handle_set_expansions(self, globals, skip_missing=False):
+        """Set how scanned globals combine, {name: expansion}: 'outer' for an axis
+        of its own, or a zip group's name to step in lockstep with its others."""
         return self._set_field_values(
             'expansion',
             globals,
@@ -4091,6 +4115,8 @@ class RunmanagerServer(ZMQServer):
 
     @inmain_decorator()
     def handle_set_groups_active(self, groups):
+        """Activate or deactivate groups, {globals_file: {group_name: active}}, as
+        get_groups returns them. Groups not named are left as they are."""
         items = self.app.group_active_items()
         active = {
             (globals_file, group_name): item.checkState() == QtCore.Qt.CheckState.Checked
@@ -4122,6 +4148,7 @@ class RunmanagerServer(ZMQServer):
 
     @inmain_decorator()
     def handle_new_globals_file(self, path):
+        """Create an empty TOML globals file at path, and open it."""
         path = os.path.abspath(self._coerce_remote_text(path, 'path'))
         if os.path.exists(path):
             raise FileExistsError(f'{path} already exists.')
@@ -4130,6 +4157,7 @@ class RunmanagerServer(ZMQServer):
 
     @inmain_decorator()
     def handle_open_globals_file(self, path):
+        """Open a globals file, with none of its groups active."""
         path = os.path.abspath(self._coerce_remote_text(path, 'path'))
         if not os.path.isfile(path):
             raise FileNotFoundError(f'No such file {path}.')
@@ -4137,12 +4165,14 @@ class RunmanagerServer(ZMQServer):
 
     @inmain_decorator()
     def handle_close_globals_file(self, path):
+        """Close an open globals file and its groups' tabs. The file is unchanged."""
         if path not in self.app.group_active_items():
             raise ValueError(f'{path} is not an open globals file.')
         self.app.close_globals_file(path, confirm=False)
 
     @inmain_decorator()
     def handle_new_group(self, globals_file, group_name):
+        """Add an empty group to an open globals file."""
         group_name = self._coerce_remote_text(group_name, 'group_name')
         if globals_file not in self.app.group_active_items():
             raise ValueError(f'{globals_file} is not an open globals file.')
@@ -4153,6 +4183,8 @@ class RunmanagerServer(ZMQServer):
 
     @inmain_decorator()
     def handle_new_globals(self, globals_file, group_name, globals):
+        """Add globals to a group, all or none: {name: fields}, with fields any of
+        value, units, scan and expansion as text, and scan_enabled and jit_enabled."""
         records = {}
         for global_name, fields in globals.items():
             record = records[global_name] = {}
@@ -4199,50 +4231,68 @@ class RunmanagerServer(ZMQServer):
         return global_name
 
     def handle_engage(self, submission_mode=SUBMISSION_MODE_NEW_SEQUENCE):
+        """Make the shots the globals expand into and queue them, as Engage does;
+        returns a receipt per shot. submission_mode: 'new_sequence' (default),
+        'last_sequence' to join the last one, or either + '_clear_queue' to empty
+        the queue first."""
         self.app.wait_until_preparse_complete()
         return [shot_receipt(record) for record in inmain(self.app.engage, submission_mode)]
 
     @inmain_decorator()
     def handle_abort(self):
+        """Empty the queue, as Empty queue does: every shot not yet sent to BLACS is
+        discarded, and the compile in progress stops."""
         self.app.on_abort_clicked()
 
     @inmain_decorator()
     def handle_get_run_shots(self):
+        """Whether the BLACS box is ticked, so that engaged shots are queued for
+        BLACS to run."""
         return self.app.ui.checkBox_run_shots.isChecked()
 
     @inmain_decorator()
     def handle_set_run_shots(self, value):
+        """Tick or untick the BLACS box. Unticked, Engage only compiles its shots,
+        into a scratch folder."""
         self.app.ui.checkBox_run_shots.setChecked(
             self._coerce_remote_boolean(value, 'value')
         )
 
     @inmain_decorator()
     def handle_get_view_shots(self):
+        """Whether the runviewer box is ticked, so that compiled shots open in
+        runviewer."""
         return self.app.ui.checkBox_view_shots.isChecked()
 
     @inmain_decorator()
     def handle_set_view_shots(self, value):
+        """Tick or untick the runviewer box."""
         self.app.ui.checkBox_view_shots.setChecked(
             self._coerce_remote_boolean(value, 'value')
         )
 
     def handle_get_analyse_shots(self):
+        """Whether the lyse box is ticked, so that completed shots go to lyse."""
         return self.app.analysis_submission.send_to_server
 
     def handle_set_analyse_shots(self, value):
+        """Tick or untick the lyse box."""
         self.app.analysis_submission.send_to_server = self._coerce_remote_boolean(value, 'value')
 
     @inmain_decorator()
     def handle_get_shuffle(self):
+        """Whether the Shuffle box is ticked, so that Engage shuffles the scan."""
         return self.app.ui.pushButton_shuffle.isChecked()
 
     @inmain_decorator()
     def handle_set_shuffle(self, value):
+        """Tick or untick the Shuffle box, for every axis of the scan."""
         self.app.ui.pushButton_shuffle.setChecked(
             self._coerce_remote_boolean(value, 'value')
         )
 
     def handle_n_shots(self):
+        """How many shots Engage would make from the globals as they stand."""
         # Wait until any current preparsing is done, to ensure this is not racy w.r.t
         # previous remote calls:
         self.app.wait_until_preparse_complete()
@@ -4250,25 +4300,31 @@ class RunmanagerServer(ZMQServer):
 
     @inmain_decorator()
     def handle_get_labscript_file(self):
+        """The experiment script that shots compile, or '' if none is selected."""
         labscript_file = self.app.ui.lineEdit_labscript_file.text()
         return os.path.abspath(labscript_file) if labscript_file else ''
 
     @inmain_decorator()
     def handle_set_labscript_file(self, value):
+        """Select the experiment script, a labscript file's path."""
         labscript_file = os.path.abspath(value)
         self.app.ui.lineEdit_labscript_file.setText(labscript_file)
 
     @inmain_decorator()
     def handle_get_shot_output_folder(self):
+        """The folder new shot files are written to."""
         shot_output_folder = self.app.ui.lineEdit_shot_output_folder.text()
         return os.path.abspath(shot_output_folder) if shot_output_folder else ''
 
     @inmain_decorator()
     def handle_set_shot_output_folder(self, value):
+        """Write new shot files to this folder, in place of the default one."""
         shot_output_folder = os.path.abspath(value)
         self.app.ui.lineEdit_shot_output_folder.setText(shot_output_folder)
 
     def handle_error_in_globals(self):
+        """Whether any active global fails to evaluate. Engage refuses while one
+        does."""
         try:
             # This will raise an exception if there are multiple active groups of the
             # same name:
@@ -4281,18 +4337,22 @@ class RunmanagerServer(ZMQServer):
         return False
 
     def handle_is_output_folder_default(self):
+        """Whether the shot output folder is the default, which runmanager moves
+        on with the date and sequence."""
         return not self.app.non_default_folder
 
     @inmain_decorator()
     def handle_reset_shot_output_folder(self):
+        """Return the shot output folder to the default."""
         self.app.on_reset_shot_output_folder_clicked(None)
 
     def handle_submit_shots(self, entries, sequence_id=None, sequence_index=None):
-        """Submit one shot per entry, as ``RunmanagerClient.submit_shots`` describes.
-
-        Every entry is evaluated before any shot is made, and the whole batch is
-        then made in one go, since a filename and a run number are claimed by the
-        batch being made. A refusal therefore queues nothing."""
+        """Make and queue one shot per entry, each a {name: value} dict of the
+        globals it sets; returns a receipt per shot. To add to an earlier
+        submission's sequence, pass its sequence_id and sequence_index."""
+        # Every entry is evaluated before any shot is made, and the batch is made in
+        # one go, since a filename and a run number are claimed by the batch being
+        # made. A refusal therefore queues nothing.
         entries = [dict(entry) for entry in entries]
         if not entries:
             # A caller that produced no entries this round has asked for
@@ -4361,17 +4421,20 @@ class RunmanagerServer(ZMQServer):
         return [shot_receipt(record) for record in records]
 
     def handle_shot_status(self, shot_ids):
-        """The record of each of these shots, as ``shot_status`` returns them.
-
-        The queue controller is safe to ask from any thread, so this is not a GUI
-        read."""
+        """How far each shot has got through compile, queue, BLACS and lyse,
+        {shot_id: record}. shot_ids as engage and submit_shots return them."""
+        # The queue controller is safe to ask from any thread, so this is not a GUI
+        # read.
         return self.app.queue_controller.get_shot_statuses(list(shot_ids))
 
     def handle_get_queue(self):
-        """Read-only, and the queue controller is safe to ask from any thread."""
+        """The shots in the queue, front first, each as shot_status records it."""
+        # The queue controller is safe to ask from any thread.
         return self.app.queue_controller.get_queue()
 
     def handle_test_compile(self):
+        """Compile the first shot Engage would make into a scratch file, queueing
+        nothing, to check the script compiles. Returns success, error and path."""
         self.app.wait_until_preparse_complete()
         return self.app.test_compile()
 
@@ -4379,6 +4442,7 @@ class RunmanagerServer(ZMQServer):
         return self.app.queue_exchange(outcome, bool(request_shot))
 
     def handle_get_version(self):
+        """The version of runmanager."""
         return runmanager.__version__
 
 
