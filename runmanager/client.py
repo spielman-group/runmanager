@@ -407,7 +407,12 @@ class RunmanagerClient(ZMQClient):
         """
         return self.request('delete_global', global_name)
 
-    def engage(self, submission_mode=SUBMISSION_MODE_NEW_SEQUENCE):
+    def engage(
+        self,
+        submission_mode=SUBMISSION_MODE_NEW_SEQUENCE,
+        sequence_id=None,
+        sequence_index=None,
+    ):
         """Compile the shots the window's globals expand into, and queue them.
 
         Does what the window's Engage button does with its globals, scans and
@@ -446,6 +451,13 @@ class RunmanagerClient(ZMQClient):
                 of the shot last sent to BLACS or, if none has been sent, of the
                 last shot queued, and is a sequence of its own if there is
                 neither.
+        sequence_id : str, optional
+            The ``sequence_id`` of an earlier sequence the batch joins, in place
+            of the one ``submission_mode`` finds, as ``submit_shots`` takes it,
+            and numbered after every shot of it runmanager has made.
+        sequence_index : int, optional
+            That sequence's ``sequence_index``, which tells apart two sequences
+            started in the same second.
 
         Returns
         -------
@@ -458,17 +470,23 @@ class RunmanagerClient(ZMQClient):
         ------
         ValueError
             For a ``submission_mode`` that is not one of these, for any but the
-            first while 'BLACS' is unticked, since the others are about the
-            queue, and when there is no labscript file, or no output folder with
-            'BLACS' ticked, or the globals cannot be evaluated or expand into
-            no shots.
+            first, or a ``sequence_id``, while 'BLACS' is unticked, since the
+            others are about the queue, and when there is no labscript file, or
+            no output folder with 'BLACS' ticked, or the globals cannot be
+            evaluated or expand into no shots.
         SequenceRefused
-            For a last sequence runmanager has no record of, or one of another
-            labscript file.
+            For a sequence runmanager has no record of, one of another labscript
+            file, or a ``sequence_id`` two sequences share with no
+            ``sequence_index``.
         Exception
             Whatever else stops the batch being made.
         """
-        return self.request('engage', submission_mode)
+        return self.request(
+            'engage',
+            submission_mode,
+            sequence_id=sequence_id,
+            sequence_index=sequence_index,
+        )
 
     def abort(self):
         """Empty runmanager's queue, as its Empty queue button does.

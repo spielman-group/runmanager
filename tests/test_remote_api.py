@@ -369,6 +369,23 @@ class SubmitShotsTests(RemoteCommandTestCase):
         )
         self.assertNotIn(second[0]['path'], {d['path'] for d in first})
 
+    def test_an_engage_joins_an_earlier_sequence_it_names(self):
+        # An Engage after it starts the sequence a last-sequence Engage would join:
+        first = self.request(self.client.engage)
+        self.request(self.client.engage)
+
+        joined = self.request(
+            self.client.engage,
+            sequence_id=first[0]['sequence_id'],
+            sequence_index=first[0]['sequence_index'],
+        )
+
+        self.assertEqual(
+            (joined[0]['sequence_id'], joined[0]['sequence_index']),
+            (first[0]['sequence_id'], first[0]['sequence_index']),
+        )
+        self.assertEqual(joined[0]['run_number'], 1)
+
     def test_a_session_joins_its_own_sequence_when_another_shares_its_id(self):
         # A sequence_id is a timestamp to the second, so an operator's Engage
         # in the same second as a session's first batch has the same one.

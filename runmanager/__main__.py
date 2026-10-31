@@ -1946,10 +1946,12 @@ class RunManager(LabscriptGuiApplication):
             self.output_box.output(f'{e!s}\n\n', red=True)
         logger.info('end engage')
 
-    def engage(self, submission_mode=SUBMISSION_MODE_NEW_SEQUENCE):
+    def engage(self, submission_mode=SUBMISSION_MODE_NEW_SEQUENCE, sequence=None):
         """Make the batch the Engage button makes, returning its queue records.
 
-        An error that stops it is shown on the output tab until the next Engage."""
+        ``sequence``, if given, is the ``(sequence_id, sequence_index)`` of a
+        sequence the batch joins, as ``compile_and_queue_shots`` takes it. An error
+        that stops it is shown on the output tab until the next Engage."""
         self.set_output_tab_error(None)
         try:
             if submission_mode not in SUBMISSION_MODES:
@@ -1957,18 +1959,21 @@ class RunManager(LabscriptGuiApplication):
             send_to_blacs = self.ui.checkBox_run_shots.isChecked()
             send_to_runviewer = self.ui.checkBox_view_shots.isChecked()
             mode = SUBMISSION_MODES[submission_mode]
-            if (mode.joins_sequence or mode.clears_queue) and not send_to_blacs:
-                # A mode that reads the queue for a sequence to join, or
-                # empties it, is about the queue -- so with nothing going to
-                # BLACS there is nothing for it to do.
+            if (
+                mode.joins_sequence or mode.clears_queue or sequence is not None
+            ) and not send_to_blacs:
+                # Joining a sequence, or emptying the queue, is about the queue
+                # -- so with nothing going to BLACS there is nothing for it to do.
                 raise ValueError(
-                    "Alternate queue submission modes require 'BLACS' to be selected."
+                    "Alternate queue submission modes, and joining a sequence, "
+                    "require 'BLACS' to be selected."
                 )
             return self.compile_and_queue_shots(
                 submission_mode,
                 send_to_blacs,
                 send_to_runviewer,
                 self.expand_pending_shots(),
+                sequence=sequence,
             )
         except Exception as e:
             self.set_output_tab_error(str(e))
@@ -4230,13 +4235,21 @@ class RunmanagerServer(ZMQServer):
             group_tab.delete_global(global_name, confirm=False)
         return global_name
 
-    def handle_engage(self, submission_mode=SUBMISSION_MODE_NEW_SEQUENCE):
+    def handle_engage(
+        self,
+        submission_mode=SUBMISSION_MODE_NEW_SEQUENCE,
+        sequence_id=None,
+        sequence_index=None,
+    ):
         """Make the shots the globals expand into and queue them, as Engage does;
         returns a receipt per shot. submission_mode: 'new_sequence' (default),
         'last_sequence' to join the last one, or either + '_clear_queue' to empty
-        the queue first."""
+        the queue first. To join an earlier sequence instead, pass its sequence_id
+        and sequence_index, as a receipt gives them."""
         self.app.wait_until_preparse_complete()
-        return [shot_receipt(record) for record in inmain(self.app.engage, submission_mode)]
+        sequence = None if sequence_id is None else (sequence_id, sequence_index)
+        records = inmain(self.app.engage, submission_mode, sequence)
+        return [shot_receipt(record) for record in records]
 
     @inmain_decorator()
     def handle_abort(self):
