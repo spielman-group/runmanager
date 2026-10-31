@@ -4226,6 +4226,8 @@ class RunmanagerServer(ZMQServer):
 
     @inmain_decorator()
     def handle_delete_global(self, global_name):
+        """Delete an active global from its group and its globals file, with no
+        confirmation. It cannot be undone."""
         _, _, locations = self._get_active_global_locations([global_name])
         self._check_before_writing(locations, {global_name: ''})
         globals_file, group_name = locations[global_name]
