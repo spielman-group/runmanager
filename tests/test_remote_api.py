@@ -1247,6 +1247,20 @@ class CompileOnlyEngageTests(RemoteCommandTestCase):
             [record['path'] for record in records.values()], self.app.compiled
         )
 
+    def test_a_shot_that_fails_to_compile_leaves_no_file(self):
+        self.app.compile_result = (False, 'NameError: name "z" is not defined')
+        self.app.compiling.set()
+        receipts = self.request(self.client.engage)
+        shot_ids = [receipt['shot_id'] for receipt in receipts]
+
+        wait_for(
+            lambda: all(
+                record['compile'] == 'failed'
+                for record in self.request(self.client.shot_status, shot_ids).values()
+            )
+        )
+        self.assertEqual([os.path.exists(r['path']) for r in receipts], [False, False])
+
 
 class OutputTabApp(SubmittingApp):
     """SubmittingApp with runmanager's output tab, whose error icon the tests read."""

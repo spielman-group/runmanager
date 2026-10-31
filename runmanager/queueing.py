@@ -1159,6 +1159,9 @@ class QueueManager(QtCore.QObject):
                         if success:
                             self.controller.set_unqueued_compile(item, COMPILE_COMPILED)
                         else:
+                            # A failed compile's file is half written, but looks
+                            # compiled, so it goes:
+                            self.delete_shot_files([item['path']])
                             self.controller.set_unqueued_compile(item, COMPILE_FAILED, message)
                             self.output(
                                 f"Shot {os.path.basename(item['path'])} "
